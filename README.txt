@@ -22,14 +22,25 @@ F). F needs to be provided as a TRANSP distribution, put into .jld2-format via g
 and then transformed to orbit space via ps2os.jl. You can also create your own fast-ion distribution in 
 (E,p,R,z) or (E,pm,Rm) formats. As long as you save the fast-ion distribution with the same keys as required 
 by e.g. ps2os.jl, it will be usable.
+
+The OWCF_manual.pdf contains more detailed, and possibly up-to-date, information than this simple README.
 -----------------------------------------------------------------------------------------------------------
 -----------------------------------------------------------------------------------------------------------
 To install:
+For Windows, please follow the steps in howToInstallJuliaAndTheOWCF_Windows.pdf.
+For Mac, please follow the steps in howToInstallJuliaAndTheOWCF_Mac.pdf
+
+I highly recommend you read one of those .pdf documents before trying to install the OWCF.
+If you really want to install the OWCF in a quick-and-dirty-and-risky way, do the following
+
 *navigate to the OWCF folder using a terminal*
 julia
 > using Pkg
 > Pkg.activate(".")
-> ]
+> ENV["PYTHON"] = "...path to your Python executable..."
+> Pkg.add("PyCall")
+> ENV["PYTHON"] = "...path to your Python executable..." # Often redundant
+> Pkg.build("PyCall")
 ] instantiate
 *wait for a long time*
 Done!
@@ -216,4 +227,4 @@ howToInstallJuliaAndTheOWCF_Windows.pdf documents for further info.
 -----------------------------------------------------------------------------------------------------------
 Henrik Järleblad
 A very tired PhD student
-September 2nd, 2022
+November 2nd, 2022
