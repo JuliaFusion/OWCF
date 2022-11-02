@@ -1,0 +1,17 @@
+#Ignore the following files
+
+KM9_2021_trimmed.out
+
+MPRu_orig_vs_trim_RZ.png
+
+MPRu_orig_vs_trim_TOP.png
+
+trim_MPRu_LINE21.jl
+
+trim_MPRu_LINE21.sh
+
+trim_MPRu_LINE21_v2.jl
+
+*.cdf
+
+*.CDF

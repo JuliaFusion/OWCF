@@ -1,0 +1,2 @@
+In this folder, the data files for the diagnostics viewing cones are stored.
+As of this version of the OWCF, they must be in the LINE21 file format, or equivalent.

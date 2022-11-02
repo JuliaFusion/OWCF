@@ -1,0 +1,2 @@
+The .txt file ddn3he_legendre_endf.txt contains Legendre polynomial coefficients for the Legendre polynomials representing
+the cross-sectional model for the D(D,n)3He fusion reaction in the DRESS code.
