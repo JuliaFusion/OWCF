@@ -23,7 +23,10 @@ and then transformed to orbit space via ps2os.jl. You can also create your own f
 (E,p,R,z) or (E,pm,Rm) formats. As long as you save the fast-ion distribution with the same keys as required 
 by e.g. ps2os.jl, it will be usable.
 
-The OWCF_manual.pdf contains more detailed, and possibly up-to-date, information than this simple README.
+The OWCF_manual.pdf contains more detailed, and likely more up-to-date, information than this simple README.
+Please consult the OWCF_manual.pdf document for more information on the OWCF. A publication on the OWCF
+is in preparation and will be submitted to the journal of Computer Physics Communications. When published,
+a link to the article will be included here. 
 -----------------------------------------------------------------------------------------------------------
 -----------------------------------------------------------------------------------------------------------
 To install:
