@@ -12,6 +12,8 @@ trim_MPRu_LINE21.sh
 
 trim_MPRu_LINE21_v2.jl
 
+__pycache__/
+
 *.cdf
 
 *.CDF

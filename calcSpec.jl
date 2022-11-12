@@ -734,12 +734,11 @@ end
 println("Done with sampling!")
 ## ---------------------------------------------------------------------------------------------
 # Add noise to the signal, if that was specified
+# Make sure there are no negative measurements
 if addNoise
     spec_tot_with_noise, noise = add_noise(spec_tot,noiseLevel_b; k=noiseLevel_s)
+    spec_tot_with_noise = map(x-> x<0.0 ? 0.0 : x, spec_tot_with_noise)
 end
-## ---------------------------------------------------------------------------------------------
-# Make sure there are no negative measurements
-spec_tot_with_noise = map(x-> x<0.0 ? 0.0 : x, spec_tot_with_noise)
 ## ---------------------------------------------------------------------------------------------
 verbose && println("Saving results to file... ")
 myfile = jldopen(folderpath_o*"spec_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full)*".jld2",true,true,false,IOStream)

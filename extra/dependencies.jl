@@ -957,7 +957,7 @@ function ps2os(M::AbstractEquilibrium, wall::Boundary, F_ps::Array{Float64,4}, e
 
             if good_sample
                 o = get_orbit(M,GCP(E_sample[1],p_sample[1],R_sample[1],z_sample[1]); store_path=false, wall=wall, kwargs...)
-                if (o.coordinate.energy <= (maximum(og.energy)+dE_os_end/2) && o.coordinate.energy >= (minimum(og.energy)-dE_os_1/2)) # Make sure it's within the energy bounds (+one half grid cell)
+                if (o.coordinate.energy <= (og.energy[end]+dE_os_end/2) && o.coordinate.energy >= (og.energy[1]-dE_os_1/2)) # Make sure it's within the energy bounds (+one half grid cell)
                     F_os_i = bin_orbits(og,vec([o.coordinate]),weights=vec([1.0]))
                 else
                     F_os_i = zeros(length(og.counts))

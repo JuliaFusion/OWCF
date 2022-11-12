@@ -449,10 +449,10 @@ end
 # global declaration to include extractTopoBounds.jl scope
 global filepath_tm_orig = folderpath_o*"topoMap_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*"_$(length(E_array))x$(length(pm_array))x$(length(Rm_array))"*ident
 global filepath_tm = deepcopy(filepath_tm_orig)
-count = 1
+global count = 1
 while isfile(filepath_tm*".jld2") # To take care of not overwriting files. Add _(1), _(2) etc
     global filepath_tm = filepath_tm_orig*"_($(Int64(count)))"
-    count += 1
+    global count += 1 # global scope, to surpress warnings
 end
 global filepath_tm = filepath_tm*".jld2"
 myfile = jldopen(filepath_tm,true,true,false,IOStream)

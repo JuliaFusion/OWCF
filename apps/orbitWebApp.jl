@@ -14,6 +14,7 @@
 # port - The I/O internet port through which this app will be accessed - Int64
 # filepath_equil - The path to the .eqdsk-file (or .jld2-file) with the tokamak magnetic equilibrium and geometry - String
 # FI_species - The species of the particle being simulated (deuterium, tritium etc) - String
+# anim_numOtau_p - The number of poloidal transit times of the orbit trajectory animation - Int64 (or Float64)
 # verbose - If set to true, the app will talk a lot! - Bool
 
 #### Outputs
@@ -22,7 +23,9 @@
 #### Saved files
 # -
 
-# Script written by Henrik Järleblad. Last maintained 2022-08-25.
+# Original script written by Henrik Järleblad. 
+# Animation and GIF-saving tools added by Andrea Valentini.
+# Last maintained 2022-11-12.
 #########################################################################################
 
 ## --------------------------------------------------------------------------
@@ -40,6 +43,8 @@ Pkg.activate(".")
 port = 4444 # Should not be changed lightly
 filepath_equil = ""
 FI_species = "" # Example deuterium: "D"
+anim_numOtau_p = 3 # If the button 'include_anim' is toggled to 'on' in the web application, the length of the animation of the orbit trajectory will correspond to this number of poloidal transit times
+# Please note: If 'include_anim' and 'save_plots' are both toggled to 'on,' a GIF of the orbit trajectory animation will be saved (takes a LONG time). Also, please note, the saved gif will use more frames and higher framerate (60s^-1) for better quality
 verbose = true
 
 extra_kw_args = Dict(:toa => true, :limit_phi => true, :maxiter => 0)
@@ -96,11 +101,32 @@ verbose && println("--- You can access the orbitWebApp via an internet web brows
 verbose && println("--- When 'Task (runnable)...' has appeared, please visit the website localhost:$(port) ---")
 verbose && println("--- Remember: It might take a minute or two to load the webpage. Please be patient. ---")
 function app(req)
-    @manipulate for tokamak_wall = Dict("on" => true, "off" => false), E=88.0, pm=0.5, Rm=(maximum(wall.r)+magnetic_axis(M)[1])/2, i=1:1:500, save_plots = Dict("on" => true, "off" => false)
+    @manipulate for tokamak_wall = Dict("on" => true, "off" => false), E=5.0, pm=0.5, Rm=(maximum(wall.r)+magnetic_axis(M)[1])/2, i=1:1:500, include_anim = Dict("on" => true, "off" => false), save_plots = Dict("on" => true, "off" => false)
 
         EPRc = EPRCoordinate(M, E, pm, Rm, amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species))
         o = get_orbit(M,EPRc; wall=wall, interp_dt=1.0e-10, max_length=500, extra_kw_args...) # interp_dt is set to ridiculously small value, to ensure orbit path length of 500
         
+        if include_anim
+            gcp = GCParticle(EPRc) # Define the guiding-center (GC) particle object
+            # Intergrate. Get the orbit path (path) and the orbit status (stat) objects
+            path, stat = integrate(M, gcp; one_transit=false, r_callback=false, wall=wall, interp_dt=1.0e-10, max_length=5000, tmax=anim_numOtau_p*o.tau_p)
+            gcvalid = gcde_check(M, gcp, path) # Check if usage of the guiding-center approximation was valid, given the length scale of the variation of the magnetic field
+
+            rmax = stat.rm
+            if stat.class != :incomplete && stat.class != :lost # If the orbit was not incomplete, nor lost...
+                if rmax > EPRc.r && (false || !isapprox(rmax,EPRc.r,rtol=1e-4)) # If it ended up outside of its initial R coordinate, or it's not exact...
+                    stat.class = :invalid # It's invalid!
+                end
+            else
+                stat.tau_p=zero(stat.tau_p) # Else, it's an incomplete or lost orbits, and has no poloidal...
+                stat.tau_t=zero(stat.tau_t) # ...and toroidal transit times
+            end
+            o_long = Orbit(EPRc,o.class,stat.tau_p,stat.tau_t,path,gcvalid)
+
+            mv_o_x = cos.(o_long.path.phi).*(o_long.path.r) # Compute x-coordinates for the animation orbit trajectory
+            mv_o_y = sin.(o_long.path.phi).*(o_long.path.r) # Compute y-coordinates for the animation orbit trajectory
+        end
+
         topview_o_x = cos.(o.path.phi).*(o.path.r)
         topview_o_y = sin.(o.path.phi).*(o.path.r)
 
@@ -156,12 +182,58 @@ function app(req)
         plt_pitc = Plots.scatter!([t_array[end]],[o.path.pitch[i]],color=orb_color,label="", ylabel="pitch [-]")
         if save_plots
             png(plt_pitc, "plt_pitc_$(round(E, digits=2))_$(round(o.coordinate.pitch, digits=2))_$(round(o.coordinate.r,digits=2))")
+            !include_anim && println("Plots saved successfully. Please switch off 'save_plots'.")
         end
 
-        vbox(vskip(1em),
-            hbox(Plots.plot(plt_top),Plots.plot(plt_crs)),
-            hbox(Plots.plot(plt_pitc))
-        )
+        #top view movie
+        if include_anim
+            plt_anim = plot((mv_o_x)[1:2],(mv_o_y)[1:2],color=orb_color,alpha=0.3)
+            plt_anim = plot!((mv_o_x)[1:2],(mv_o_y)[1:2],color=orb_color,alpha=0.8)
+            plt_anim = scatter!([(mv_o_x)[1]],[(mv_o_y)[1]],color=orb_color)
+            plt_anim = plot!(topview_R_hfs_x, topview_R_hfs_y, color=:black)
+            plt_anim = plot!(topview_R_lfs_x, topview_R_lfs_y, color=:black)
+            # To achieve fast and efficient animation plotting, trick 1 is to not plot the axis ticks...
+            plt_anim = plot!(plt_anim,aspect_ratio=:equal, legend=false, xlabel="x [m]", ylabel="y [m]",xticks=false,yticks=false,left_margin=4Plots.mm)
+            # ...and trick 2 is to define the needed indexes outside of the @animate loop
+            A,B = -500:1:length(mv_o_x)-500, -50:1:length(mv_o_x)-50 # We want negative indexes in for the first 50, 500, etc ones...
+            A,B = ifelse.(A .> 0, A, 1), ifelse.(B .> 0, B, 1) # ...so that we can easily put them to 1 in this next line.
+            
+            plt_movie = @animate for j=1:50:length(mv_o_x)
+                # With the above plt_anim initialization, it is faster now to simply update the coordinates of the already existing plots
+                plt_anim[1][1][:x], plt_anim[1][1][:y] = (mv_o_x)[A[j]:j], (mv_o_y)[A[j]:j]
+                plt_anim[1][2][:x], plt_anim[1][2][:y] = (mv_o_x)[B[j]:j], (mv_o_y)[B[j]:j]
+                plt_anim[1][3][:x], plt_anim[1][3][:y] = (mv_o_x)[j], (mv_o_y)[j]
+            end every 1 # And create a "movie object" 'plt_movie' from every frame ('every 1')
+            if save_plots
+                save_movie = @animate for j=1:10:length(mv_o_x)
+                    plot!(plt_anim,title="Tokamak time=$(round(j*(anim_numOtau_p*o.tau_p*10^6)/5000, digits=0))/$(round(anim_numOtau_p*o.tau_p*10^6, digits=0)) [μs]")
+                    plt_anim[1][1][:x], plt_anim[1][1][:y] = (mv_o_x)[A[j]:j], (mv_o_y)[A[j]:j]
+                    plt_anim[1][2][:x], plt_anim[1][2][:y] = (mv_o_x)[B[j]:j], (mv_o_y)[B[j]:j]
+                    plt_anim[1][3][:x], plt_anim[1][3][:y] = (mv_o_x)[j], (mv_o_y)[j]
+                end every 1 # Do the same when saving the movie, but with a higher fps (j=1:10:length(mv_o_x) and fps=60)
+                gif(save_movie,"plt_anim_$(round(E, digits=2))_$(round(o.coordinate.pitch, digits=2))_$(round(o.coordinate.r,digits=2)).gif",fps=60)
+                println("Movie and plots saved successfully! Please switch off 'save_plots'.")
+            end
+        end 
+        if !include_anim
+            vbox(vskip(1em),
+                md"**Please note, when switching the 'include\_anim' button from off to on, it might take 5-10 seconds for the app to load.**",
+                vskip(1em),
+                hbox(Plots.plot(plt_top),Plots.plot(plt_crs)),
+                hbox(Plots.plot(plt_pitc))
+            )
+        else
+            vbox(vskip(1em),
+                md"**Please note, when switching the 'include\_anim' button from off to on, it might take 5-10 seconds for the app to load.**",
+                vskip(1em),
+                md"*Including animations reduces the response time of the app by 3-4 seconds. Saving animations can take time (approx. a minute)*",
+                md"**Therefore, please set 'include\_anim' to off when not needed, and 'save\_plots' to off when movie save is completed.**",
+                md"*Please check terminal/powershell log for confirmation of when movie/plots have been saved.*",
+                vskip(1em),
+                hbox(Plots.plot(plt_top),Plots.plot(plt_crs)),
+                hbox(Plots.plot(plt_pitc),gif(plt_movie,"temp.gif",fps=15))
+            )
+        end
     end
 end
 webio_serve(page("/",app), port)
