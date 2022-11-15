@@ -74,7 +74,7 @@ enable_COM = false # Set to false for large grids (>10x100x100 in (E,pm,Rm)). Th
 if enable_COM
     filepath_tm_COM = "" # ...please specify an output of the os2com.jl script (which contains the key "topoMap")(and possibly "polTransTimes" and "torTransTimes"). Leave unspecified if orbitsWebApp.jl should compute the (E,pm,Rm) -> (E,mu,Pphi;sigma) map itself.
 end
-filepath_equil = ""  # Example JET shot 96100 at 13s: g96100/g96100_0-53.0012.eqdsk" #
+filepath_equil = ""  # Example JET shot 96100 at 13s (53 minus 40): g96100/g96100_0-53.0012.eqdsk" #
 filepath_tm = ""
 FI_species = "D" # Example deuterium: "D"
 verbose = true
