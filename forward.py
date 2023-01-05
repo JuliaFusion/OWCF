@@ -129,11 +129,12 @@ class Forward(object):
                 v = np.linalg.norm(v, axis=0) # Just compute the speed of all velocity vectors
                 return np.histogram(v, bins=Ed_bins, weights=spec_weights)[0] # Bin all velocities
             else:
-                u1 = np.array(spec_calc.u1) # The vector parallel to the diagnostic sightline (pointing towards the detector?)
+                u1 = np.array(spec_calc.u1) # The vector parallel to the diagnostic sightline (pointing towards the detector)
                 if u1.ndim == 1:
                     u1 = np.array(u1).reshape(3,1)   # same direction towards the detector for all samples (could be the case for a really small stagnation orbits for example)
                 u1_norm = np.linalg.norm(u1,axis=0)
-                proj_speeds = np.linalg.norm((u1*v)/u1_norm,axis=0) # The magnitude of the projection of the ion velocities onto the vector parallel to the diagnostic sightline
+                #proj_speeds = np.linalg.norm((u1*v)/u1_norm,axis=0) # The magnitude of the projection of the ion velocities onto the vector parallel to the diagnostic sightline
+                proj_speeds = np.einsum("ij,ij->j",u1/u1_norm,v) # Compute the projected velocities
                 return np.histogram(proj_speeds, bins=Ed_bins, weights=spec_weights)[0] # Bin all projected velocities
 
 

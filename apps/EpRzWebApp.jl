@@ -32,7 +32,7 @@
 # OWCF folder when orbitsWebApp.jl is executed. This is to be able to load the
 # correct versions of the Julia packages as specified in the Project.toml and 
 # Manifest.toml files.
-folderpath_OWCF = "" # Finish with '/'
+folderpath_OWCF = "G:/My Drive/DTU/codes/OWCF/" # Finish with '/'
 cd(folderpath_OWCF)
 using Pkg
 Pkg.activate(".")
@@ -44,9 +44,9 @@ using JLD2
 ## ------
 # Inputs
 filepath_distr = ""
-filepath_equil = "" 
-filepath_tm = "" 
-FI_species = "" # Example deuterium: "D"
+filepath_equil = "equilibrium/JET/g99965/g99965_0-48.4058.eqdsk" 
+filepath_tm = "../OWCF_results/cycle22a/topology/EpRzTopoMap_JET_99965K71_at48,4058s_D_30x50x15x17_wLost.jld2" 
+FI_species = "D" # Example deuterium: "D"
 verbose = true
 port = 5432
 
@@ -386,7 +386,7 @@ function app(req) # Here is where the app starts!
             end
             plt_topo = Plots.heatmap(E_array,p_array, F[:,:,Rci,zci]', fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), xlabel="E [keV]", ylabel="p [-]", title="f(E,p) at (R,z)", right_margin=3Plots.mm)
             ms = save_plots ? 2.6 : 1.8
-            plt_weights = Plots.scatter!(E_scatvals_tb,p_scatvals_tb,markersize=ms,leg=false,markercolor=:black)
+            #plt_weights = Plots.scatter!(E_scatvals_tb,p_scatvals_tb,markersize=ms,leg=false,markercolor=:black)
         elseif study==:tpol && poltor
             topoBounds = extractTopoBounds(topoMap[:,:,Rci,zci])
             ones_carinds = findall(x-> x==1.0,topoBounds)
@@ -407,7 +407,7 @@ function app(req) # Here is where the app starts!
                 plt_topo = Plots.heatmap(E_array,p_array, pTT_microsecs', title="tau_pol(E,p) at (R,z) [microseconds] \n tau_pol($(round(E,sigdigits=3)),$(round(p,sigdigits=2)))=$(round(o.tau_p /(1.0e-6),sigdigits=3)) microseconds", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), xlabel="E [keV]", ylabel="p [-]", colorbar=true, top_margin=3Plots.mm)
             end
             ms = save_plots ? 2.6 : 1.8
-            plt_weights = Plots.scatter!(E_scatvals_tb,p_scatvals_tb,markersize=ms,label="",markercolor=:black,leg=false)
+            #plt_weights = Plots.scatter!(E_scatvals_tb,p_scatvals_tb,markersize=ms,label="",markercolor=:black,leg=false)
         elseif study==:ttor && poltor
             topoBounds = extractTopoBounds(topoMap[:,:,Rci,zci])
             ones_carinds = findall(x-> x==1.0,topoBounds)
@@ -428,7 +428,7 @@ function app(req) # Here is where the app starts!
                 plt_topo = Plots.heatmap(E_array,p_array, tTT_microsecs', title="tau_tor(E,p) at (R,z) [microseconds] \n tau_tor($(round(E,sigdigits=3)),$(round(p,sigdigits=2)))=$(round(o.tau_t /(1.0e-6),sigdigits=3)) microseconds", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), xlabel="E [keV]", ylabel="p [-]", colorbar=true,top_margin=3Plots.mm)
             end
             ms = save_plots ? 2.6 : 1.8
-            plt_weights = Plots.scatter!(E_scatvals_tb,p_scatvals_tb,markersize=ms,label="",markercolor=:black,leg=false)
+            #plt_weights = Plots.scatter!(E_scatvals_tb,p_scatvals_tb,markersize=ms,label="",markercolor=:black,leg=false)
         else
             topoMap_raw = topoMap[:,:,Rci,zci] # might not include all integers between 1 and 9 (needed for correct Set1_9 heatmap coloring)
             topoMap_ext = ones(size(topoMap_raw,1),size(topoMap_raw,2)+1) # We ensure 1.0 in data by using ones() function. Add one extra column

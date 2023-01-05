@@ -108,6 +108,15 @@ end
 ## ---------------------------------------------------------------------------------------------
 
 ## ---------------------------------------------------------------------------------------------
+# Ensure that E-, pm- and Rm-values are all Float64
+# Due to requirement in OrbitTomography.jl/orbits.jl, the E-, pm- and Rm-arrays all have to have 
+# the same type of elements.
+E_array = convert(Array{Float64},vec(E_array))
+pm_array = convert(Array{Float64},vec(pm_array))
+Rm_array = convert(Array{Float64},vec(Rm_array))
+## ---------------------------------------------------------------------------------------------
+
+## ---------------------------------------------------------------------------------------------
 # Printing script info and inputs
 println("")
 println("-------------------------------------------------calcOrbGrid.jl-------------------------------------------------")
@@ -118,9 +127,9 @@ print("          ")
 println("TRANSP ID: "*TRANSP_id)
 println("")
 println("A $(length(E_array))x$(length(pm_array))x$(length(Rm_array)) orbit grid and the pertaining valid orbits will be computed for the following (E,pm,Rm) arrays: ")
-println("E-array: [$(minimum(E_array)),$(maximum(E_array))] keV. length(E_array): $(length(E_array))")
-println("pm-array: [$(minimum(pm_array)),$(maximum(pm_array))]. length(pm_array): $(length(pm_array))")
-println("Rm-array: [$(minimum(Rm_array)),$(maximum(Rm_array))] m. length(Rm_array): $(length(Rm_array))")
+println("E-array: [$(minimum(E_array)),...,$(maximum(E_array))] keV. length(E_array): $(length(E_array))")
+println("pm-array: [$(minimum(pm_array)),...,$(maximum(pm_array))]. length(pm_array): $(length(pm_array))")
+println("Rm-array: [$(minimum(Rm_array)),...,$(maximum(Rm_array))] m. length(Rm_array): $(length(Rm_array))")
 println("")
 println("Equilibrium and geometry file specified: ")
 println(filepath_equil)

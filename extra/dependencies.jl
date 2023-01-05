@@ -29,6 +29,7 @@ using Distributed
 using EFIT
 using Equilibrium
 using GuidingCenterOrbits
+using ForwardDiff
 using LinearAlgebra
 using OrbitTomography
 using Optim
@@ -1549,6 +1550,15 @@ function loglike_optimize_tikhonov_factor!(OS; show_trace=true, show_every=2, it
 end
 
 """
+"""
+function getCOMcoord(M::AbstractEquilibrium, E::Float64, pm::Float64, Rm::Float64; FI_species::AbstractString="D", wall=nothing, extra_kw_args=Dict(:toa => true, :limit_phi => true, :maxiter => 0))
+    
+end
+
+function getOScoord()
+end
+
+"""
     getGCP(species_identifier)
 
 The same function as is provided by OWCF/misc/species_func.jl. However, since it's needed in the os2COM() function, which is also
@@ -1673,13 +1683,23 @@ counter-going orbits. Co-going orbits (co-passing, trapped, potato and stagnatio
 and counter-stagnation) will have σ=-1. The good_coords_pmRm vector contains coordinate indices for the mappable (pm,Rm) coordinates 
 (to avoid mapping invalid orbits).
 """
-function pmRm_2_μPϕ(M::AbstractEquilibrium, good_coords_pmRm::Vector{CartesianIndex{2}}, data::Array{Float64,2}, E::Union{Float64,Int64}, pm_array::AbstractVector, Rm_array::AbstractVector, FI_species::AbstractString; nμ=length(pm_array), nPϕ=length(Rm_array), isTopoMap=false, verbose=false, vverbose=false, debug=false)
+function pmRm_2_μPϕ(M::AbstractEquilibrium, good_coords_pmRm::Vector{CartesianIndex{2}}, data::Array{Float64,2}, E::Union{Float64,Int64}, pm_array::AbstractVector, Rm_array::AbstractVector, FI_species::AbstractString; nμ=length(pm_array), nPϕ=length(Rm_array), isTopoMap=false, needJac=false, transform = x -> x, verbose=false, vverbose=false, debug=false)
 
     verbose && println("Transforming (pm,Rm) coordinates into (μ,Pϕ) coordinates... ")
     μ_values = Array{Float64}(undef, length(good_coords_pmRm))
     Pϕ_values = Array{Float64}(undef, length(good_coords_pmRm))
     data_values = Array{Float64}(undef, length(good_coords_pmRm))
     pm_signs = Array{Float64}(undef, length(good_coords_pmRm))
+    if needJac # If a Jacobian is needed for the (pm,Rm) -> (μ,Pϕ) mapping (i.e. for distributions)...
+        # We need to convert our (E,pm,Rm) coordinates to Dual numbers (a+ϵb), where the dual part (b) is a unique orthonormal vector for each E-, pm- and Rm-direction
+        verbose && println("Converting pmRm-, and pre-allocating μPϕ-, arrays as Dual-number arrays... ")
+        E = ForwardDiff.Dual(E,(1.0,0.0,0.0))
+        pm_array = map(x-> ForwardDiff.Dual(x,(0.0,1.0,0.0)), pm_array)
+        Rm_array = map(x-> ForwardDiff.Dual(x,(0.0,0.0,1.0)), Rm_array)
+        μ_values = Array{ForwardDiff.Dual{Nothing, Float64, 3}}(undef, length(good_coords_pmRm))
+        Pϕ_values = Array{ForwardDiff.Dual{Nothing, Float64, 3}}(undef, length(good_coords_pmRm))
+        pm_signs = Array{ForwardDiff.Dual{Nothing, Float64, 3}}(undef, length(good_coords_pmRm))
+    end
     for (i_good_coord, good_coord) in enumerate(good_coords_pmRm)
         vverbose && println("Transforming (pm,Rm) coordinate $(i_good_coord) of $(length(good_coords_pmRm))... ")
         ipm, iRm = Tuple(good_coord)
@@ -1690,6 +1710,23 @@ function pmRm_2_μPϕ(M::AbstractEquilibrium, good_coords_pmRm::Vector{Cartesian
         Pϕ_values[i_good_coord] = myHc.p_phi
         data_values[i_good_coord] = data[ipm,iRm]
         pm_signs[i_good_coord] = sign(pm_array[ipm])
+    end
+
+    if needJac # Could, but should not, do this in the loop above. This way, we achieve optimized speed for pmRm_2_μPϕ() when needJac is false
+        verbose && print("Scaling data with 1/|J|... ")
+        for i=1:length(data_values)
+            x = transform([E,μ_values[i],Pϕ_values[i]]) # Probably redundant
+            detJac = max(abs(det(hcat((ForwardDiff.partials(xx) for xx in x)...))),0.0) # Extract the determinant of the Jacobi matrix (dEdμdPϕ/dEdpmdRm)
+            data_values[i] = (1/detJac) * data_values[i] # Multiply by the inverse of the Jacobian to go from (E,pm,Rm) to (E,μ,Pϕ;σ). Please note! σ is automatically accounted for by the dual numbers
+        end
+        verbose && println("Success!")
+        verbose && println("Reducing Dual-number arrays to real arrays... ")
+        E = ForwardDiff.value(E) # Extract the real part of E (remove the dual part)
+        pm_array = map(x-> ForwardDiff.value(x),pm_array) # Extract the real part of pm (remove the dual part)
+        Rm_array = map(x-> ForwardDiff.value(x),Rm_array) # Extract the real part of Rm (remove the dual part)
+        μ_values = map(x-> ForwardDiff.value(x),μ_values) # Extract the real part of μ (remove the dual part)
+        Pϕ_values = map(x-> ForwardDiff.value(x),Pϕ_values) # Extract the real part of Pϕ (remove the dual part)
+        pm_signs = map(x-> ForwardDiff.value(x),pm_signs) # Extract the real part of sign(pm) (remove the dual part)
     end
 
     # We will let σ=+1 correspond to all types of co-going orbits.
@@ -1732,7 +1769,7 @@ function pmRm_2_μPϕ(M::AbstractEquilibrium, good_coords_pmRm::Vector{Cartesian
     vertices_hash = getDelaunayTessVerticesHash(tess, μPϕ_iterator_tess)
 
     μ_array = collect(range(min_μ,stop=max_μ,length=nμ)) # The μ grid points onto which to interpolate
-    Pϕ_array = collect(range(min_Pϕ,stop=max_Pϕ,length=nPϕ)) # The ϕ grid points onto which to interpolate
+    Pϕ_array = collect(range(min_Pϕ,stop=max_Pϕ,length=nPϕ)) # The Pϕ grid points onto which to interpolate
     if isTopoMap
         outside_value = 9.0 # If we are mapping a topological map and the query point is outside of the tesselation, it's an invalid orbit
     else
@@ -1818,7 +1855,7 @@ end
     PLEASE NOTE! Every 3D quantity corresponding to each index in the energy dimension of the 4D output (i.e. data_COM[1,:,:,:], data_COM[2,:,:,:] etc) has its own pair of μ- and 
     Pϕ-arrays (i.e. μ_matrix[1,:]/Pϕ_matrix[1,:], μ_matrix[2,:]/Pϕ_matrix[2,:] etc). This is because the minimum and maximum of μ and Pϕ scales with the energy.
 """
-function os2COM(M::AbstractEquilibrium, good_coords::Vector{CartesianIndex{3}}, data::Array{Float64, 3}, E_array::AbstractVector, pm_array::AbstractVector, Rm_array::AbstractVector, FI_species::AbstractString; nμ=length(pm_array), nPϕ=length(Rm_array), isTopoMap=false, verbose=false)
+function os2COM(M::AbstractEquilibrium, good_coords::Vector{CartesianIndex{3}}, data::Array{Float64, 3}, E_array::AbstractVector, pm_array::AbstractVector, Rm_array::AbstractVector, FI_species::AbstractString; nμ=length(pm_array), nPϕ=length(Rm_array), isTopoMap=false, needJac=false, verbose=false, vverbose=false)
     
     data_COM = zeros(length(E_array),nμ, nPϕ, 2)
     μ_matrix = zeros(length(E_array),nμ) # Create matrix, because we need to save all possible μ-values for all possible energies (the min/max values of μ scale with the energy)
@@ -1827,7 +1864,7 @@ function os2COM(M::AbstractEquilibrium, good_coords::Vector{CartesianIndex{3}}, 
         verbose && println("Mapping energy slice $(iE) of $(length(E_array))... ")
         good_coords_iE = findall(x-> x[1]==iE, good_coords) # Returns a 1D vector with Integer elements
         good_coords_pmRm = map(x-> CartesianIndex(x[2],x[3]), good_coords[good_coords_iE]) # Returns a 1D vector with CartesianIndex{2} elements
-        data_COM[iE,:,:,:], E, μ_array, Pϕ_array = pmRm_2_μPϕ(M, good_coords_pmRm, data[iE,:,:], E, pm_array, Rm_array, FI_species; nμ=nμ, nPϕ=nPϕ, isTopoMap=isTopoMap)
+        data_COM[iE,:,:,:], E, μ_array, Pϕ_array = pmRm_2_μPϕ(M, good_coords_pmRm, data[iE,:,:], E, pm_array, Rm_array, FI_species; nμ=nμ, nPϕ=nPϕ, isTopoMap=isTopoMap, needJac=needJac, verbose=verbose, vverbose=vverbose)
         μ_matrix[iE,:] = μ_array # Save the array of possible μ-values FOR THE CURRENT ENERGY E in a matrix at row iE
         Pϕ_matrix[iE,:] = Pϕ_array # Save the array of possible Pϕ-values FOR THE CURRENT ENERGY E in a matrix at row iE
     end
@@ -1853,11 +1890,10 @@ by a factor of 100 when you go from a 10 keV energy slice to a 1 MeV energy slic
 But I thought that maybe you, dear user, would like to do that yourself post-computation. I am giving you the freedom of choice here. That's why the (μ,Pϕ) output is given in matrix form, NOT
 in vector form.
 """
-function os2COM(M::AbstractEquilibrium, data::Union{Array{Float64, 3},Array{Float64, 4}}, E_array::AbstractVector, pm_array::AbstractVector, Rm_array::AbstractVector, FI_species::AbstractString; nμ=length(pm_array), nPϕ=length(Rm_array), isTopoMap=false, verbose=false, good_coords=nothing, wall=nothing, extra_kw_args=Dict(:toa => true, :limit_phi => true, :maxiter => 0))
-
+function os2COM(M::AbstractEquilibrium, data::Union{Array{Float64, 3},Array{Float64, 4}}, E_array::AbstractVector, pm_array::AbstractVector, Rm_array::AbstractVector, FI_species::AbstractString; nμ=length(pm_array), nPϕ=length(Rm_array), isTopoMap=false, needJac=false, verbose=false, vverbose=false, good_coords=nothing, wall=nothing, extra_kw_args=Dict(:toa => true, :limit_phi => true, :maxiter => 0))
     if !isTopoMap && !(typeof(good_coords)==Vector{CartesianIndex{3}})
         verbose && println("Input data is not a topological map, and keyword argument 'good_coords' has not been (correctly?) provided... ")
-        verbose && println("--------> Computing orbit grid for E-, pm- and Rm-values... ")
+        verbose && println("--------> Computing orbit grid for (E,pm,Rm)-values to be able to deduce valid orbits for (E,pm,Rm)-grid... ")
         orbs, og = orbit_grid(M, verbose, E_array, pm_array, Rm_array; q=getSpeciesEcu(FI_species), amu=getSpeciesAmu(FI_species), wall=wall, extra_kw_args...)
     end
 
@@ -1869,7 +1905,7 @@ function os2COM(M::AbstractEquilibrium, data::Union{Array{Float64, 3},Array{Floa
         good_coords = good_coords
     else
         verbose && print("Identifying mappable (E,pm,Rm) coordinates from orbit grid... ")
-        good_coords = findall(x-> x>0.0, og.orbit_index) # So good_coords will be a vector consisting of CartesianIndices{3}
+        good_coords = findall(x-> x>0.0, og.orbit_index) # Valid orbits (orbit_index > 0). So good_coords will be a vector consisting of CartesianIndices{3}
         verbose && println("($(length(good_coords)))")
     end
 
@@ -1884,13 +1920,13 @@ function os2COM(M::AbstractEquilibrium, data::Union{Array{Float64, 3},Array{Floa
     μ_matrix = nothing # Just pre-define something
     Pϕ_matrix = nothing
     verbose && println("Mapping (E,pm,Rm) -> (E,μ,Pϕ;σ) for 3D quantity 1 of $(size(data,1))... ")
-    data_COM[1, :, :, :, :], E_array, μ_matrix, Pϕ_matrix = os2COM(M, good_coords, data[1,:,:,:], E_array, pm_array, Rm_array, FI_species; nμ=nμ, nPϕ=nPϕ, isTopoMap=isTopoMap)
+    data_COM[1, :, :, :, :], E_array, μ_matrix, Pϕ_matrix = os2COM(M, good_coords, data[1,:,:,:], E_array, pm_array, Rm_array, FI_species; nμ=nμ, nPϕ=nPϕ, isTopoMap=isTopoMap, needJac=needJac, verbose=verbose, vverbose=vverbose)
     if size(data,1)>1 # To avoid distributed errors
         data_COM = @distributed (+) for iEd in collect(2:size(data,1))
             verbose && println("Mapping (E,pm,Rm) -> (E,μ,Pϕ;σ) for 3D quantity $(iEd) of $(size(data,1))... ")
             data_COM_part = zeros(size(data,1),length(E_array),nμ, nPϕ, 2)
             # E_array_part, μ_matrix_part and Pϕ_matrix_part do not matter. But they need to be returned by os2COM.
-            data_COM_part[iEd, :, :, :, :], E_array_part, μ_matrix_part, Pϕ_matrix_part = os2COM(M, good_coords, data[iEd,:,:,:], E_array, pm_array, Rm_array, FI_species; nμ=nμ, nPϕ=nPϕ, isTopoMap=isTopoMap)
+            data_COM_part[iEd, :, :, :, :], E_array_part, μ_matrix_part, Pϕ_matrix_part = os2COM(M, good_coords, data[iEd,:,:,:], E_array, pm_array, Rm_array, FI_species; nμ=nμ, nPϕ=nPϕ, isTopoMap=isTopoMap, needJac=needJac, verbose=verbose, vverbose=vverbose)
             data_COM_part # Declare ready for reduction (data_COM += data_COM_part but distributed over several CPU cores)
         end
     end

@@ -57,7 +57,7 @@
 
 ## ------
 # Loading packages
-verbose && println("Loading packages (usually takes approx 30 secs/processor)... ")
+verbose && println("Loading packages (can take up to approx 15 secs/processor)... ")
 @everywhere begin
     using EFIT
     using Equilibrium

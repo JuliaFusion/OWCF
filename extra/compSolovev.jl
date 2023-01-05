@@ -17,8 +17,8 @@
 # ϵ - The inverse aspect ratio a/R0 (a=minor radius)
 # δ - The triangularity of the plasma
 # κ - The elongation of the plasma
-# α - The constant relating beta regime (approx. 0.04 common in tokamaks)
-# qstar - The kink safety factor (4.054 in JET for example)
+# α - The constant relating beta regime (This must be chosen manually to achieve desired total plasma β-value)
+# qstar - The kink safety factor (1.57 in ITER for example)
 # filepath_wall - The filepath to a .jld2 file containing (optional) data for the tokamak wall - String
 # folderpath_o - The folderpath to the output folder where the results will be saved - String
 # verbose - If true, the script will talk a lot! - Bool
@@ -34,7 +34,22 @@
 #   S - The Solov'ev Equilbrium.jl object
 #   wall - The wall data
 
-# Script written by Henrik Järleblad. Last maintained 2022-08-29.
+### Other
+# To find a suitable total plasma β-value, you can try creating a Solov'ev equilibrium with a trial α value.
+# You can then check the resulting total β-value by doing
+# 
+# using JLD2
+# using Equilibrium
+# myfile = jldopen("solovev_equilibrium_[DATE].jld2",false,false,false,IOStream)
+# S = myfile["S"]
+# close(myfile)
+# βt = S.beta_t # Toroidal plasma β
+# βp = S.beta_p # Poloidal plasma β
+# β = βt*βp / (βp+βt)
+#
+# You can then increase/decrease your α value, until you find the desired total plasma β-value.
+
+# Script written by Henrik Järleblad. Last maintained 2023-01-04.
 ######################################################################################################
 
 ## --------------------------------------------------------------------------
@@ -49,13 +64,13 @@ Pkg.activate(".")
 
 ## --------------------------------------------------------------------------
 # Required inputs
-B0 = 3.0 # Magnetic field on-axis. Tesla
-R0 = 3.0 # Major radius position of magnetic axis. Meters
-ϵ = 0.4 # Inverse aspect ratio
-δ = 0.34 # Triangularity
-κ = 1.4 # Plasma elongation
-α = 0.04 # Constant relating beta regime
-qstar = 4.054 # Kink safety factor
+B0 = 5.3 # Magnetic field on-axis. Tesla
+R0 = 6.2 # Major radius position of magnetic axis. Meters
+ϵ = 0.32 # Inverse aspect ratio
+δ = 0.33 # Triangularity
+κ = 1.7 # Plasma elongation
+α = -0.155 # Constant relating beta regime. This must be chosen freely. -0.155 works for ITER and results in a β-value of 0.05
+qstar = 1.57 # Kink safety factor
 filepath_wall = ""
 folderpath_o = "G:/My Drive/DTU/codes/"
 verbose = true
