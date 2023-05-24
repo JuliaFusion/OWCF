@@ -146,7 +146,7 @@ elseif typeof(Ed_energies)==Int
     end
 else
     # Checking typeof Ed_energies
-    if !(typeof(Ed_energies)==Array{Float64,1})
+    if !(typeof(Ed_energies)<:AbstractVector)
         error("Ed_energies not specified correctly. Please correct and re-try.")
     end
     # Again, this code is not efficient, but it's ok thanks to assumed small array lengths
@@ -237,12 +237,20 @@ end
 
 verbose && println("Saving inflated 4D orbit weight functions... ")
 if (@isdefined reaction_full)
-    myfile = jldopen(output_folder*"orbWeights4D_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = analyticalOWs)*"_$(length(Ed_array[Edi_array]))x$(length(E_array))x$(length(pm_array))x$(length(Rm_array)).jld2",true,true,false,IOStream)
+    global filepath_output_orig = output_folder*"orbWeights4D_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = analyticalOWs)*"_$(length(Ed_array[Edi_array]))x$(length(E_array))x$(length(pm_array))x$(length(Rm_array))"
 elseif (@isdefined reaction)
-    myfile = jldopen(output_folder*"orbWeights4D_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*reaction*"_$(length(Ed_array[Edi_array]))x$(length(E_array))x$(length(pm_array))x$(length(Rm_array)).jld2",true,true,false,IOStream)
+    global filepath_output_orig = output_folder*"orbWeights4D_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*reaction*"_$(length(Ed_array[Edi_array]))x$(length(E_array))x$(length(pm_array))x$(length(Rm_array))"
 else
-    myfile = jldopen(output_folder*"orbWeights4D_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*FI_species*"_$(length(Ed_array[Edi_array]))x$(length(E_array))x$(length(pm_array))x$(length(Rm_array)).jld2",true,true,false,IOStream)
+    global filepath_output_orig = output_folder*"orbWeights4D_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*FI_species*"_$(length(Ed_array[Edi_array]))x$(length(E_array))x$(length(pm_array))x$(length(Rm_array))"
 end
+global filepath_output = deepcopy(filepath_output_orig)
+global count = 1
+while isfile(filepath_output*".jld2") # To take care of not overwriting files. Add _(1), _(2) etc
+    global filepath_output = filepath_output_orig*"_($(Int64(count)))"
+    global count += 1 # global scope, to surpress warnings
+end
+global filepath_output = filepath_output*".jld2"
+myfile = jldopen(filepath_output,true,true,false,IOStream)
 write(myfile, "Wtot", W4D)
 write(myfile, "E_array", E_array)
 write(myfile, "pm_array", pm_array)

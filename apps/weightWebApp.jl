@@ -104,7 +104,7 @@
 # OWCF folder when weightWebApp.jl is executed. This is to be able to load the
 # correct versions of the Julia packages as specified in the Project.toml and 
 # Manifest.toml files.
-folderpath_OWCF = "G:/My Drive/DTU/codes/OWCF/" # Finish with '/'
+folderpath_OWCF = "" # Finish with '/'
 cd(folderpath_OWCF)
 using Pkg
 Pkg.activate(".")
@@ -120,9 +120,9 @@ enable_COM = false
 if enable_COM
     filepath_tm_COM = "" # ...please specify an output of the os2com.jl script (which contains the key "topoMap")(and possibly "polTransTimes" and "torTransTimes").
 end
-filepath_equil = "G:/My Drive/DTU/codes/OWCF/equilibrium/COMPASS/solovev_equilibrium_2022-10-19.jld2"
-filepath_tm = "C:/Users/henrikj/Downloads/topoMap_COMPASS__at00,0000s__10x100x100_wIncomp_wLost.jld2"
-filepath_W = "C:/Users/henrikj/Downloads/orbWeights4D_COMPASS__at00,0000s__proj-D_99x10x100x100.jld2"
+filepath_equil = ""
+filepath_tm = ""
+filepath_W = ""
 weightsFileJLD2 = true
 diagnostic_filepath = "" # The file path to the LINE21 output file, containing viewing cone data for the diagnostic
 diagnostic_name = "" # Diagnostic sightline aestethic keyword. E.g: "TOFOR", "AB" or ""
@@ -409,13 +409,15 @@ function app(req)
         #topological plot
         Eci = argmin(abs.(collect(E_range) .- E))
         if (phase_space==:OS) || !enable_COM
-            plt_topo = Plots.heatmap(Rm_range,pm_range,topoMap[Int64(Eci),:,:],color=:Set1_9,legend=false,xlabel="Rm [m]", ylabel="pm", title="E: $(round(E,digits=3)) keV")
+            pm_range_ext = vcat(pm_range[1]-(diff(pm_range))[1],pm_range) # Extend pm_range one row below
+            topoMap_ext = vcat(vcat([1,2,3,4,5,6,7,8,9],ones(length(Rm_range)-9))', topoMap[Int64(Eci),:,:]) # Extend topoMap one row below, to ensure correct colormapping for orbit types (please see calcTopoMap.jl for more info). The y-limits (ylims) will make sure the extra row is not visible in the plot
+            plt_topo = Plots.heatmap(Rm_range,pm_range_ext,topoMap_ext[Int64(Eci),:,:],color=:Set1_9,legend=false,xlabel="Rm [m]", ylabel="pm", title="E: $(round(E,digits=3)) keV", ylims=extrema(pm_range), xlims=extrema(Rm_range))
             plt_topo = Plots.plot!(maximum(wall.r).*ones(length(pm_range)), pm_range, color=:black, linewidth=2)
         else
             if pm<0.0
                 plt_topo = Plots.heatmap(Pϕ_matrix[Int64(Eci),:],vcat(0.0,μ_matrix[Int64(Eci),:]),vcat(vcat([1,2,3,4,5,6,7,8,9],ones(length(Pϕ_matrix[Int64(Eci),:])-9))', topoMap_COM[Int64(Eci),:,:,1]),color=:Set1_9,legend=false,xlabel="Pϕ", ylabel="μ", title="E: $(round(E_array[Int64(Eci)],digits=3)) keV", ylims=extrema(μ_matrix[Int64(Eci),:]), xlims=extrema(Pϕ_matrix[Int64(Eci),:]))
             else
-                plt_topo = Plots.heatmap(Pϕ_matrix[Int64(Eci),:],μ_matrix[Int64(Eci),:],topoMap_COM[Int64(Eci),:,:,2],color=:Set1_9,legend=false,xlabel="Pϕ", ylabel="μ", title="E: $(round(E_array[Int64(Eci)],digits=3)) keV", ylims=extrema(μ_matrix[Int64(Eci),:]), xlims=extrema(Pϕ_matrix[Int64(Eci),:]))
+                plt_topo = Plots.heatmap(Pϕ_matrix[Int64(Eci),:],vcat(0.0,μ_matrix[Int64(Eci),:]),vcat(vcat([1,2,3,4,5,6,7,8,9],ones(length(Pϕ_matrix[Int64(Eci),:])-9))', topoMap_COM[Int64(Eci),:,:,2]),color=:Set1_9,legend=false,xlabel="Pϕ", ylabel="μ", title="E: $(round(E_array[Int64(Eci)],digits=3)) keV", ylims=extrema(μ_matrix[Int64(Eci),:]), xlims=extrema(Pϕ_matrix[Int64(Eci),:]))
             end
         end
         if show_coordinate

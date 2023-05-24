@@ -19,7 +19,7 @@
 # includeExtractTopoBounds - If true, then the topological boundaries will be computed as well - Bool
 # keyname_diagHDF5 - The HDF5 key identifier with which to load the weights file. if !(weightsFileJLD2). The 'E_array', 'pm_array' and 'Rm_array' key identifiers will be assumed for the orbit-space grid points - String
 # saveTransitTimeMaps - If true, the output .jld2 file will also contain two 3D array, both of size(orbit grid), with poloidal and toroidal transit times for the valid orbits - Bool
-# timepoint - The timepoint of the tokamak shot for the magnetic equilibrium. Format XX,YYYY where XX are seconds and YYYY are decimals - String
+# timepoint - The timepoint of the tokamak shot for the magnetic equilibrium. Format "XX,YYYY" where XX are seconds and YYYY are decimals - String
 # tokamak - The tokamak for which the topological map is created - String
 # TRANSP_id - The TRANSP id to extract tokamak/equilibrium data from - String
 # verbose - If true, lots of information will be printed during execution - Bool
@@ -102,7 +102,7 @@ end
     includeExtractTopoBounds = false # If true, then a .jld2 file with the boundaries of the topological map will be extracted and saved as well
     keyname_diagHDF5 = "" # Needed to extract info from .hdf5-file, if weightsFileJLD2 is set to false. 
     saveTransitTimeMaps = false # If true, then poloidal and toroidal transit times for all valid orbits will be included in the results file (see description above)
-    timepoint = nothing # If unknown, just leave as nothing. The algorithm will try to figure it out automatically.
+    timepoint = nothing # "XX,YYY". If unknown, just leave as nothing. The algorithm will try to figure it out automatically.
     tokamak = "" # If unknown, just set ""
     TRANSP_id = "" # If unknown, just set ""
     verbose = true # If set to true, the script will be very extroverted! Yay!

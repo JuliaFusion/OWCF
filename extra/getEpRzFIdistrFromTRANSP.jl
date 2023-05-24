@@ -44,9 +44,9 @@
 ################################################################################################################
 
 ############################################################# Inputs
-filepath_distr = "" # for example '/Users/anna/TRANSP/JET/99500/V05/99500V05_fi_1.cdf'
-folderpath_OWCF = ""
-folderpath_out = ""
+filepath_distr = "C:/Users/henrikj/Documents/codes/OWCF/TRANSP/JET/99965/K73/99965K73_fi_2.cdf" # for example '/Users/anna/TRANSP/JET/99500/V05/99500V05_fi_1.cdf'
+folderpath_OWCF = "G:/My Drive/DTU/codes/OWCF/"
+folderpath_out = "C:/Users/henrikj/Documents/codes/OWCF/TRANSP/JET/99965/K73/"
 nR = 64
 nz = 65
 Rmin = 1.83591998*100 # cm. Default value suitable for JET
@@ -60,7 +60,7 @@ btipsign=1 # '1' means that sign(J ⋅ B) > 0. '-1' means that sign(J ⋅ B) < 0
 verbose=true # If true, the script will speak a lot!
 plotting=true # If true, the script will plot results along the way. For safety checks.
 vverbose=false # If true, the script will speak a lot more! WARNING! You don't want this... It's just too much.
-save_plots = false
+save_plots = true
 
 ############################################################# Activate OWCF environment and load packages
 using Pkg
@@ -476,13 +476,21 @@ verbose && println("Converting fast-ion distribution from TRANSP .cdf-file spira
 F_EpRz_dict = read_nubeam(filepath_distr,mygrid; e_range=e_range, p_range=p_range, species=species, btipsign=btipsign, verbose=verbose, plotting=plotting, vverbose=vverbose, save_plots=save_plots)
 
 # Save the results in .h5 file
-verbose && println("Saving the results at "*folderpath_out*filename_distr*".jld2... ")
-jldopen(folderpath_out*filename_distr*".jld2", true, true, false) do file
+global filepath_output_orig = folderpath_out*filename_distr
+global filepath_output = deepcopy(filepath_output_orig)
+global count = 1
+while isfile(filepath_output*".jld2") # To take care of not overwriting files. Add _(1), _(2) etc
+    global filepath_output = filepath_output_orig*"_($(Int64(count)))"
+    global count += 1 # global scope, to surpress warnings
+end
+global filepath_output = filepath_output*".jld2"
+verbose && println("Saving the results at "*filepath_output*"... ")
+jldopen(filepath_output, true, true, false) do file
     write(file, "species", F_EpRz_dict["species"])
     write(file, "timepoint", F_EpRz_dict["time"])
     write(file, "ntot", F_EpRz_dict["ntot"])
-    write(file, "f", F_EpRz_dict["F_EpRz"])
-    write(file, "f_Rz", F_EpRz_dict["F_Rz"])
+    write(file, "F_EpRz", F_EpRz_dict["F_EpRz"])
+    write(file, "F_Rz", F_EpRz_dict["F_Rz"])
     write(file, "energy", F_EpRz_dict["energy"])
     write(file, "pitch", F_EpRz_dict["pitch"])
     write(file, "R", F_EpRz_dict["R"])

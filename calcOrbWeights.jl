@@ -260,14 +260,14 @@ else
         Emax = maximum(E_array)
         nE = length(E_array)
     else
-        E_array = range(Emin,stop=Emax,length=nE)
+        E_array = vec(range(Emin,stop=Emax,length=nE))
     end
     if !(pm_array == nothing)
         pm_min = minimum(pm_array)
         pm_max = maximum(pm_array)
         npm = length(pm_array)
     else
-        pm_array = range(pm_min, stop=pm_max, length=npm)
+        pm_array = vec(range(pm_min, stop=pm_max, length=npm))
     end
     if !(Rm_array == nothing)
         Rm_min = minimum(Rm_array)
@@ -277,12 +277,12 @@ else
         if (Rm_min==nothing) || (Rm_max==nothing)
             if inclPrideRockOrbs
                 # 4/5 of the distance from the HFS wall to the magnetic axis is usually enough to capture all the Pride Rock orbits
-                Rm_array = range((4*magnetic_axis(M)[1]+minimum(wall.r))/5, stop=maximum(wall.r), length=nRm)
+                Rm_array = vec(range((4*magnetic_axis(M)[1]+minimum(wall.r))/5, stop=maximum(wall.r), length=nRm))
             else
-                Rm_array = range(magnetic_axis(M)[1], stop=maximum(wall.r), length=nRm)
+                Rm_array = vec(range(magnetic_axis(M)[1], stop=maximum(wall.r), length=nRm))
             end
         else
-            Rm_array = range(Rm_min, stop=Rm_max, length=nRm)
+            Rm_array = vec(range(Rm_min, stop=Rm_max, length=nRm))
         end
     end
 end
@@ -337,7 +337,7 @@ else
     println("Single-threaded computing the weights... Good luck!")
 end
 println("")
-println("$(iiimax) weight function(s) will be computed.")
+println("$(iiimax) weight matrix/matrices will be computed.")
 println("")
 println("Orbit weight function(s) will be computed for a $(length(E_array))x$(length(pm_array))x$(length(Rm_array)) orbit-space grid with")
 println("Energy: [$(minimum(E_array)),$(maximum(E_array))] keV")
@@ -576,14 +576,22 @@ for iii=1:iiimax
     if !debug
         verbose && println("Saving orbit weight function matrix in its 2D form... ")
         if iiimax==1 # If you intend to calculate only one weight function
-            myfile_s = jldopen(folderpath_o*"orbWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = analyticalOWs)*"_$(length(vec(py"Ed_vals")))x$(norbs).jld2",true,true,false,IOStream)
+            global filepath_output_orig = folderpath_o*"orbWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = analyticalOWs)*"_$(length(vec(py"Ed_vals")))x$(norbs)"
         else # If you intend to calculate several (identical) weight functions
-            myfile_s = jldopen(folderpath_o*"orbWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = analyticalOWs)*"_$(iii).jld2",true,true,false,IOStream)
+            global filepath_output_orig = folderpath_o*"orbWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = analyticalOWs)*"_$(iii)"
         end
+        global filepath_output = deepcopy(filepath_output_orig)
+        global count = 1
+        while isfile(filepath_output*".jld2") # To take care of not overwriting files. Add _(1), _(2) etc
+            global filepath_output = filepath_output_orig*"_($(Int64(count)))"
+            global count += 1 # global scope, to surpress warnings
+        end
+        global filepath_output = filepath_output*".jld2"
+        myfile_s = jldopen(filepath_output,true,true,false,IOStream)
         write(myfile_s, "W", Wtot)
-        write(myfile_s, "E_array", E_array)
-        write(myfile_s, "pm_array", pm_array)
-        write(myfile_s, "Rm_array", Rm_array)
+        write(myfile_s, "E_array", vec(E_array))
+        write(myfile_s, "pm_array", vec(pm_array))
+        write(myfile_s, "Rm_array", vec(Rm_array))
         write(myfile_s, "Ed_array", vec(py"Ed_vals"))
         write(myfile_s, "reaction_full", reaction_full)
         if analyticalOWs
@@ -595,18 +603,11 @@ for iii=1:iiimax
             write(myfile_s, "og_filepath", og_filepath)
         end
         close(myfile_s)
-        if iiimax==1
-            if include2Dto4D
-                verbose && println("Enflating orbit weight functions to 4D form... ")
-                global filepath_W = folderpath_o*"orbWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = analyticalOWs)*"_$(length(vec(py"Ed_vals")))x$(norbs).jld2"
-                include("helper/orbWeights_2Dto4D.jl")
-            end
-        else
-            if include2Dto4D
-                verbose && println("Enflating orbit weight functions $(iii) (of $(iiimax)) to 4D form... ")
-                global filepath_W = folderpath_o*"orbWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = analyticalOWs)*"_$(iii).jld2"
-                include("helper/orbWeights_2Dto4D.jl")
-            end
+        if include2Dto4D
+            (iiimax==1) && verbose && println("Enflating orbit weight functions to 4D form... ")
+            (iiimax>1) && verbose && println("Enflating orbit weight functions $(iii) (of $(iiimax)) to 4D form... ")
+            global filepath_W = filepath_output
+            include("helper/orbWeights_2Dto4D.jl")
         end
     else
         verbose && println("Saving debugged quantities... ")

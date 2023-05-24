@@ -57,22 +57,22 @@
 # OWCF folder when compSolovev.jl is executed. This is to be able to load the
 # correct versions of the Julia packages as specified in the Project.toml and 
 # Manifest.toml files.
-folderpath_OWCF = "G:/My Drive/DTU/codes/OWCF/" # Finish with '/'
+folderpath_OWCF = "" # Finish with '/'
 cd(folderpath_OWCF)
 using Pkg
 Pkg.activate(".")
 
 ## --------------------------------------------------------------------------
 # Required inputs
-B0 = 5.3 # Magnetic field on-axis. Tesla
-R0 = 6.2 # Major radius position of magnetic axis. Meters
-ϵ = 0.32 # Inverse aspect ratio
-δ = 0.33 # Triangularity
-κ = 1.7 # Plasma elongation
-α = -0.155 # Constant relating beta regime. This must be chosen freely. -0.155 works for ITER and results in a β-value of 0.05
-qstar = 1.57 # Kink safety factor
+B0 = 11.08 # Magnetic field on-axis. Tesla
+R0 = 4.55 # Major radius position of magnetic axis. Meters
+ϵ = 1.2/R0 # Inverse aspect ratio
+δ = -0.5 # Triangularity
+κ = 1.4 # Plasma elongation
+α = -0.3 # Constant relating beta regime. This must be chosen freely. -0.155 works for ITER and results in a β-value of 0.05
+qstar = 2.6 # Kink safety factor
 filepath_wall = ""
-folderpath_o = "G:/My Drive/DTU/codes/"
+folderpath_o = ""
 verbose = true
 
 # Optional inputs
@@ -114,7 +114,15 @@ end
 # Save the data
 verbose && println("Saving results... ")
 date_and_time = split("$(Dates.now())","T")[1]
-myfile = jldopen(folderpath_o*"solovev_equilibrium_"*date_and_time*".jld2",true,true,false,IOStream)
+global filepath_output_orig = folderpath_o*"solovev_equilibrium_"*date_and_time
+global filepath_output = deepcopy(filepath_output_orig)
+global count = 1
+while isfile(filepath_output*".jld2") # To take care of not overwriting files. Add _(1), _(2) etc
+    global filepath_output = filepath_output_orig*"_($(Int64(count)))"
+    global count += 1 # global scope, to surpress warnings
+end
+global filepath_output = filepath_output*".jld2"
+myfile = jldopen(filepath_output,true,true,false,IOStream)
 write(myfile,"S",S)
 write(myfile,"wall",wall)
 close(myfile)

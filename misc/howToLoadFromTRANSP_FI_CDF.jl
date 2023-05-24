@@ -18,7 +18,7 @@
 ###################################################################################### 
 
 ## ------
-folderpath_OWCF = ""
+folderpath_OWCF = "G:/My Drive/DTU/codes/OWCF/"
 println("Loading packages... ")
 cd(folderpath_OWCF)
 using Pkg
@@ -27,7 +27,7 @@ using HDF5
 using NetCDF
 
 ## ------
-filepath_cdf = ""
+filepath_cdf = "C:/Users/henrikj/Downloads/86459D02.cdf"
 ncinfo(filepath_cdf)
 ## ------
 
@@ -52,6 +52,11 @@ println("NTOT: $(NTOT_T_NBI[1])")
 #println("TOKAMAK: "*TOKAMAK)
 ## ------
 
+
+
+
+
+
 # Investigate the ratio of beam-target neutrons to thermonuclear neutrons in a TRANSP shot
 folderpath_OWCF = ""
 cd(folderpath_OWCF)
@@ -61,19 +66,23 @@ Pkg.activate(".")
 using NetCDF
 using Plots
 ###########################################################################
-filepath_TRANSP = ""
+filepath_TRANSP = "C:/Users/henrikj/Downloads/86459D02.cdf"
 ###########################################################################
 THERMONUCLEAR_NEUTRONS = ncread(filepath_TRANSP,"THNTX")
 ###########################################################################
 BEAMTARGET_NEUTRONS = ncread(filepath_TRANSP,"BTNTX")
 ###########################################################################
+TE = ncread(filepath_TRANSP,"TE")
+###########################################################################
 TIME = ncread(filepath_TRANSP,"TIME")
-println("Time: $(TIME)")
 X = ncread(filepath_TRANSP,"X")
 ###########################################################################
 
 for it=1:length(TIME)
-    myplt = Plots.plot(X[:,it],THERMONUCLEAR_NEUTRONS[:,it],xlabel="r/a [-]",title="t= $(round(TIME[it],digits=3)) s", ylabel="Neutron yield [(cm3*s)^-1]", label="Thermonuclear")
-    myplt = Plots.plot!(myplt, X[:,it],BEAMTARGET_NEUTRONS[:,it],label="BEAMTARGET")
+    #myplt = Plots.plot(X[:,it],THERMONUCLEAR_NEUTRONS[:,it],xlabel="r/a [-]",title="t= $(round(TIME[it],digits=3)) s", ylabel="Neutron yield [(cm3*s)^-1]", label="Thermonuclear")
+    #myplt = Plots.plot!(myplt, X[:,it],BEAMTARGET_NEUTRONS[:,it],label="BEAMTARGET")
+    myplt = Plots.plot(X[:,it],TE[:,it],xlabel="r/a [-]",title="t= $(round(TIME[it],digits=3)) s", ylabel="E temp [eV]", label="T(rho_pol)")
     display(myplt)
 end
+## ------
+## ------

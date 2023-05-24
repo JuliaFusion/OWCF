@@ -268,7 +268,15 @@ F_os_raw, nfast = ps2os_streamlined(F_ps, E_array_ps, p_array, R_array, z_array,
 
 ## --------------------------------------------------------------------------------------
 verbose && println("Saving results... ")
-myfile = jldopen(folderpath_o*"ps2os_results_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*FI_species*"_$(length(E_array))x$(length(pm_array))x$(length(Rm_array)).jld2",true,true,false,IOStream)
+global filepath_tm_orig = folderpath_o*"ps2os_results_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*FI_species*"_$(length(E_array))x$(length(pm_array))x$(length(Rm_array))"
+global filepath_tm = deepcopy(filepath_tm_orig)
+global count = 1
+while isfile(filepath_tm*".jld2") # To take care of not overwriting files. Add _(1), _(2) etc
+    global filepath_tm = filepath_tm_orig*"_($(Int64(count)))"
+    global count += 1 # global scope, to surpress warnings
+end
+global filepath_tm = filepath_tm*".jld2"
+myfile = jldopen(filepath_tm,true,true,false,IOStream)
 write(myfile,"F_os_raw",F_os_raw)
 write(myfile,"nfast",nfast)
 write(myfile,"numOsamples",numOsamples)
@@ -286,7 +294,15 @@ if include1Dto3D
     F_os = (nfast/sum(F_os_raw)) .*F_os_raw
     F_os_3D = map_orbits(og, F_os)
 
-    myfile = jldopen(folderpath_o*"F_os_3D_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*FI_species*"_$(length(E_array))x$(length(pm_array))x$(length(Rm_array)).jld2",true,true,false,IOStream)
+    global filepath_output_orig = folderpath_o*"F_os_3D_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*FI_species*"_$(length(E_array))x$(length(pm_array))x$(length(Rm_array))"
+    global filepath_output = deepcopy(filepath_output_orig)
+    global count = 1
+    while isfile(filepath_output*".jld2") # To take care of not overwriting files. Add _(1), _(2) etc
+        global filepath_output = filepath_output_orig*"_($(Int64(count)))"
+        global count += 1 # global scope, to surpress warnings
+    end
+    global filepath_output = filepath_output*".jld2"
+    myfile = jldopen(filepath_output,true,true,false,IOStream)
     write(myfile, "F_os_3D", F_os_3D)
     write(myfile, "E_array", E_array)
     write(myfile, "pm_array", pm_array)

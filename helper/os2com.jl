@@ -89,9 +89,9 @@ Q_message = "" # A message that will be printed informing the user of the quanti
 if isfile(filepath_Q)
     verbose && println("Loading from data file... ")
     myfile = jldopen(filepath_Q,false,false,false,IOStream)
-    E_array = myfile["E_array"]
-    pm_array = myfile["pm_array"]
-    Rm_array = myfile["Rm_array"]
+    E_array = collect(myfile["E_array"])
+    pm_array = collect(myfile["pm_array"])
+    Rm_array = collect(myfile["Rm_array"])
     if haskey(myfile,"Wtot")
         Ed_array = myfile["Ed_array"]
         Q_dict["Wtot"] = myfile["Wtot"]
@@ -207,15 +207,26 @@ for key in keys(Q_dict)
     else
         error("This should be impossible to reach, given the load check above.")
     end
-    Q_dict_COM[key], global E_array, Q_dict_COM["mu_matrix_"*key], Q_dict_COM["Pphi_matrix_"*key] = os2COM(M, Q_dict[key], E_array, pm_array, Rm_array, FI_species; nμ=nmu, nPϕ=nPphi, isTopoMap=(key=="topoMap" ? true : false), verbose=verbose, good_coords=good_coords, wall=wall, extra_kw_args=extra_kw_args)
+    Q_dict_COM[key], global E_array, Q_dict_COM["mu_matrix_"*key], Q_dict_COM["Pphi_matrix_"*key] = os2COM(M, Q_dict[key], vec(E_array), vec(pm_array), vec(Rm_array), FI_species; nμ=nmu, nPϕ=nPphi, isTopoMap=(key=="topoMap" ? true : false), verbose=verbose, good_coords=good_coords, wall=wall, extra_kw_args=extra_kw_args)
 end
 ## ---------------------------------------------------------------------------------------------
 
 ## ---------------------------------------------------------------------------------------------
 verbose && println("Success! Saving to file... ")
-myfile = jldopen(folderpath_o*"os2com_output_"*tokamak*"_"*FI_species*"_at"*timepoint*"s_"*"$(length(E_array))x$(nmu)x$(nPphi)x2.jld2",true,true,false,IOStream)
+global filepath_output_orig = folderpath_o*"os2com_output_"*tokamak*"_"*FI_species*"_at"*timepoint*"s_"*"$(length(E_array))x$(nmu)x$(nPphi)x2"
+global filepath_output = deepcopy(filepath_output_orig)
+global count = 1
+while isfile(filepath_output*".jld2") # To take care of not overwriting files. Add _(1), _(2) etc
+    global filepath_output = filepath_output_orig*"_($(Int64(count)))"
+    global count += 1 # global scope, to surpress warnings
+end
+global filepath_output = filepath_output*".jld2"
+myfile = jldopen(filepath_output,true,true,false,IOStream)
 for key in keys(Q_dict_COM)
     write(myfile,key,Q_dict_COM[key])
+end
+if @isdefined Ed_array
+    write(myfile,"Ed_array",Ed_array)
 end
 write(myfile,"E_array",E_array)
 write(myfile,"pm_array",pm_array)
