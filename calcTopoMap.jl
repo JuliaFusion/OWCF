@@ -57,7 +57,7 @@
 # Please note, because of numerical reasons, all integers (1,2,3,4,5,6,7,8,9) will actually be saved as 
 # their Float64 counterparts (1.0, 2.0 etc).
 
-# Script written by Henrik Järleblad. Last maintained 2022-08-26.
+# Script written by Henrik Järleblad. Last maintained 2023-01-09.
 #######################################################################################################
 
 ## ------
@@ -86,9 +86,13 @@ if ((split(filepath_equil,"."))[end] == "eqdsk") || ((split(filepath_equil,"."))
 
     # Extract timepoint information from .eqdsk/.geqdsk file
     eqdsk_array = split(filepath_equil,".")
-    XX = (split(eqdsk_array[end-2],"-"))[end] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
-    YYYY = eqdsk_array[end-1] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
-    timepoint = XX*","*YYYY # Format XX,YYYY to avoid "." when including in filename of saved output
+    if length(eqdsk_array)>2
+        XX = (split(eqdsk_array[end-2],"-"))[end] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
+        YYYY = eqdsk_array[end-1] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
+        timepoint = XX*","*YYYY # Format XX,YYYY to avoid "." when including in filename of saved output
+    else
+        timepoint = "00,0000"
+    end
 else # Otherwise, assume magnetic equilibrium is a saved .jld2 file
     myfile = jldopen(filepath_equil,false,false,false,IOStream)
     M = myfile["S"]
@@ -250,7 +254,7 @@ println("Extra keyword arguments specified: ")
 println(extra_kw_args)
 println("")
 println("If you would like to change any settings, please edit the start_calcTopoMap_template.jl file.")
-println("Written by Henrik Järleblad. Last maintained 2022-08-22.")
+println("Written by Henrik Järleblad. Last maintained 2023-01-09.")
 println("-----------------------------------------------------------------------------------------------")
 println("")
 

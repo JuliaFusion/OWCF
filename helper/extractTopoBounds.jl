@@ -169,8 +169,16 @@ if distinguishLost
     ident *= "wLost"
 end
 verbose && println("Saving... ")
-timepoint = (timepoint == nothing ? "00,0000" : timepoint)
-myfile = jldopen(folderpath_o*"topoBounds_"*tokamak*"_"*TRANSP_id*"_"*FI_species*"_$(length(E_array))x$(length(pm_array))x$(length(Rm_array))"*ident*".jld2",true,true,false,IOStream)
+timepoint = (timepoint === nothing ? "00,0000" : timepoint)
+global filepath_output_orig = folderpath_o*"topoBounds_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*FI_species*"_$(length(E_array))x$(length(pm_array))x$(length(Rm_array))"*ident
+global filepath_output = deepcopy(filepath_output_orig)
+global count = 1
+while isfile(filepath_output*".jld2") # To take care of not overwriting files. Add _(1), _(2) etc
+    global filepath_output = filepath_output_orig*"_($(Int64(count)))"
+    global count += 1 # global scope, to surpress warnings
+end
+global filepath_output = filepath_output*".jld2"
+myfile = jldopen(filepath_output,true,true,false,IOStream)
 write(myfile,"topoBounds",topoBounds)
 write(myfile,"E_array",collect(E_array))
 write(myfile,"pm_array",collect(pm_array))

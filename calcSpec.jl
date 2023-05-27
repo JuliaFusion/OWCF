@@ -19,7 +19,7 @@
 # 'Z' or 'z' - The 1D array containing the z grid points
 #
 ## The .jld2 file must have the keys:
-# 'F_ps' - The 4D matrix containing the fast-ion distribution.
+# 'F_ps', 'f' or 'F_EpRz' - The 4D matrix containing the fast-ion distribution.
 # 'energy' - The 1D array containing the energy grid points
 # 'pitch ' - The 1D array containing the pitch grid points
 # 'R' - The 1D array containing the R grid points
@@ -741,7 +741,15 @@ if addNoise
 end
 ## ---------------------------------------------------------------------------------------------
 verbose && println("Saving results to file... ")
-myfile = jldopen(folderpath_o*"spec_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full)*".jld2",true,true,false,IOStream)
+global filepath_output_orig = folderpath_o*"spec_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full)
+global filepath_output = deepcopy(filepath_output_orig)
+global count = 1
+while isfile(filepath_output*".jld2") # To take care of not overwriting files. Add _(1), _(2) etc
+    global filepath_output = filepath_output_orig*"_($(Int64(count)))"
+    global count += 1 # global scope, to surpress warnings
+end
+global filepath_output = filepath_output*".jld2"
+myfile = jldopen(filepath_output,true,true,false,IOStream)
 write(myfile,"S",spec_tot) # The clean (not noisy) signal
 if addNoise
     write(myfile,"S_noise",spec_tot_with_noise)

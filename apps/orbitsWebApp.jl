@@ -72,7 +72,7 @@ using JLD2
 # Inputs
 enable_COM = false # Set to false for large grids (>10x100x100 in (E,pm,Rm)). The computation time simply becomes too large. Or...
 if enable_COM
-    filepath_tm_COM = "" # ...please specify an output of the os2com.jl script (which contains the key "topoMap")(and possibly "polTransTimes" and "torTransTimes"). Leave unspecified if orbitsWebApp.jl should compute the (E,pm,Rm) -> (E,mu,Pphi;sigma) map itself.
+    filepath_tm_COM = "" # ...please specify an output of the os2com.jl script (which contains the key "topoMap")(and possibly "polTransTimes" and "torTransTimes"). This can also have been produced automatically from orbitsWebApp.jl. Leave unspecified if orbitsWebApp.jl should compute the (E,pm,Rm) -> (E,mu,Pphi;sigma) map itself.
 end
 filepath_equil = ""  # Example JET shot 96100 at 13s (53 minus 40): g96100/g96100_0-53.0012.eqdsk" #
 filepath_tm = ""
@@ -183,6 +183,30 @@ if poltor
         close(myfile)
     else
     end
+end
+
+if enable_COM && !(isfile(filepath_tm_COM))
+    verbose && println("Saving topological map in (E,μ,Pϕ;σ) format... ")
+    nmu = size(μ_matrix,2)
+    nPphi = size(Pϕ_matrix,2)
+    filepath_tm_COM_new = folderpath_OWCF*"orbitsWebApp_COM_data_$(length(E_array))x$(nmu)x$(nPphi)x2.jld2"
+    myfile = jldopen(filepath_tm_COM_new,true,true,false,IOStream)
+    write(myfile,"topoMap",topoMap_COM)
+    write(myfile,"E_array",E_array)
+    write(myfile,"mu_matrix_topoMap", μ_matrix)
+    write(myfile,"Pphi_matrix_topoMap", Pϕ_matrix)
+    if poltor
+        verbose && println("Saving poloidal and toroidal transit times in (E,μ,Pϕ;σ) format... ")
+        write(myfile,"polTransTimes",polTransTimes_COM)
+        write(myfile,"mu_matrix_polTransTimes",μ_matrix_pol)
+        write(myfile,"Pphi_matrix_polTransTimes",Pϕ_matrix_pol)
+        write(myfile,"torTransTimes",torTransTimes_COM)
+        write(myfile,"mu_matrix_torTransTimes",μ_matrix_tor)
+        write(myfile,"Pphi_matrix_torTransTimes",Pϕ_matrix_tor)
+    end
+    close(myfile)
+    verbose && println("----> NEXT TIME orbitsWebApp.jl IS RUN WITH THE SAME INPUTS, set the 'filepath_tm_COM' input variable to "*filepath_tm_COM_new*", to avoid having to re-do the (E,pm,Rm) -> (E,μ,Pϕ;σ) mapping!")
+    verbose && println("----> PLEASE DELETE "*filepath_tm_COM_new*" MANUALLY IF NOT NEEDED.")
 end
 
 ## --------------------------------------------------------------------------
@@ -321,7 +345,7 @@ function app(req) # Start the Interact.jl app
             plt_crs = Plots.plot!(title="E: $(round(E,digits=2)) keV  μ: $(round(μ, sigdigits=2))  Pϕ: $(round(Pϕ,sigdigits=2))")
         end
         plt_crs = Plots.scatter!([magnetic_axis(M)[1]],[magnetic_axis(M)[2]],label="Magnetic axis", mc=:gray, aspect_ratio=:equal, xlabel="R [m]", ylabel=" z [m]")
-        plt_crs = Plots.scatter!([o.coordinate.r],[o.coordinate.z], mc=orb_color, label="(Rm,zm)", )
+        plt_crs = Plots.scatter!([o.coordinate.r],[o.coordinate.z], mc=orb_color, label="(Rm,zm)")
         if save_plots
             if (phase_space==:OS) || !enable_COM
                 png(plt_crs, "plt_crs_$(round(E, digits=2))_$(round(o.coordinate.pitch, digits=2))_$(round(o.coordinate.r,digits=2))")

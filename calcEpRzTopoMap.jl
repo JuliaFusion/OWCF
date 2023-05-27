@@ -23,6 +23,13 @@
 #
 # If you set useDistrFile to true, make sure to provide the correct path to the distribution file.
 # If distribution file is in .jld2 file format, set distrFileJLD2 to true.
+#
+# If you set saveXYZJacobian to true, the Jacobian from (x,y,z,vx,vy,vz) to (E,p,R,z) will be 
+# computed for each (E,p,R,z) point. The Jacobian from (x,y,z,vx,vy,vz) to (E,p,R,z) is
+#
+# J = 4*(pi^2)*R*v/m
+#
+# where R is the major radius position, v is the speed of the ion and m is the mass. 
 
 #### Inputs (units given when defined in the script)
 # Given in start_calcEpRzTopoMap_template.jl
@@ -51,8 +58,10 @@
 # If saveTransitTimeMaps==true
 #   polTransTimes - The poloidal transit time for all orbits of the particle-space grid - Array{Float64,4}
 #   torTransTimes - The toroidal transit time for all orbits of the particle-space grid - Array{Float64,4}
+# If saveXYZJacobian==true,
+#   jacobian - The Jacobian from (x,y,z,vx,vy,vz) to (E,p,R,z) for all (E,p,R,z) points - Array{Float64,4}
 
-# Script written by Henrik Järleblad. Last maintained 2022-10-05.
+# Script written by Henrik Järleblad. Last maintained 2023-05-23.
 ########################################################################################
 
 ## ------
@@ -72,7 +81,6 @@ end
 
 ## ------
 # Loading tokamak equilibrium
-verbose && println("Loading equilibrium... ")
 verbose && println("Loading tokamak equilibrium... ")
 if ((split(filepath_equil,"."))[end] == "eqdsk") || ((split(filepath_equil,"."))[end] == "geqdsk")
     M, wall = read_geqdsk(filepath_equil,clockwise_phi=false) # Assume counter-clockwise phi-direction
@@ -80,15 +88,20 @@ if ((split(filepath_equil,"."))[end] == "eqdsk") || ((split(filepath_equil,"."))
 
     # Extract timepoint information from .eqdsk/.geqdsk file
     eqdsk_array = split(filepath_equil,".")
-    XX = (split(eqdsk_array[end-2],"-"))[end] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
-    YYYY = eqdsk_array[end-1] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
-    timepoint = XX*","*YYYY # Format XX,YYYY to avoid "." when including in filename of saved output
+    if length(eqdsk_array)>2
+        XX = (split(eqdsk_array[end-2],"-"))[end] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
+        YYYY = eqdsk_array[end-1] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
+        timepoint = XX*","*YYYY # Format XX,YYYY to avoid "." when including in filename of saved output
+    else
+        timepoint = "00,0000"
+    end
 else # Otherwise, assume magnetic equilibrium is a saved .jld2 file
     myfile = jldopen(filepath_equil,false,false,false,IOStream)
     M = myfile["S"]
     wall = myfile["wall"]
     close(myfile)
     jdotb = (M.sigma_B0)*(M.sigma_Ip)
+
     if typeof(timepoint)==String && length(split(timepoint,","))==2
         timepoint = timepoint
     else
@@ -194,11 +207,15 @@ if saveTransitTimeMaps
     println("Poloidal and toroidal transit times will be saved as .jld2-file keys 'polTransTimes' and 'torTransTimes'.")
     println("")
 end
+if saveXYZJacobian
+    println("Jacobian from (x,y,z,vx,vy,vz) will be saved as .jld2-file key 'jacobian'.")
+    println("")
+end
 println("Extra keyword arguments specified: ")
 println(extra_kw_args)
 println("")
 println("If you would like to change any settings, please edit the start_calcEpRzTopoMap_template.jl file.")
-println("Written by Henrik Järleblad. Last maintained 2022-10-05.")
+println("Written by Henrik Järleblad. Last maintained 2023-05-23.")
 println("------------------------------------------------------------------------------------------------")
 println("")
 
@@ -218,6 +235,7 @@ end
 topoMap_tottot = zeros(length(E_array),length(p_array),length(R_array),length(z_array)) # The total 4D topological map
 polTimeMap_tottot = zeros(length(E_array),length(p_array),length(R_array),length(z_array)) # The total 4D poloidal transit time map
 torTimeMap_tottot = zeros(length(E_array),length(p_array),length(R_array),length(z_array)) # The total 4D toroidal transit time map
+jacobian_tottot = zeros(length(E_array),length(p_array),length(R_array),length(z_array)) # The total 4D Jacobian from (x,y,z,vx,vy,vz) to (E,p,R,z)
 count = 1 # For single-threaded computational progress visualization
 for iE=1:length(E_array) ###########################################
 E = E_array[iE]
@@ -239,6 +257,7 @@ if distributed
                     topoMap_i = zeros(length(p_array),length(R_array),length(z_array))
                     polTimeMap_i = zeros(length(p_array),length(R_array),length(z_array))
                     torTimeMap_i = zeros(length(p_array),length(R_array),length(z_array))
+                    jacobian_i = zeros(length(p_array),length(R_array),length(z_array))
 
                     my_gcp = getGCP(FI_species)
 
@@ -252,6 +271,7 @@ if distributed
                     iz = first(findall(x-> x==z,z_array))
                     polTimeMap_i[ip,iR,iz] = o.tau_p
                     torTimeMap_i[ip,iR,iz] = o.tau_t
+                    jacobian_i[ip,iR,iz] = 4*(pi^2) * R * sqrt(2*E*1000*GuidingCenterOrbits.e0/((my_gcp(E,p,R,z).m)^3))
 
                     if (o.class == :lost) && distinguishLost
                         topoMap_i[ip,iR,iz] = 7
@@ -278,10 +298,11 @@ if distributed
                         polTimeMap_i[ip,iR,iz] = 0.0
                         torTimeMap_i[ip,iR,iz] = 0.0
                     end
-                    dataMap_i = zeros(3,length(p_array),length(R_array),length(z_array))
+                    dataMap_i = zeros(4,length(p_array),length(R_array),length(z_array))
                     dataMap_i[1,:,:,:] = topoMap_i
                     dataMap_i[2,:,:,:] = polTimeMap_i
                     dataMap_i[3,:,:,:] = torTimeMap_i
+                    dataMap_i[4,:,:,:] = jacobian_i
                     put!(channel,true) # Update the progress bar
                     dataMap_i # Declare dataMap_i as result to add to topoMap
                 end
@@ -298,6 +319,7 @@ if distributed
             topoMap_i = zeros(length(p_array),length(R_array),length(z_array))
             polTimeMap_i = zeros(length(p_array),length(R_array),length(z_array))
             torTimeMap_i = zeros(length(p_array),length(R_array),length(z_array))
+            jacobian_i = zeros(length(p_array),length(R_array),length(z_array))
 
             my_gcp = getGCP(FI_species)
 
@@ -311,6 +333,7 @@ if distributed
             iz = first(findall(x-> x==z,z_array))
             polTimeMap_i[ip,iR,iz] = o.tau_p
             torTimeMap_i[ip,iR,iz] = o.tau_t
+            jacobian_i[ip,iR,iz] = 4*(pi^2) * R * sqrt(2*E*1000*GuidingCenterOrbits.e0/((my_gcp(E,p,R,z).m)^3))
 
             if (o.class == :lost) && distinguishLost
                 topoMap_i[ip,iR,iz] = 7
@@ -338,10 +361,11 @@ if distributed
                 torTimeMap_i[ip,iR,iz] = 0.0
             end
             
-            dataMap_i = zeros(3,length(p_array),length(R_array),length(z_array))
+            dataMap_i = zeros(4,length(p_array),length(R_array),length(z_array))
             dataMap_i[1,:,:,:] = topoMap_i
             dataMap_i[2,:,:,:] = polTimeMap_i
             dataMap_i[3,:,:,:] = torTimeMap_i
+            dataMap_i[4,:,:,:] = jacobian_i
             dataMap_i # Declare dataMap_i as result to add to dataMap_tot
         end
     end
@@ -349,6 +373,7 @@ else # ... good luck
     topoMap_i = zeros(length(p_array),length(R_array),length(z_array))
     polTimeMap_i = zeros(length(p_array),length(R_array),length(z_array))
     torTimeMap_i = zeros(length(p_array),length(R_array),length(z_array))
+    jacobian_i = zeros(length(p_array),length(R_array),length(z_array))
     for pRz in pRz_array # Compute one result, and reduce (add) it to a resulting matrix
         p = pRz[1]
         R = pRz[2]
@@ -368,6 +393,7 @@ else # ... good luck
         iz = first(findall(x-> x==z,z_array))
         polTimeMap_i[ip,iR,iz] = o.tau_p
         torTimeMap_i[ip,iR,iz] = o.tau_t
+        jacobian_i[ip,iR,iz] = 4*(pi^2) * R * sqrt(2*E*1000*GuidingCenterOrbits.e0/((my_gcp(E,p,R,z).m)^3))
 
         if (o.class == :lost) && distinguishLost
             topoMap_i[ip,iR,iz] = 7
@@ -397,15 +423,17 @@ else # ... good luck
 
         global count = count + 1
     end
-    dataMap_tot = zeros(3,length(p_array),length(R_array),length(z_array))
+    dataMap_tot = zeros(4,length(p_array),length(R_array),length(z_array))
     dataMap_tot[1,:,:,:] = topoMap_i
     dataMap_tot[2,:,:,:] = polTimeMap_i
     dataMap_tot[3,:,:,:] = torTimeMap_i
+    dataMap_tot[4,:,:,:] = jacobian_i
 end
 
 global topoMap_tottot[iE,:,:,:] = dataMap_tot[1,:,:,:] # One energy slice of topological map
 global polTimeMap_tottot[iE,:,:,:] = dataMap_tot[2,:,:,:] # One energy slice of poloidal transit times
 global torTimeMap_tottot[iE,:,:,:] = dataMap_tot[3,:,:,:] # One energy slice of toroidal transit times
+global jacobian_tottot[iE,:,:,:] = dataMap_tot[4,:,:,:] # One energy slice of toroidal transit times
 end ###########################################
 
 ## ------
@@ -418,8 +446,18 @@ end
 if distinguishLost
     ident *= "_wLost"
 end
+if saveXYZJacobian
+    ident *= "_wJac"
+end
 
-filepath_tm = folderpath_o*"EpRzTopoMap_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*FI_species*"_$(length(E_array))x$(length(p_array))x$(length(R_array))x$(length(z_array))"*ident*".jld2"
+global filepath_tm_orig = folderpath_o*"EpRzTopoMap_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*FI_species*"_$(length(E_array))x$(length(p_array))x$(length(R_array))x$(length(z_array))"*ident
+global filepath_tm = deepcopy(filepath_tm_orig)
+global count = 1
+while isfile(filepath_tm*".jld2") # To take care of not overwriting files. Add _(1), _(2) etc
+    global filepath_tm = filepath_tm_orig*"_($(Int64(count)))"
+    global count += 1 # global scope, to surpress warnings
+end
+global filepath_tm = filepath_tm*".jld2"
 myfile = jldopen(filepath_tm,true,true,false,IOStream)
 write(myfile,"topoMap",topoMap_tottot)
 write(myfile,"E_array",collect(E_array))
@@ -432,6 +470,9 @@ write(myfile,"FI_species",FI_species)
 if saveTransitTimeMaps
     write(myfile,"polTransTimes",polTimeMap_tottot)
     write(myfile,"torTransTimes",torTimeMap_tottot)
+end
+if saveXYZJacobian
+    write(myfile,"jacobian",jacobian_tottot)
 end
 if useDistrFile
     write(myfile,"filepath_distr",filepath_distr)

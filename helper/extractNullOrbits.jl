@@ -199,7 +199,15 @@ end
 ## ------
 # Saving
 verbose && println("Saving... ")
-myfile = jldopen(folderpath_o*"nullOrbits_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic*"_"*reaction*"_$(length(E_array))x$(length(pm_array))x$(length(Rm_array)).jld2",true,true,false,IOStream)
+global filepath_output_orig = folderpath_o*"nullOrbits_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic*"_"*reaction*"_$(length(E_array))x$(length(pm_array))x$(length(Rm_array))"
+global filepath_output = deepcopy(filepath_output_orig)
+global count = 1
+while isfile(filepath_output*".jld2") # To take care of not overwriting files. Add _(1), _(2) etc
+    global filepath_output = filepath_output_orig*"_($(Int64(count)))"
+    global count += 1 # global scope, to surpress warnings
+end
+global filepath_output = filepath_output*".jld2"
+myfile = jldopen(filepath_output,true,true,false,IOStream)
 write(myfile,"nullOrbs",null_orbits_2D)
 if include2Dto4D
     write(myfile,"nullOrbs_indices",nz_inds)

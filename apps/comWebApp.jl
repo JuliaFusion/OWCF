@@ -46,9 +46,9 @@ Pkg.activate(".")
 # Inputs
 m = 0.0 # Mass in kg. Change manually here. Example value alpha particle: 4.001506179127 .* 1.660539e-27
 q = 0.0 # Charge in Coulombs. Change manually here. Example value alpha particle: 2.0 * (1.602176e-19)
-Emin = 00.0 # keV
+Emin = 0.0 # keV
 Emax = 0000.0 # KeV
-Bmin = 1.0 # Minimum magnetic field value in the tokamak. Tesla. Example JET approx.: 2.0
+Bmin = 2.0 # Minimum magnetic field value in the tokamak. Tesla. Example JET approx.: 2.0
 verbose = true
 port = 18888
 

@@ -23,10 +23,10 @@
 # 
 # This is performed in e.g. every OWCF start template file.
 #
-# Written by H. Järleblad. Last updated 2022-08-23.
+# Written by H. Järleblad. Last updated 2023-02-21.
 ###################################################################################################
 
-println("Loading the Julia packages for the grahpical user interfaces (GUI)... ")
+println("Loading the Julia packages for the grahpical user interfaces (GUI) of the OWCF... ")
 using Plots, FileIO, HDF5, JLD2, GuidingCenterOrbits, LaTeXStrings
 include("dependencies.jl")
 
@@ -370,10 +370,14 @@ By default, assume
 - The title to be *please see the title keyword alternatives*
 - The marker color of the WF scatter plot should be bright green (:green3)
 """
-function plotSignalOrbSplits(S_WF::AbstractVector, Ed_WF::AbstractVector, WFO_E::Array{Float64,3}, WFO_pm::Array{Float64,3}, WFO_Rm::Array{Float64,3}; normalize=false, verbose=false, save_plot=false, i0=1, iend=0, xlabel="Deposited energy [keV]", ylabel = (normalize ? "Normalized signal [a.u.]" : "Counts [(keV*s)^-1]"), legend_margin = 39, title = (normalize ? "Orbit-split of diagnostic signal (normalized)" : "Orbit-split of diagnostic signal"), WF_marker_color = :green3)
-    EdvsOrbs_WFOE = dropdims(sum(WFO_E, dims=2),dims=2)
-    EdvsOrbs_WFOpm = dropdims(sum(WFO_pm, dims=2),dims=2) # Not really needed, should be identical to EdvsOrbs_WFOE if safety plot looks fine
-    EdvsOrbs_WFORm = dropdims(sum(WFO_Rm, dims=2),dims=2) # Not really needed, should be identical to EdvsOrbs_WFOE if safety plot looks fine
+function plotSignalOrbSplits(S_WF::AbstractVector, Ed_WF::AbstractVector, WFO_E::Array{Float64,3}, WFO_pm::Array{Float64,3}, WFO_Rm::Array{Float64,3}, E_array::AbstractVector, pm_array::AbstractVector, Rm_array::AbstractVector; normalize=false, verbose=false, save_plot=false, i0=1, iend=0, xlabel="Deposited energy [keV]", ylabel = (normalize ? "Normalized signal [a.u.]" : "Counts [(keV*s)^-1]"), legend_margin = 39, title = (normalize ? "Orbit-split of diagnostic signal (normalized)" : "Orbit-split of diagnostic signal"), WF_marker_color = :green3)
+    dE = abs(diff(E_array)[1]) # Assume equidistant
+    dpm = abs(diff(pm_array)[1]) # Assume equidistant
+    dRm = abs(diff(Rm_array)[1]) # Assume equidistant
+
+    EdvsOrbs_WFOE = dropdims(dE .*sum(WFO_E, dims=2),dims=2)
+    EdvsOrbs_WFOpm = dropdims(dpm .*sum(WFO_pm, dims=2),dims=2) # Not really needed, should be identical to EdvsOrbs_WFOE if safety plot looks fine
+    EdvsOrbs_WFORm = dropdims(dRm .*sum(WFO_Rm, dims=2),dims=2) # Not really needed, should be identical to EdvsOrbs_WFOE if safety plot looks fine
 
     verbose && println("Computing plot weights for signal split plot... ")
     weights = zeros(size(EdvsOrbs_WFOE))
@@ -413,10 +417,14 @@ By default, assume
 - That the plot should NOT be saved
 - That the function should NOT be talkative
 """
-function plotSafetyPlot(S_WF::AbstractVector, Ed_WF::AbstractVector, WFO_E::Array{Float64,3}, WFO_pm::Array{Float64,3}, WFO_Rm::Array{Float64,3}; save_plot = false, verbose=false)
-    S_WF_WFOE = dropdims(sum(WFO_E,dims=(2,3)),dims=(2,3)) # Sum over all energies and orbit types
-    S_WF_WFOpm = dropdims(sum(WFO_pm,dims=(2,3)),dims=(2,3)) # Sum over all pm values and orbit types
-    S_WF_WFORm = dropdims(sum(WFO_Rm,dims=(2,3)),dims=(2,3)) # Sum over all Rm values and orbit types
+function plotSafetyPlot(S_WF::AbstractVector, Ed_WF::AbstractVector, WFO_E::Array{Float64,3}, WFO_pm::Array{Float64,3}, WFO_Rm::Array{Float64,3}, E_array::AbstractVector, pm_array::AbstractVector, Rm_array::AbstractVector; save_plot = false, verbose=false)
+    dE = abs(diff(E_array)[1]) # Assume equidistant
+    dpm = abs(diff(pm_array)[1]) # Assume equidistant
+    dRm = abs(diff(Rm_array)[1]) # Assume equidistant
+    
+    S_WF_WFOE = dropdims(dE .*sum(WFO_E,dims=(2,3)),dims=(2,3)) # Sum over all energies and orbit types
+    S_WF_WFOpm = dropdims(dpm .*sum(WFO_pm,dims=(2,3)),dims=(2,3)) # Sum over all pm values and orbit types
+    S_WF_WFORm = dropdims(dRm .*sum(WFO_Rm,dims=(2,3)),dims=(2,3)) # Sum over all Rm values and orbit types
 
     verbose && println("Plotting safety plot... ")
     my_plt = Plots.plot(Ed_WF,S_WF,label="S_WF",linewidth=8)
@@ -453,6 +461,9 @@ function plotSignalOrbSplits(ps2WFoutputFilepath::String; verbose = false, scena
 
     verbose && println("Loading data from ps2WF output file... ")
     S_WF = myfile["S_WF"]
+    E_array = myfile["E_array"]
+    pm_array = myfile["pm_array"]
+    Rm_array = myfile["Rm_array"]
     Ed_WF = myfile["Ed_array"]
     WFO_E = myfile["WFO_E"]
     WFO_pm = myfile["WFO_pm"]
@@ -461,7 +472,7 @@ function plotSignalOrbSplits(ps2WFoutputFilepath::String; verbose = false, scena
     close(myfile)
 
     if scenario == :all
-        plotSafetyPlot(S_WF, Ed_WF, WFO_E, WFO_pm, WFO_Rm; verbose = verbose, save_plot=save_plot)
+        plotSafetyPlot(S_WF, Ed_WF, WFO_E, WFO_pm, WFO_Rm, E_array, pm_array, Rm_array; verbose = verbose, save_plot=save_plot)
         plotSignalOrbSplits(S_WF, Ed_WF, WFO_E, WFO_pm, WFO_Rm; verbose=verbose, save_plot=save_plot, kwargs... ) # Absolute values. Corresponding to Figure 10 in H. Järleblad et al, NF, 2022
         plotSignalOrbSplits(S_WF, Ed_WF, WFO_E, WFO_pm, WFO_Rm; verbose=verbose, save_plot=save_plot, normalize=true, kwargs... ) # Normalized values. Corresponding to Figure 11 in H. Järleblad et al, NF, 2022
     elseif scenario == :abs
@@ -469,8 +480,177 @@ function plotSignalOrbSplits(ps2WFoutputFilepath::String; verbose = false, scena
     elseif scenario == :norm
         plotSignalOrbSplits(S_WF, Ed_WF, WFO_E, WFO_pm, WFO_Rm; verbose=verbose, save_plot=save_plot, normalize=true, kwargs... ) # Normalized values. Corresponding to Figure 11 in H. Järleblad et al, NF, 2022
     elseif scenario == :safety
-        plotSafetyPlot(S_WF, Ed_WF, WFO_E, WFO_pm, WFO_Rm; verbose = verbose, save_plot=save_plot)
+        plotSafetyPlot(S_WF, Ed_WF, WFO_E, WFO_pm, WFO_Rm, E_array, pm_array, Rm_array; verbose = verbose, save_plot=save_plot)
     else
         error("Unknown scenario. Accepted values are :all, :abs, :norm and :safety.")
     end
+end
+
+
+"""
+    plot_orbit_movie(M::AbstractEquilibrium, o::Orbit; wall=nothing, top_view=true, verbose=false, anim_numOtau_p = 3, save_anim=false)
+
+Plot an animation of the motion of the guiding-center orbit 'o'. If 'wall' is specified, include tokamak wall in animation. If 'top_view' is true, show the animation 
+from a top view of the tokamak, otherwise show the animation from a poloidal cross-sectional view. Let the animation last for 'anim_numOtau_p' number of poloidal transit times.
+If 'save_anim' is set to true, save the animation after plotting.
+"""
+function plot_orbit_movie(M::AbstractEquilibrium, o::Orbit; wall=nothing, top_view=true, verbose=false, anim_numOtau_p = 3, save_anim=false)
+    if !(wall==nothing)
+        verbose && println("Creating tokamak wall data for topview plot... ")
+        R_hfs = minimum(wall.r) # R-coord of high-field side wall
+        R_lfs = maximum(wall.r) # R-coord of low-field side wall
+        phi = collect(0:1:359).*(2*pi/180.0) # Toroidal angle
+        topview_R_hfs_x = (R_hfs).*cos.(phi)
+        topview_R_hfs_y = (R_hfs).*sin.(phi)
+        topview_R_lfs_x = (R_lfs).*cos.(phi)
+        topview_R_lfs_y = (R_lfs).*sin.(phi)
+    end
+
+    verbose && println("Defining orbit plot color... ")
+    orb_color = :black
+    orb_linestyle = :solid
+    if o.class==:invalid
+        orb_color = :gray
+        orb_linestyle = :dash
+    elseif o.class == :lost
+        orb_color = :brown
+    elseif o.class == :incomplete # If this happens, you are in trouble. Because it will likely take forever to calculate. Please just re-start the app instead.
+        orb_color = :yellow
+    elseif o.class == :trapped
+        orb_color = :blue
+    elseif o.class == :co_passing
+        orb_color = :green
+    elseif (o.class == :stagnation && o.coordinate.r>=magnetic_axis(M)[1]) # Regular stagnation orbit
+        orb_color = :red
+    elseif o.class == :potato
+        orb_color = :orange
+    elseif o.class == :ctr_passing
+        orb_color = :purple
+    elseif (o.class == :stagnation && o.coordinate.r<magnetic_axis(M)[1]) # Counter-stagnation orbit
+        orb_color = :pink
+    else
+        error("Something's gone wrong!!! Orbit class unknown!")
+    end
+
+    if !(wall==nothing)
+        verbose && println("Computing magnetic flux surfaces for plotting... ")
+        # Define magnetic flux (R,z) grid range
+        flux_r = range(minimum(wall.r),stop=maximum(wall.r),length=33)
+        flux_z = range(minimum(wall.z),stop=maximum(wall.z),length=33)
+        inds = CartesianIndices((length(flux_r),length(flux_z)))
+        psi_rz = [M(flux_r[ind[1]], flux_z[ind[2]]) for ind in inds]
+        psi_mag, psi_bdry = psi_limits(M)
+    end
+
+    if (typeof(o.coordinate)==EPRCoordinate{Float64}) || (typeof(o.coordinate)==EPRCoordinate{Int64})# Float64/Int64 needs to be included. Float/Int sensitive
+        verbose && println("(E,pm,Rm) found in orbit. Using...")
+        myEPRc = o.coordinate
+    else
+        verbose && print("(E,mu,Pphi;sigma) found in orbit. Computing (E,pm,Rm)... ")
+        # Otherwise, must be HamiltonianCoordinate
+        sigma = 1
+        if (orb_color == :purple) || (orb_color == :pink)
+            sigma = -1
+        end
+        myEPRc = EPRCoordinate(M, o.coordinate; sigma=sigma, wall=wall, verbose=verbose)
+    end
+
+    verbose && println("Computing orbit trajectory data with high temporal resolution... ")
+    mygcp = GCParticle(myEPRc) # Define the guiding-center (GC) particle object
+    # Integrate. Get the orbit path (path) and the orbit status (stat) objects
+    path, stat = integrate(M, mygcp; one_transit=false, r_callback=false, wall=wall, interp_dt=1.0e-10, max_length=5000, tmax=anim_numOtau_p*o.tau_p)
+    gcvalid = gcde_check(M, mygcp, path) # Check if usage of the guiding-center approximation was valid, given the length scale of the variation of the magnetic field
+
+    rmax = stat.rm
+    if stat.class != :incomplete && stat.class != :lost # If the orbit was not incomplete, nor lost...
+        if rmax > myEPRc.r && (false || !isapprox(rmax,myEPRc.r,rtol=1e-4)) # If it ended up outside of its initial R coordinate, or it's not exact...
+            stat.class = :invalid # It's invalid!
+        end
+    else
+        stat.tau_p=zero(stat.tau_p) # Else, it's an incomplete or lost orbits, and has no poloidal...
+        stat.tau_t=zero(stat.tau_t) # ...and toroidal transit times
+    end
+    o_long = Orbit(myEPRc,o.class,stat.tau_p,stat.tau_t,path,gcvalid)
+
+    mv_o_x = cos.(o_long.path.phi).*(o_long.path.r) # Compute x-coordinates for the animation orbit trajectory
+    mv_o_y = sin.(o_long.path.phi).*(o_long.path.r) # Compute y-coordinates for the animation orbit trajectory
+
+    if top_view
+        verbose && println("Creating top-view animation of orbit trajectory... ")
+        plt_anim = plot((mv_o_x)[1:2],(mv_o_y)[1:2],color=orb_color,alpha=0.3)
+        plt_anim = plot!((mv_o_x)[1:2],(mv_o_y)[1:2],color=orb_color,alpha=0.8)
+        plt_anim = scatter!([(mv_o_x)[1]],[(mv_o_y)[1]],color=orb_color)
+        if !(wall==nothing)
+            plt_anim = plot!(topview_R_hfs_x, topview_R_hfs_y, color=:black)
+            plt_anim = plot!(topview_R_lfs_x, topview_R_lfs_y, color=:black)
+        end
+        # To achieve fast and efficient animation plotting, trick 1 is to not plot the axis ticks...
+        plt_anim = plot!(plt_anim,aspect_ratio=:equal, legend=false, xlabel="x [m]", ylabel="y [m]",xticks=true,yticks=true,left_margin=4Plots.mm)
+        # ...and trick 2 is to define the needed indexes outside of the @animate loop
+        A,B = -500:1:length(mv_o_x)-500, -50:1:length(mv_o_x)-50 # We want negative indexes in for the first 50, 500, etc ones...
+        A,B = ifelse.(A .> 0, A, 1), ifelse.(B .> 0, B, 1) # ...so that we can easily put them to 1 in this next line.
+
+        plt_movie = @animate for j=1:30:length(mv_o_x)
+            # With the above plt_anim initialization, it is faster now to simply update the coordinates of the already existing plots
+            plt_anim[1][1][:x], plt_anim[1][1][:y] = (mv_o_x)[A[j]:j], (mv_o_y)[A[j]:j]
+            plt_anim[1][2][:x], plt_anim[1][2][:y] = (mv_o_x)[B[j]:j], (mv_o_y)[B[j]:j]
+            plt_anim[1][3][:x], plt_anim[1][3][:y] = [(mv_o_x)[j]], [(mv_o_y)[j]]
+        end every 1 # And create a "movie object" 'plt_movie' from every frame ('every 1')
+        my_gif = gif(plt_movie,"plot_orbit_movie_top_view.gif",fps=15)
+        Plots.display(my_gif)
+        if !(save_anim)
+            rm("plot_orbit_movie_top_view.gif",force=true)
+            verbose && println("'save_anim' set to false. Saved animation automatically removed.")
+        end
+    else
+        verbose && println("Creating poloidal view animation of orbit trajectory... ")
+        mv_o_r = o_long.path.r # Compute r-coordinates for the animation orbit trajectory
+        mv_o_z = o_long.path.z # Compute z-coordinates for the animation orbit trajectory
+        plt_anim = plot(mv_o_r, mv_o_z,color=orb_color,linewidth=2.5)
+        plt_anim = scatter!([(mv_o_r)[1]],[(mv_o_z)[1]],color=orb_color)
+        if !(wall==nothing)
+            plt_crs = Plots.contour!(flux_r,flux_z,psi_rz',levels=collect(range(psi_mag,stop=psi_bdry,length=5)),color=:gray, linestyle=:dot,linewidth=1.5, label="",colorbar=false)
+            plt_crs = Plots.plot!(wall.r,wall.z, label="Tokamak wall", color=:black, linewidth=1.5)
+        end
+        plt_anim = scatter!([magnetic_axis(M)[1]],[magnetic_axis(M)[2]],mc=:gray,label="")
+        # To achieve fast and efficient animation plotting, trick 1 is to not plot the axis ticks...
+        plt_anim = plot!(plt_anim,aspect_ratio=:equal, legend=false, xlabel="R [m]", ylabel="z [m]",xticks=true,yticks=true,left_margin=4Plots.mm)
+        # ...and trick 2 is to define the needed indexes outside of the @animate loop
+        A,B = -500:1:length(mv_o_r)-500, -50:1:length(mv_o_z)-50 # We want negative indexes in for the first 50, 500, etc ones...
+        A,B = ifelse.(A .> 0, A, 1), ifelse.(B .> 0, B, 1) # ...so that we can easily put them to 1 in this next line.
+
+        plt_movie = @animate for j=1:30:length(mv_o_r)
+            plt_anim[1][2][:x], plt_anim[1][2][:y] = [(mv_o_r)[j]], [(mv_o_z)[j]]
+        end every 1 # And create a "movie object" 'plt_movie' from every frame ('every 1')
+        my_gif = gif(plt_movie,"plot_orbit_movie_crs_view.gif",fps=15)
+        Plots.display(my_gif)
+        if !(save_anim)
+            rm("plot_orbit_movie_crs_view.gif",force=true)
+            verbose && println("'save_anim' set to false. Saved animation automatically removed.")
+        end
+    end
+end
+
+"""
+    plot_orbit_movie(M, myEPRc; wall=nothing, extra_kw_args=Dict(:toa => true, :limit_phi => true, :maxiter => 0), verbose=false, kwargs...)
+
+Please see documentation for other versions of plot_orbit_movie().
+"""
+function plot_orbit_movie(M::AbstractEquilibrium, myEPRc::EPRCoordinate; wall=nothing, extra_kw_args=Dict(:toa => true, :limit_phi => true, :maxiter => 0), verbose=false, kwargs...)
+    verbose && println("Computing orbit from (E,pm,Rm) coordinate... ")
+    o = get_orbit(M,myEPRc; wall=wall, interp_dt=1.0e-10, max_length=500, extra_kw_args...) # interp_dt is set to ridiculously small value, to ensure orbit path length of 500
+    plot_orbit_movie(M, o; wall=wall, verbose=verbose, kwargs... )
+end
+
+"""
+    plot_orbit_movie(M, E, pm, Rm; wall=nothing, FI_species="D", extra_kw_args=Dict(:toa => true, :limit_phi => true, :maxiter => 0), verbose=false, anim_numOtau_p = 3, save_anim=false)
+
+Given the magnetic equilibrium and (E,pm,Rm) triplet, compute the resulting orbit and plot an animation of its motion. 'wall' specifies the tokamak first wall, 'FI_species' specifies the fast-ion species (e.g. "D", "T" etc),
+'extra_kw_args' specifies extra keyword arguments for the equations-of-motion integration, 'verbose' specifies extra function print output activity, 'anim_numOtau_p' specifies length of animation and 'save_anim' specifies
+whether to save the animation to .gif file.
+"""
+function plot_orbit_movie(M::AbstractEquilibrium, E::Number, pm::Number, Rm::Number; FI_species="D", verbose=false, kwargs...)
+    verbose && println("Computing EPRCoordinate from (E,pm,Rm) input... ")
+    myEPRc = EPRCoordinate(M, E, pm, Rm; amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species))
+    plot_orbit_movie(M, myEPRc; verbose=verbose, kwargs...)
 end
