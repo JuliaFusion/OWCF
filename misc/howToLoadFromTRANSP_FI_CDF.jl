@@ -18,7 +18,7 @@
 ###################################################################################### 
 
 ## ------
-folderpath_OWCF = "G:/My Drive/DTU/codes/OWCF/"
+folderpath_OWCF = ""
 println("Loading packages... ")
 cd(folderpath_OWCF)
 using Pkg
@@ -27,7 +27,7 @@ using HDF5
 using NetCDF
 
 ## ------
-filepath_cdf = "C:/Users/henrikj/Downloads/86459D02.cdf"
+filepath_cdf = ""
 ncinfo(filepath_cdf)
 ## ------
 
@@ -66,7 +66,7 @@ Pkg.activate(".")
 using NetCDF
 using Plots
 ###########################################################################
-filepath_TRANSP = "C:/Users/henrikj/Downloads/86459D02.cdf"
+filepath_TRANSP = ""
 ###########################################################################
 THERMONUCLEAR_NEUTRONS = ncread(filepath_TRANSP,"THNTX")
 ###########################################################################

@@ -44,9 +44,9 @@
 ################################################################################################################
 
 ############################################################# Inputs
-filepath_distr = "C:/Users/henrikj/Documents/codes/OWCF/TRANSP/JET/99965/K73/99965K73_fi_2.cdf" # for example '/Users/anna/TRANSP/JET/99500/V05/99500V05_fi_1.cdf'
-folderpath_OWCF = "G:/My Drive/DTU/codes/OWCF/"
-folderpath_out = "C:/Users/henrikj/Documents/codes/OWCF/TRANSP/JET/99965/K73/"
+filepath_distr = "" # for example '/Users/anna/TRANSP/JET/99500/V05/99500V05_fi_1.cdf'
+folderpath_OWCF = ""
+folderpath_out = ""
 nR = 64
 nz = 65
 Rmin = 1.83591998*100 # cm. Default value suitable for JET
