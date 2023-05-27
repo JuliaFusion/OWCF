@@ -151,7 +151,15 @@ verbose && println("Calculating the orbit grid... ")
 og_orbs, og = orbit_grid(M, visualizeProgress, E_array, pm_array, Rm_array; amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species), wall=wall, extra_kw_args...)
 
 verbose && println("Success! Saving to file... ")
-myfile = jldopen(folderpath_o*"orbGrid_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*FI_species*"_$(length(E_array))x$(length(pm_array))x$(length(Rm_array)).jld2",true,true,false,IOStream)
+global filepath_output_orig = folderpath_o*"orbGrid_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*FI_species*"_$(length(E_array))x$(length(pm_array))x$(length(Rm_array))"
+global filepath_output = deepcopy(filepath_output_orig)
+global count = 1
+while isfile(filepath_output*".jld2") # To take care of not overwriting files. Add _(1), _(2) etc
+    global filepath_output = filepath_output_orig*"_($(Int64(count)))"
+    global count += 1 # global scope, to surpress warnings
+end
+global filepath_output = filepath_output*".jld2"
+myfile = jldopen(filepath_output,true,true,false,IOStream)
 write(myfile,"og",og)
 write(myfile,"og_orbs",og_orbs)
 write(myfile,"FI_species",FI_species)

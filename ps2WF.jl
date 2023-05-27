@@ -53,7 +53,7 @@
 # [z, R, pitch, energy]. If so, the OWCF will detect it and permute it accordingly.
 #
 ## The .jld2 file must have the keys:
-# 'F_ps' - The 4D matrix containing the fast-ion distribution. Order [energy,pitch,R,z] (forwards).
+# 'F_ps' or 'F_EpRz' - The 4D matrix containing the fast-ion distribution. Order [energy,pitch,R,z] (forwards).
 # 'energy' - The 1D array containing the energy grid points
 # 'pitch ' - The 1D array containing the pitch grid points
 # 'R' - The 1D array containing the R grid points
@@ -220,11 +220,17 @@ if fileext_FI=="h5"
 elseif fileext_FI=="jld2"
     verbose && println("Loading fast-ion distribution from .jld2 file... ")
     myfile = jldopen(filepath_FI_distr,false,false,false,IOStream)
-    F_ps = myfile["F_ps"]
+    if haskey(myfile,"F_ps")
+        F_ps = myfile["F_ps"]
+    elseif haskey(myfile,"F_EpRz")
+        F_ps = myfile["F_EpRz"]
+    else
+        error("Fast-ion distribution .jld2 file did not have 'F_ps' nor 'F_EpRz'. Please correct and re-try.")
+    end
     energy = myfile["energy"]
     pitch = myfile["pitch"]
     R = myfile["R"]
-    if haskey(myfle,"z")
+    if haskey(myfile,"z")
         z = myfile["z"]
     else
         z = myfile["Z"]
@@ -769,7 +775,16 @@ WNO_Rm = map(x-> isnan(x) ? 0.0 : x, WNO_Rm) # We know that NaNs would correspon
 verbose && println("Force-removing ps2WF_progress_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_$(nE)x$(npm)x$(nRm).jld2 file... ")
 rm("ps2WF_progress_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_$(nE)x$(npm)x$(nRm).jld2",force=true)
 verbose && println("Saving to results file... ")
-myfile = jldopen(folderpath_o*"ps2WF_results_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full)*"_$(nE)x$(npm)x$(nRm).jld2",true,true,false,IOStream)
+
+global filepath_output_orig = folderpath_o*"ps2WF_results_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full)*"_$(nE)x$(npm)x$(nRm)"
+global filepath_output = deepcopy(filepath_output_orig)
+global count = 1
+while isfile(filepath_output*".jld2") # To take care of not overwriting files. Add _(1), _(2) etc
+    global filepath_output = filepath_output_orig*"_($(Int64(count)))"
+    global count += 1 # global scope, to surpress warnings
+end
+global filepath_output = filepath_output*".jld2"
+myfile = jldopen(filepath_output,true,true,false,IOStream)
 write(myfile,"S_WF",S_WF)
 write(myfile,"E_array",E_array)
 write(myfile,"pm_array",pm_array)

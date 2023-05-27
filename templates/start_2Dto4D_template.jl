@@ -36,6 +36,11 @@
 # Script written by Henrik Järleblad. Last maintained 2022-10-11.
 ############################################################################################################
 
+folderpath_OWCF = ""
+cd(folderpath_OWCF)
+using Pkg
+Pkg.activate(".")
+
 ## First you have to set the system specifications
 using Distributed # Needed, even though distributed might be set to false. This is to export all inputs to all workers right away, if needed.
 batch_job = false

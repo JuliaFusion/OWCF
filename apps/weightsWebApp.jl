@@ -51,7 +51,8 @@
 # verbose - If true, then the web application will talk a lot! Yay! - Bool
 # filepath_tb - The path to the .jld2-file containing the topological boundaries - String
 # enable_COM - If set to true, it will be possible to also visualize the orbit weight functions in (E,mu,Pphi;sigma) coordinates - Bool
-# filepath_tm - If enable_COM is set to true, it is highly recommended that you provide the path to the file containing the pertaining topological map - String
+# filepath_W_COM - If enable_COM is set to true, it is highly recommended that you provide the path to a file containing the weight matrix in (E,mu,Pphi;sigma) format - String
+# filepath_tm - If enable_COM is set to true, it is highly recommended that you provide the path to a file containing the pertaining topological map - String
 # filepath_equil - The path to the .eqdsk-file with the tokamak magnetic equilibrium and geometry - String
 # diagnostic_filepath - The path to the LINE21 file containing line-of-sight data for the diagnostic - String
 # diagnostic_name - The name of the diagnostic to be visualized. For esthetic purposes. - String
@@ -114,7 +115,9 @@
 # Plots.heatmap(Rm_array,pm_array,(W[iEd,iE,:,:])./maximum(W[iEd,iE,:,:]),colorbar=true,title="W ($(round(maximum(W[iEd,iE,:,:]),sigdigits=4)) = 1.0)", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]))
 # Plots.scatter!(Rm_scatvals_tb,pm_scatvals_tb,markersize=ms,leg=false,markercolor=:black, xlabel="Rm [m]", ylabel="pm")
 
-# Script written by Henrik Järleblad. Last maintained 2022-10-17.
+# Furthermore, the filepath_W_COM input variable can be either an output of this weightsWebApp.jl script, or the os2com.jl script.
+
+# Script written by Henrik Järleblad. Last maintained 2023-04-25.
 ###############################################################################################
 
 ## --------------------------------------------------------------------------
@@ -527,31 +530,40 @@ if enable_COM
     else
         verbose && print("Loading weight matrix in (E,mu,Pphi;sigma) coordinates from filepath_W_COM... ")
         myfile = jldopen(filepath_W_COM, false, false, false, IOStream)
-        W_COM_inds_n_values = myfile["W_COM_inds_n_values"]
-        Ed_array_COM = myfile["Ed_array"]
-        E_array_COM = myfile["E_array"]
-        μ_matrix = myfile["mu_matrix"]
-        Pϕ_matrix = myfile["Pphi_matrix"]
-        close(myfile)
-        verbose && println("Success!")
+        if haskey(myfile,"W_COM_inds_n_values")    
+            W_COM_inds_n_values = myfile["W_COM_inds_n_values"]
+            Ed_array_COM = myfile["Ed_array"]
+            E_array_COM = myfile["E_array"]
+            μ_matrix = myfile["mu_matrix"]
+            Pϕ_matrix = myfile["Pphi_matrix"]
+            close(myfile)
+            verbose && println("Success!")
 
-        if !(length(Ed_array)==length(Ed_array_COM))
-            error("Number of diagnostic measurement bins of (E,mu,Pphi;sigma) weight matrix in filepath_W_COM does not match number of diagnostic measurement bins of (E,pm,Rm) weight matrix in filepath_W. Please correct and re-start app.")
-        end
-        if !(length(E_array)==length(E_array_COM))
-            error("Number of fast-ion energy grid points of (E,mu,Pphi;sigma) weight matrix in filepath_W_COM does not match number of fast-ion energy grid points of (E,pm,Rm) weight matrix in filepath_W. Please correct and re-start app.")
-        end
+            if !(length(Ed_array)==length(Ed_array_COM))
+                error("Number of diagnostic measurement bins of (E,mu,Pphi;sigma) weight matrix in filepath_W_COM does not match number of diagnostic measurement bins of (E,pm,Rm) weight matrix in filepath_W. Please correct and re-start app.")
+            end
+            if !(length(E_array)==length(E_array_COM))
+                error("Number of fast-ion energy grid points of (E,mu,Pphi;sigma) weight matrix in filepath_W_COM does not match number of fast-ion energy grid points of (E,pm,Rm) weight matrix in filepath_W. Please correct and re-start app.")
+            end
 
-        verbose && println("Assembling data for orbit weight functions in (E,mu,Pphi;sigma) space... ")
-        W_correct_COM = zeros(length(Ed_array_COM),length(E_array_COM),size(μ_matrix,2),size(Pϕ_matrix,2),2)
-        for indValueTuple in W_COM_inds_n_values
-            inds = indValueTuple[1]
-            weight = indValueTuple[2]
-            W_correct_COM[inds] = weight
-        end
+            verbose && println("Assembling data for orbit weight functions in (E,mu,Pphi;sigma) space... ")
+            W_correct_COM = zeros(length(Ed_array_COM),length(E_array_COM),size(μ_matrix,2),size(Pϕ_matrix,2),2)
+            for indValueTuple in W_COM_inds_n_values
+                inds = indValueTuple[1]
+                weight = indValueTuple[2]
+                W_correct_COM[inds] = weight
+            end
 
-        # Release memory
-        W_COM_inds_n_values = nothing
+            # Release memory
+            W_COM_inds_n_values = nothing
+        else # Must be from os2com.jl
+            W_correct_COM = myfile["Wtot"]
+            Ed_array_COM = myfile["Ed_array"]
+            E_array_COM = myfile["E_array"]
+            μ_matrix = myfile["mu_matrix_Wtot"]
+            Pϕ_matrix = myfile["Pphi_matrix_Wtot"]
+            close(myfile)
+        end
     end
 end
 

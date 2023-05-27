@@ -181,12 +181,20 @@ end
 
 verbose && println("Saving compressed 2D orbit weight functions... ")
 if (@isdefined reaction_full)
-    myfile = jldopen(output_folder*"orbWeights2Dfr4D_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic*"_"*pretty2scpok(reaction_full)*"_$(length(E_array))x$(length(pm_array))x$(length(Rm_array)).jld2",true,true,false,IOStream)
+    global filepath_output_orig = output_folder*"orbWeights2Dfr4D_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic*"_"*pretty2scpok(reaction_full)*"_$(length(E_array))x$(length(pm_array))x$(length(Rm_array))"
 elseif (@isdefined reaction)
-    myfile = jldopen(output_folder*"orbWeights2Dfr4D_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic*"_"*reaction*"_$(length(E_array))x$(length(pm_array))x$(length(Rm_array)).jld2",true,true,false,IOStream)
+    global filepath_output_orig = output_folder*"orbWeights2Dfr4D_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic*"_"*reaction*"_$(length(E_array))x$(length(pm_array))x$(length(Rm_array))"
 else
-    myfile = jldopen(output_folder*"orbWeights2Dfr4D_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic*"_"*FI_species*"_$(length(E_array))x$(length(pm_array))x$(length(Rm_array)).jld2",true,true,false,IOStream)
+    global filepath_output_orig = output_folder*"orbWeights2Dfr4D_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic*"_"*FI_species*"_$(length(E_array))x$(length(pm_array))x$(length(Rm_array))"
 end
+global filepath_output = deepcopy(filepath_output_orig)
+global count = 1
+while isfile(filepath_output*".jld2") # To take care of not overwriting files. Add _(1), _(2) etc
+    global filepath_output = filepath_output_orig*"_($(Int64(count)))"
+    global count += 1 # global scope, to surpress warnings
+end
+global filepath_output = filepath_output*".jld2"
+myfile = jldopen(filepath_output,true,true,false,IOStream)
 write(myfile,"Wtot", Wtot2D)
 write(myfile,"E_array",E_array)
 write(myfile,"pm_array",pm_array)

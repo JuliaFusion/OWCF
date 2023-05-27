@@ -10,7 +10,7 @@
 # ρ_pol = sqrt((ψ - ψ_axis)  / (ψ_sep - ψ_axis) )
 #
 # where ψ is the flux function, ψ_axis is the flux function value at the magnetic axis and
-# ψ_sep is the flux function value at the separatrix. When specifying the ion FI_species ("D", "T" etc), please
+# ψ_sep is the flux function value at the separatrix. When specifying the ion SPECIES ("D", "T" etc), please
 # remember that its data must exist in the .cdf fast-ion file that you provide.
 
 #### Inputs
@@ -18,7 +18,7 @@
 # filepath_TRANSP - The path to the TRANSP .cdf file of the shot. E.g. 96100J01.cdf - String
 # filepath_TRANSP_FI - The path to the fast-ion .cdf file of the TRANSP shot file - String
 # filepath_equil - The path to the .eqdsk or .jld2 file - String
-# FI_species - The ion FI_species whose bulk temperature and bulk density you want - String
+# SPECIES - The ion SPECIES whose bulk temperature and bulk density you want - String
 # folderpath_o - The path to the desired output folder
 # timepoint - The timepoint of the TRANSP NUBEAM fast-ion distribution simulation. Format XX,YYYY where XX are seconds and YYYY are decimals - String
 # verbose - If set to true, the script will be very talkative! - Bool
@@ -27,7 +27,7 @@
 # -
 
 #### Saved files
-# [TRANSP_id]_at[timepoint]s_[FI_species]_TempNDens.jld2
+# [TRANSP_id]_at[timepoint]s_[SPECIES]_TempNDens.jld2
 # This saved file will have the fields:
 #   rho_p_array - The normalized flux coordinate grid points - Array{Float64,1}
 #   T_i - The bulk ion temperature values for the grid points in rho_p_array - Array{Float64,1}
@@ -51,7 +51,7 @@
 # OWCF folder when extractTempNDens.jl is executed. This is to be able to load the
 # correct versions of the Julia packages as specified in the Project.toml and 
 # Manifest.toml files.
-folderpath_OWCF = "/Volumes/GoogleDrive/My Drive/DTU/codes/OWCF/" # Finish with '/'
+folderpath_OWCF = "" # Finish with '/'
 cd(folderpath_OWCF)
 using Pkg
 Pkg.activate(".")
@@ -61,9 +61,9 @@ Pkg.activate(".")
 filepath_TRANSP = "" # for example /Users/henrikj/codes/OWCF/TRANSP/JET/94701V01/94701V01.cdf
 filepath_TRANSP_FI = "" # for example /Users/henrikj/codes/OWCF/TRANSP/JET/96100J01/96100J01_fi_1.cdf
 filepath_equil = "" # for example g96100_0-53.0012.eqdsk
-FI_species = "D" # for example D, T, he3
+SPECIES = "" # for example D, T, he3
 folderpath_o = "" # The path to the desired output folder. Remember to finish path with '/'
-timepoint = nothing # Format "XX,YYYY" where XX are seconds and YYYY are decimals. If unknown, leave as nothing
+timepoint = "XX,YYYY" # Format "XX,YYYY" where XX are seconds and YYYY are decimals. If unknown, leave as nothing
 verbose = true
 
 ## --------------------------------------------------------------------------
@@ -136,7 +136,7 @@ tr_out = transp_output.TranspOutput($TRANSP_id, step=1,
                                     out_file=$filepath_TRANSP,
                                     fbm_files=[$filepath_TRANSP_FI])
 print("Setting bulk thermal distribution... ")
-bulk_dist = transp_dists.Thermal(tr_out, ion=$FI_species)
+bulk_dist = transp_dists.Thermal(tr_out, ion=$SPECIES)
 """
 
 ## --------------------------------------------------------------------------
@@ -156,7 +156,15 @@ timepoint = XX*","*YYYY # Format XX,YYYY to avoid "." when including in filename
 
 ## --------------------------------------------------------------------------
 verbose && println("Saving rho_p_array, T_bulk and n_bulk... ")
-myfile = jldopen(folderpath_o*TRANSP_id*"_at"*timepoint*"s_"*FI_species*"_TempNDens.jld2",true,true,false,IOStream)
+global filepath_output_orig = folderpath_o*TRANSP_id*"_at"*timepoint*"s_"*SPECIES*"_TempNDens"
+global filepath_output = deepcopy(filepath_output_orig)
+global count = 1
+while isfile(filepath_output*".jld2") # To take care of not overwriting files. Add _(1), _(2) etc
+    global filepath_output = filepath_output_orig*"_($(Int64(count)))"
+    global count += 1 # global scope, to surpress warnings
+end
+global filepath_output = filepath_output*".jld2"
+myfile = jldopen(filepath_output,true,true,false,IOStream)
 write(myfile,"rho_pol",rho_p_array)
 write(myfile,"thermal_temp",(py"T_bulk")[:])
 write(myfile,"thermal_dens",(py"n_bulk")[:])

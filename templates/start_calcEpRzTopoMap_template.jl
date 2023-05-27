@@ -9,8 +9,9 @@
 # distributed - If true, parallel computing with multiple CPU cores will be used. - Bool
 # numOcores - The number of CPU cores that will be used if distributed is set to true. - Int64
 #
-# distinguishIncomplete - If true, then incomplete orbits will be given integer 6 instead of 9.
-# distinguishLost - If true, then lost orbits will be given integer 7 instead of 9.
+# saveXYZJacobian - If true, the Jacobian from (x,y,z,vx,vy,vz) to (E,p,R,z) will be computed - Bool
+# distinguishIncomplete - If true, then incomplete orbits will be given integer 6 instead of 9 - Bool
+# distinguishLost - If true, then lost orbits will be given integer 7 instead of 9 - Bool
 # distrFileJLD2 - If true, it is assumed that the weights file is in JLD2 format - Bool
 # FI_species - The fast-ion particle species that the topological map is to be computed for - String
 # filepath_distr - The path to the .jld2/.h5 weights file to extract particle grid info from (if useDistrFile) - String
@@ -62,7 +63,7 @@
 #   FI_species - The fast-ion species. "D", "3he", "T" etc - String
 #   filepath_distr - If used, the filepath to the fast-ion distribution .jld2 file - String
 
-# Script written by Henrik Järleblad. Last maintained 2022-10-11.
+# Script written by Henrik Järleblad. Last maintained 2023-05-17.
 ########################################################################################
 
 ## First you have to set the system specifications
@@ -93,6 +94,7 @@ end
 
 ## -----------------------------------------------------------------------------
 @everywhere begin
+    saveXYZJacobian = false # Set to true, if Jacobian from (x,y,z,vx,vy,vz) to (E,p,R,z) should be computed and saved
     distinguishIncomplete = false
     distinguishLost = false
     distrFileJLD2 = false # Set to true, if useDistrFile is set to true, and filepath_distr is .jld2 in file format

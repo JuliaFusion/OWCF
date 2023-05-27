@@ -32,7 +32,7 @@
 # OWCF folder when orbitsWebApp.jl is executed. This is to be able to load the
 # correct versions of the Julia packages as specified in the Project.toml and 
 # Manifest.toml files.
-folderpath_OWCF = "G:/My Drive/DTU/codes/OWCF/" # Finish with '/'
+folderpath_OWCF = "" # Finish with '/'
 cd(folderpath_OWCF)
 using Pkg
 Pkg.activate(".")
@@ -44,9 +44,9 @@ using JLD2
 ## ------
 # Inputs
 filepath_distr = ""
-filepath_equil = "equilibrium/JET/g99965/g99965_0-48.4058.eqdsk" 
-filepath_tm = "../OWCF_results/cycle22a/topology/EpRzTopoMap_JET_99965K71_at48,4058s_D_30x50x15x17_wLost.jld2" 
-FI_species = "D" # Example deuterium: "D"
+filepath_equil = "" 
+filepath_tm = "" 
+FI_species = "" # Example deuterium: "D"
 verbose = true
 port = 5432
 
@@ -196,6 +196,12 @@ if haskey(myfile,"polTransTimes")
     torTransTimes = myfile["torTransTimes"]
     poltor = true
 end
+jac = false
+if haskey(myfile,"jacobian")
+    verbose && println("-- Jacobian from (x,y,z,vx,vy,vz) to (E,p,R,z) found! Including... ")
+    jacobian = myfile["jacobian"]
+    jac = true
+end
 close(myfile)
 
 ## ------
@@ -316,7 +322,7 @@ verbose && println("--- You can access the EpRzWebApp via an internet web browse
 verbose && println("--- When 'Task (runnable)...' has appeared, please visit the website localhost:$(port) ---")
 verbose && println("--- Remember: It might take a minute or two to load the webpage. Please be patient. ---")
 function app(req) # Here is where the app starts!
-    @manipulate for tokamak_wall = Dict("on" => true, "off" => false), E=E_array, p=p_array, R=R_array, z=z_array, study = Dict("Valid orbits" => :orbs, "Fast-ion distribution" => :FI, "Poloidal times" => :tpol, "Toroidal times" => :ttor), save_plots = Dict("on" => true, "off" => false)
+    @manipulate for tokamak_wall = Dict("on" => true, "off" => false), E=E_array, p=p_array, R=R_array, z=z_array, study = Dict("Valid orbits" => :orbs, "Fast-ion distribution" => :FI, "Poloidal times" => :tpol, "Toroidal times" => :ttor, "Jacobian" => :jac), save_plots = Dict("on" => true, "off" => false)
         
         my_gcp = getGCP(FI_species)
 
@@ -374,6 +380,8 @@ function app(req) # Here is where the app starts!
         #topological (E,p) plot
         Rci = argmin(abs.(collect(R_array) .- R))
         zci = argmin(abs.(collect(z_array) .- z))
+        Eci = argmin(abs.(collect(E_array) .- E))
+        pci = argmin(abs.(collect(p_array) .- p))
 
         if study==:FI && !(filepath_distr=="")
             topoBounds = extractTopoBounds(topoMap[:,:,Rci,zci])
@@ -429,6 +437,26 @@ function app(req) # Here is where the app starts!
             end
             ms = save_plots ? 2.6 : 1.8
             #plt_weights = Plots.scatter!(E_scatvals_tb,p_scatvals_tb,markersize=ms,label="",markercolor=:black,leg=false)
+        elseif study==:jac && jac
+            topoBounds = extractTopoBounds(topoMap[:,:,Rci,zci])
+            ones_carinds = findall(x-> x==1.0,topoBounds)
+            E_scatvals_tb = zeros(length(ones_carinds))
+            p_scatvals_tb = zeros(length(ones_carinds))
+            for (ind,carinds) in enumerate(ones_carinds)
+                E_scatvals_tb[ind] = E_array[carinds[1]]
+                p_scatvals_tb[ind] = p_array[carinds[2]]
+            end
+            jac_Rz = jacobian[:,:,Rci,zci]
+            nz_coords = findall(x-> x>0.0,jac_Rz) # Find the 2D matrix coordinates of all non-zero elements
+            my_coords = length(nz_coords) > 1 ? nz_coords : CartesianIndices(size(jac_Rz)) # Are there actually more than one non-zero element? If not, use all elements
+            min_pol, max_pol = extrema(jac_Rz[my_coords]) # Find minimum and maximum values
+            min_OOM, max_OOM = (floor(log10(min_pol)),ceil(log10(max_pol))) # The orders of magnitude of the minimum and maximum values
+            if !((max_OOM-min_OOM)==0.0) && (length(nz_coords) > 1) # All values NOT within same order of magnitude AND more than one non-zero element. Use logarithmic colorbar
+                plt_topo = Plots.heatmap(E_array,p_array, jac_Rz', title="Jacobian (x,y,z,vx,vy,vz)->(E,p,R,z) at (R,z) \n J($(round(E,sigdigits=3)),$(round(p,sigdigits=2)),$(round(R,sigdigits=2)),$(round(z,sigdigits=2)))=$(round(jac_Rz[Rci,zci],sigdigits=4))", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), xlabel="E [keV]", ylabel="p [-]", colorbar=true, colorbar_scale=:log10, clims = (10^min_OOM, 10^max_OOM),top_margin=3Plots.mm) # Get nice powers-of-ten limits for the colorbar
+            else # Else, use linear colorbar 
+                plt_topo = Plots.heatmap(E_array,p_array, jac_Rz', title="Jacobian (x,y,z,vx,vy,vz)->(E,p,R,z) at (R,z) \n J($(round(E,sigdigits=3)),$(round(p,sigdigits=2)),$(round(R,sigdigits=2)),$(round(z,sigdigits=2)))=$(round(jac_Rz[Rci,zci],sigdigits=4))", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), xlabel="E [keV]", ylabel="p [-]", colorbar=true,top_margin=3Plots.mm)
+            end
+            ms = save_plots ? 2.6 : 1.8
         else
             topoMap_raw = topoMap[:,:,Rci,zci] # might not include all integers between 1 and 9 (needed for correct Set1_9 heatmap coloring)
             topoMap_ext = ones(size(topoMap_raw,1),size(topoMap_raw,2)+1) # We ensure 1.0 in data by using ones() function. Add one extra column
