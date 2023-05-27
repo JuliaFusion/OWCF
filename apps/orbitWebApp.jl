@@ -42,7 +42,7 @@ Pkg.activate(".")
 # Inputs
 port = 4444 # Should not be changed lightly
 filepath_equil = ""
-FI_species = "D" # Example deuterium: "D"
+FI_species = "" # Example deuterium: "D"
 anim_numOtau_p = 3 # If the button 'include_anim' is toggled to 'on' in the web application, the length of the animation of the orbit trajectory will correspond to this number of poloidal transit times
 # Please note: If 'include_anim' and 'save_plots' are both toggled to 'on,' a GIF of the orbit trajectory animation will be saved (takes a LONG time). Also, please note, the saved gif will use more frames and higher framerate (60s^-1) for better quality
 verbose = true

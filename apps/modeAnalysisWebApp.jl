@@ -84,7 +84,7 @@
 # OWCF folder when orbitsWebApp.jl is executed. This is to be able to load the
 # correct versions of the Julia packages as specified in the Project.toml and 
 # Manifest.toml files.
-folderpath_OWCF = "G:/My Drive/DTU/codes/OWCF/" # Finish with '/'
+folderpath_OWCF = "" # Finish with '/'
 cd(folderpath_OWCF)
 using Pkg
 Pkg.activate(".")
@@ -99,10 +99,10 @@ enable_COM = false # Set to false for large grids (>10x100x100 in (E,pm,Rm)). Th
 if enable_COM
     filepath_tm_COM = "" # ...please specify an output of the os2com.jl script (which contains the key "topoMap")(and possibly "polTransTimes" and "torTransTimes"). Leave unspecified if orbitsWebApp.jl should compute the (E,pm,Rm) -> (E,mu,Pphi;sigma) map itself.
 end
-filepath_equil = "G:/My Drive/DTU/codes/OWCF/equilibrium/JET/g96100/g96100_0-53.0012.eqdsk"  # Example JET shot 96100 at 13s (53 minus 40): g96100/g96100_0-53.0012.eqdsk" #
-filepath_tm = "G:/My Drive/DTU/codes/OWCF_results/test/topoMap_JET_96100J01_at53,0012s__10x101x104_wLost.jld2"
-FI_species = "D" # Example deuterium: "D"
-ω_init = 150000.0 # Mode frequency. kHz
+filepath_equil = ""  # Example JET shot 96100 at 13s (53 minus 40): g96100/g96100_0-53.0012.eqdsk" #
+filepath_tm = ""
+FI_species = "" # Example deuterium: "D"
+ω_init = 0.0 # Mode frequency. kHz
 n_init = 1 # Toroidal mode number
 m_init = 2 # Poloidal mode number
 verbose = true

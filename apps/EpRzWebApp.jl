@@ -32,7 +32,7 @@
 # OWCF folder when orbitsWebApp.jl is executed. This is to be able to load the
 # correct versions of the Julia packages as specified in the Project.toml and 
 # Manifest.toml files.
-folderpath_OWCF = "G:/My Drive/DTU/codes/OWCF/" # Finish with '/'
+folderpath_OWCF = "" # Finish with '/'
 cd(folderpath_OWCF)
 using Pkg
 Pkg.activate(".")
@@ -44,9 +44,9 @@ using JLD2
 ## ------
 # Inputs
 filepath_distr = ""
-filepath_equil = "equilibrium/JET/g96100/g96100_0-53.0012.eqdsk" 
-filepath_tm = "../OWCF_results/cycle23/1/topology/EpRzTopoMap_JET__at53,0012s_D_101x61x12x13_wJac.jld2" 
-FI_species = "D" # Example deuterium: "D"
+filepath_equil = "" 
+filepath_tm = "" 
+FI_species = "" # Example deuterium: "D"
 verbose = true
 port = 5432
 

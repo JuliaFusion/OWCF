@@ -51,7 +51,7 @@
 # OWCF folder when extractTempNDens.jl is executed. This is to be able to load the
 # correct versions of the Julia packages as specified in the Project.toml and 
 # Manifest.toml files.
-folderpath_OWCF = "/Volumes/GoogleDrive/My Drive/DTU/codes/OWCF/" # Finish with '/'
+folderpath_OWCF = "" # Finish with '/'
 cd(folderpath_OWCF)
 using Pkg
 Pkg.activate(".")
@@ -61,9 +61,9 @@ Pkg.activate(".")
 filepath_TRANSP = "" # for example /Users/henrikj/codes/OWCF/TRANSP/JET/94701V01/94701V01.cdf
 filepath_TRANSP_FI = "" # for example /Users/henrikj/codes/OWCF/TRANSP/JET/96100J01/96100J01_fi_1.cdf
 filepath_equil = "" # for example g96100_0-53.0012.eqdsk
-SPECIES = "D" # for example D, T, he3
+SPECIES = "" # for example D, T, he3
 folderpath_o = "" # The path to the desired output folder. Remember to finish path with '/'
-timepoint = nothing # Format "XX,YYYY" where XX are seconds and YYYY are decimals. If unknown, leave as nothing
+timepoint = "XX,YYYY" # Format "XX,YYYY" where XX are seconds and YYYY are decimals. If unknown, leave as nothing
 verbose = true
 
 ## --------------------------------------------------------------------------

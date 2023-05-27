@@ -1957,7 +1957,11 @@ function muPphiSigma_2_pmRm(M::AbstractEquilibrium, data::Array{Float64,3}, E::U
     end
 
     verbose && println("Transforming (μ,Pϕ;σ) coordinates into (pm,Rm) coordinates... ")
-    subs = CartesianIndices(data)
+    if !isTopoMap
+        subs = CartesianIndices(data)
+    else
+        subs = findall(x-> x!=9.0, data)
+    end
     sigma_array = [-1,1] # Counter- (-1) or co-passing (1)
     pm_values = Array{Float64}(undef, length(subs))
     Rm_values = Array{Float64}(undef, length(subs))
@@ -1983,19 +1987,24 @@ function muPphiSigma_2_pmRm(M::AbstractEquilibrium, data::Array{Float64,3}, E::U
         sigma_values[i] = sigma_array[isigma]
     end
 
+    verbose && println("Removing impossible and incorrect (pm,Rm) coordinates... ")
     # Remove (pm,Rm) coordinates corresponding to impossible (E,mu,Pphi;sigma) coordinates
-    if needJac
-        i_goods = findall(x-> ForwardDiff.value(x)>0.0, Rm_values)
-    else
-        i_goods = findall(x-> x>0.0, Rm_values)
-    end
+    i_goods = findall(x-> x>zero(x), Rm_values)
+    # Remove (pm,Rm) coordinates that are not correct (due to, most likely, too low (mu,Pphi)-grid resolution)
+    filter!(i-> sign(pm_values[i])*sign(sigma_values[i])>0.0,i_goods)
     pm_values = pm_values[i_goods]
     Rm_values = Rm_values[i_goods]
     data_values = data_values[i_goods]
+    sigma_values = sigma_values[i_goods]
+    subs = subs[i_goods]
 
+    # Perform a very simple adaptive-grid scheme, to attempt to correct bad stagnation (and counter-stagnation) orbits
+    verbose && println("Performing single-step adaptive-grid scheme to attempt to correct bad (counter-)stagnation orbits... ")
+    stag_inds = findall(x-> )
+    
     if debug
         if !needJac
-            return pm_values, Rm_values, data_values, [], []
+            return subs, pm_values, Rm_values, data_values, [], []
         end
         detJac_values = zeros(length(pm_values))
         data_values_Jac = zeros(length(pm_values))
@@ -2005,7 +2014,7 @@ function muPphiSigma_2_pmRm(M::AbstractEquilibrium, data::Array{Float64,3}, E::U
             detJac_values[i] = detJac
             data_values_Jac[i] = (1/detJac) * data_values[i]
         end
-        return pm_values, Rm_values, data_values, detJac_values, data_values_Jac
+        return subs, pm_values, Rm_values, data_values, detJac_values, data_values_Jac
     end
 
     if needJac
@@ -2170,7 +2179,7 @@ nR - The number of major radius grid points for computing the contours. A higher
 nz - The number of vertical grid points for computing mu-contours. A higher number will result in a more accurate mapping.
 debug - If set to true, debug mode will be active.
 """
-function com2OS(M::AbstractEquilibrium, data::Union{Array{Float64, 4},Array{Float64, 5}}, E_array::AbstractVector, mu_matrix::Array{Float64, 2}, Pphi_matrix::Array{Float64, 2}, FI_species::AbstractString; npm=length(mu_matrix[1,:]), nRm=length(Pphi_matrix[1,:]), isTopoMap=false, wall=nothing, verbose=false, kwargs...)
+function com2OS(M::AbstractEquilibrium, data::Union{Array{Float64, 4},Array{Float64, 5}}, E_array::AbstractVector, mu_matrix::Array{Float64, 2}, Pphi_matrix::Array{Float64, 2}, FI_species::AbstractString; npm=length(mu_matrix[1,:]), nRm=length(Pphi_matrix[1,:]), wall=nothing, verbose=false, kwargs...)
 
     input_5D = true
     if !(length(size(data))==5)
@@ -2193,13 +2202,13 @@ function com2OS(M::AbstractEquilibrium, data::Union{Array{Float64, 4},Array{Floa
 
     data_OS = zeros(size(data,1),length(E_array),npm, nRm)
     verbose && println("Mapping (E,μ,Pϕ;σ) -> (E,pm,Rm) for 4D quantity 1 of $(size(data,1))... ")
-    data_OS[1, :, :, :], E_array, pm_array, Rm_array = com2OS(M, data[1,:,:,:,:], E_array, mu_matrix, Pphi_matrix, FI_species; isTopoMap=isTopoMap, pm_array=pm_array, Rm_array=Rm_array, wall=wall, verbose=verbose, kwargs...)
+    data_OS[1, :, :, :], E_array, pm_array, Rm_array = com2OS(M, data[1,:,:,:,:], E_array, mu_matrix, Pphi_matrix, FI_species; pm_array=pm_array, Rm_array=Rm_array, wall=wall, verbose=verbose, kwargs...)
     if size(data,1)>1 # To avoid distributed errors
         data_OS[2,:,:,:] = @distributed (+) for iEd in collect(2:size(data,1))
             verbose && println("Mapping (E,μ,Pϕ;σ) -> (E,pm,Rm) for 4D quantity $(iEd) of $(size(data,1))... ")
             data_OS_part = zeros(size(data,1),length(E_array),npm, nRm)
             # E_array_part, pm_array_part and Rm_array_part do not matter. But they need to be returned by com2OS.
-            data_OS_part[iEd, :, :, :], E_array_part, pm_array_part, Rm_array_part = com2OS(M, data[iEd,:,:,:,:], E_array, mu_matrix, Pphi_matrix, FI_species; isTopoMap=isTopoMap, pm_array=pm_array, Rm_array=Rm_array, wall=wall, verbose=verbose, kwargs...)
+            data_OS_part[iEd, :, :, :], E_array_part, pm_array_part, Rm_array_part = com2OS(M, data[iEd,:,:,:,:], E_array, mu_matrix, Pphi_matrix, FI_species; pm_array=pm_array, Rm_array=Rm_array, wall=wall, verbose=verbose, kwargs...)
             data_OS_part # Declare ready for reduction (data_OS += data_OS_part but distributed over several CPU cores)
         end
     end
