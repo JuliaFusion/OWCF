@@ -608,7 +608,9 @@ version = "1.0.2"
 
 [[deps.GuidingCenterOrbits]]
 deps = ["Contour", "Equilibrium", "ForwardDiff", "Interpolations", "LinearAlgebra", "Optim", "OrdinaryDiffEq", "Printf", "StaticArrays", "Statistics"]
-path = "C:\\Users\\henrikj\\.julia\\dev\\GuidingCenterOrbits"
+git-tree-sha1 = "59f91f0cdfcefd34dbdee0ec673502338b78f23a"
+repo-rev = "master"
+repo-url = "https://github.com/JuliaFusion/GuidingCenterOrbits.jl"
 uuid = "6b3643ae-5dda-50d7-b82c-9f6bc673ccf5"
 version = "0.1.0"
 
