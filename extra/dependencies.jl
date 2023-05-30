@@ -1938,8 +1938,16 @@ end
     muPphiSigma_2_pmRm()
 
 Bla bla bla. Talk about function, inputs, keyword arguments etc
+
+CONTINUE CODING HERE! Change muPphiSigma_2_pmRm in the style of GuidingCenterOrbits.jl/orbit.jl/integrate()
+(M, data, E, mu_array, Pphi_array, FI_species, npm, nRm, wall, pm_array, Rm_array, dataIsTopoMap, topoMap, needJac, transform, nR, verbose, vverbose, debug, extra_kw_args)
 """
-function muPphiSigma_2_pmRm(M::AbstractEquilibrium, data::Array{Float64,3}, E::Union{Float64, Int64}, mu_array::AbstractVector, Pphi_array::AbstractVector, FI_species::AbstractString; npm=length(mu_array), nRm=length(Pphi_array), wall=nothing, pm_array=nothing, Rm_array=nothing, isTopoMap=false, needJac=false, transform = x -> x, verbose=false, vverbose=false, debug=false, kwargs...)
+function muPphiSigma_2_pmRm(M::AbstractEquilibrium, data::Array{Float64,3}, E::Union{Float64, Int64}, mu_array::AbstractVector, 
+    Pphi_array::AbstractVector, FI_species::AbstractString, npm::Int64, nRm::Int64, wall::Union{GuidingCenterOrbits.Boundary{Float64},Nothing}, 
+    pm_array::Union{AbstractVector,Nothing}, Rm_array::Union{AbstractVector,Nothing}, dataIsTopoMap::Bool, topoMap::Array{Float64,3}, needJac::Bool, 
+    verbose::Bool, vverbose::Bool, debug::Bool, extra_kw_args<:Dict)
+
+    transform = x -> x # Probably redundant
     if !(pm_array===nothing)
         npm = length(pm_array)
     else
@@ -1980,7 +1988,7 @@ function muPphiSigma_2_pmRm(M::AbstractEquilibrium, data::Array{Float64,3}, E::U
         vverbose && println("Transforming (μ,Pϕ;σ) coordinate $(i) of $(length(subs))... ")
         imu, iPphi, isigma = Tuple(sub)
         myHc = HamiltonianCoordinate(E, mu_array[imu], Pphi_array[iPphi]; amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species))
-        myEPRc = EPRCoordinate4(M, myHc; sigma=sigma_array[isigma], wall=wall, lost=((isTopoMap && data[sub]==7) ? true : false), verbose=vverbose, kwargs...)
+        myEPRc = EPRCoordinate4(M, myHc; sigma=sigma_array[isigma], wall=wall, lost=((isTopoMap && data[sub]==7) ? true : false), verbose=vverbose, extra_kw_args=extra_kw_args)
         pm_values[i] = myEPRc.pitch
         Rm_values[i] = myEPRc.r
         data_values[i] = data[imu,iPphi,isigma]
@@ -2128,7 +2136,21 @@ function muPphiSigma_2_pmRm(M::AbstractEquilibrium, data::Array{Float64,3}, E::U
     return map(x-> isnan(x) ? 0.0 : x, data_OS), E, pm_array, Rm_array # Make sure to remove all NaNs. Sometimes, NaNs arise. It's inevitable.
 end
 
-function com2OS(M::AbstractEquilibrium, data::Array{Float64,4}, E_array::AbstractVector, mu_matrix::AbstractMatrix, Pphi_matrix::AbstractMatrix, FI_species::String; npm=length(mu_matrix[1,:]), nRm=length(Pphi_matrix[1,:]), wall=nothing, pm_array=nothing, Rm_array=nothing, verbose=false, kwargs...)
+function muPphiSigma_2_pmRm(M::AbstractEquilibrium, data::Array{Float64,3}, E::Union{Float64, Int64}, mu_array::AbstractVector, Pphi_array::AbstractVector, FI_species::AbstractString; npm=length(mu_array), nRm=length(Pphi_array), wall=nothing, pm_array=nothing, Rm_array=nothing, dataIsTopoMap::Bool=false, topoMap::Union{Nothing,Array{Float64,3}}=nothing, needJac=false, transform = x -> x, nR=500, verbose=false, vverbose=false, debug=false, extra_kw_args=Dict(:max_tries => 0))
+    if typeof(topoMap)==Nothing && !dataIsTopoMap
+        error("Either a topological map must be provided via the 'topoMap' keyword argument, or the data must be a topological map itself and the 'dataIsTopoMap' set to true. Please correct and re-try.")
+    elseif typeof(topoMap)==Array{Float64,3} && !dataIsTopoMap
+        if !(size(data)==size(topoMap))
+            error("Size of 'topoMap' keyword argument does not match size of data. Please correct and re-try.")
+        end
+    else
+        topoMap = rand(size(data)...) # Then we don't care about the 'topoMap' keyword argument. Just set it to something random, to enable function execution without error
+    end
+
+    return muPphiSigma_2_pmRm(M, data, E, mu_array, Pphi_array, FI_species, npm, nRm, wall, pm_array, Rm_array, dataIsTopoMap, topoMap, needJac, transform, nR, verbose, vverbose, debug, extra_kw_args)
+end
+
+function com2OS(M::AbstractEquilibrium, data::Array{Float64,4}, E_array::AbstractVector, mu_matrix::AbstractMatrix, Pphi_matrix::AbstractMatrix, FI_species::String; npm=length(mu_matrix[1,:]), nRm=length(Pphi_matrix[1,:]), wall=nothing, pm_array=nothing, Rm_array=nothing, dataIsTopoMap::Bool=false, topoMap::Union{Nothing,Array{Float64,3}}=nothing, verbose=false, kwargs...)
     if !(pm_array===nothing)
         npm = length(pm_array)
     else
@@ -2147,7 +2169,7 @@ function com2OS(M::AbstractEquilibrium, data::Array{Float64,4}, E_array::Abstrac
     data_OS = zeros(length(E_array), npm, nRm)
     for (iE, E) in enumerate(E_array)
         verbose && println("Mapping energy slice $(iE) of $(length(E_array))... ")
-        data_OS[iE,:,:], E, pm_array, Rm_array = muPphiSigma_2_pmRm(M, data[iE,:,:,:], E, mu_matrix[iE,:], Pphi_matrix[iE,:], FI_species; wall=wall, pm_array=pm_array, Rm_array=Rm_array, verbose=verbose, kwargs...)
+        data_OS[iE,:,:], E, pm_array, Rm_array = muPphiSigma_2_pmRm(M, data[iE,:,:,:], E, mu_matrix[iE,:], Pphi_matrix[iE,:], FI_species; wall=wall, pm_array=pm_array, Rm_array=Rm_array, dataIsTopoMap=dataIsTopoMap, dataIsTopoMap=topoMap, topoMap=topoMap, verbose=verbose, kwargs...)
     end
 
     return data_OS, E_array, pm_array, Rm_array
@@ -2155,29 +2177,40 @@ end
 
 """
     com2OS(M, data, E_array, mu_matrix, Pphi_matrix, FI_species)
-    com2OS(M, data, E_array, mu_matrix, Pphi_matrix, FI_species; npm=length(mu_matrix[1,:]), nRm=length(Pphi_matrix[1,:]), isTopoMap=false, verbose=false, kwargs...)
+    com2OS(M, data, E_array, mu_matrix, Pphi_matrix, FI_species; npm=length(mu_matrix[1,:]), nRm=length(Pphi_matrix[1,:]), wall=nothing, dataIsTopoMap=false, topoMap=nothing, verbose=false, kwargs...)
 
 This function maps a constants-of-motion (E,mu,Pphi;sigma) quantity into orbit space (E,pm,Rm). If a 5D quantity is given as input data, the function will assume it's a collection of 4D (E,mu,Pphi;sigma) quantities with
 the last four dimensions corresponding to E, mu, Pphi and sigma, in that order. sigma is a binary coordinate (+1 or -1) that keeps track of co- (+1) and counter-passing (-1) orbits that has the same (E,mu,Pphi) triplet. The first Julia index (1) 
 corresponds to sigma=-1 and the second Julia index (2) corresponds to sigma=+1. Return transformed data in OS, along with E-array, pm-array and Rm-array. The output will be either 3D or 4D.
 
-If the input data is a topological map, isTopoMap needs to be set to true. This is because topological maps need to be treated differently,
-compared to weight functions or fast-ion distributions. Lost regions need to be included etc. 
+If you have data for your tokamak first wall, it needs to be provided via the 'wall' keyword input argument. From an EFIT magnetic equilibrium, you get the wall via 
+M, wall = read_geqdsk(filepath_eqdsk,clockwise_phi=true/false)
+From a Solov'ev equilibrium S, you get the wall via boundary(S). Please see Equilibrium.jl/boundary.jl for more info.
+
+If the input data is a topological map, you need to pass the extra keyword argument 'dataIsTopoMap=true'. This is because topological maps need to be treated differently,
+compared to weight functions or fast-ion distributions. Lost regions might need to be included and treated separately etc.
+
+If the input data is NOT a topological map (i.e. a fast-ion distribution, an orbit weight function, an orbit weight matrix etc), then you need to pass the 'topoMap'
+keyword input argument. It has to be a 4D array with dimensions (E,mu,Pphi,sigma), as returned by the os2COM() function.
 
 If the input data is a fast-ion distribution, the mapping will need a Jacobian. For this, you pass the extra keyword argument needJac=true.
+
+Other keyword arguments can also be passed. Please see below.
 
 The mu_matrix and Pphi_matrix inputs are 2D arrays where the first dimension has length equal to length(E_array).
 To explain via example, mu_matrix[3,:] and Pphi_matrix[3,:] correspond to the mu- and Pphi-grid points for the 
 energy E_array[3]. This is to keep the number of (mu,Pphi)-grid points the same for all energies, while also minimizing
 the number of invalid/impossible (E,mu,Pphi;sigma) coordinates.
 
-kwargs... => needJac, vverbose, nR, nz, dz, debug
+kwargs... => dataIsTopoMap, topoMap, needJac, vverbose, nR, nz, dz, debug, extra_kw_args
 
-needJac - Should be set to true if mapping a quantity that requires a Jacobian e.g. a fast-ion distribution
+dataIsTopoMap - Should be set to true if 'data' is a topological map.
+topoMap - Should be passed as a 4D array with dimensions (E,mu,Pphi,sigma) if dataIsTopoMap=false.
+needJac - Should be set to true if mapping a quantity that requires a Jacobian e.g. a fast-ion distribution.
 vverbose - Should be set to true if you want the algorithm to be VERY talkative!
-nR - The number of major radius grid points for computing the contours. A higher number will result in a more accurate mapping.
-nz - The number of vertical grid points for computing mu-contours. A higher number will result in a more accurate mapping.
+nR - The number of major radius grid points for computing the mu contours. A higher number will result in a more accurate mapping.
 debug - If set to true, debug mode will be active.
+extra_kw_args - A dictionary with extra keyword arguments for the orbit integration algorithm found in GuidingCenterOrbits.jl/orbit.jl, used to finalize (E,mu,Phi;sigma) -> (E,pm,Rm) transform.
 """
 function com2OS(M::AbstractEquilibrium, data::Union{Array{Float64, 4},Array{Float64, 5}}, E_array::AbstractVector, mu_matrix::Array{Float64, 2}, Pphi_matrix::Array{Float64, 2}, FI_species::AbstractString; npm=length(mu_matrix[1,:]), nRm=length(Pphi_matrix[1,:]), wall=nothing, verbose=false, kwargs...)
 
