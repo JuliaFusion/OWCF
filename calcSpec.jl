@@ -2,7 +2,7 @@
 
 #### Description:
 # This script calculates the expected, synthetic diagnostic signal (S) from a
-# specific fast-ion distribution and thermal plasma distribution.
+# specific fast-ion distribution and thermal species distribution.
 
 ### The fast-ion distribution can be provided via a TRANSP (fast-ion) .cdf file,
 ### via a .h5 file or via a .jld2 file.
@@ -25,19 +25,19 @@
 # 'R' - The 1D array containing the R grid points
 # 'Z' or 'z' - The 1D array containing the z grid points
 #
-### For the thermal plasma distribution, you have three options.
+### For the thermal species distribution, you have three options.
 ## Firstly, you can specify a TRANSP shot .cdf file (for example '94701V01.cdf'). The thermal
-# plasma temperature and density profiles will then be extracted from the file.
+# species temperature and density profiles will then be extracted from the file.
 #
 ## Secondly, you could instead specify a .jld2 file that contains information about the
-# thermal plasma temperature and density profiles as a function of normalized flux coordinate
+# thermal species temperature and density profiles as a function of normalized flux coordinate
 # ρ_pol. The .jld2 file must have the keys:
 # 'thermal_temp' - The 1D array containing the thermal temperature for the ρ_pol grid points
 # 'thermal_dens' - The 1D array containing the thermal density for the ρ_pol grid points
 # 'rho_pol' - The 1D array containing the ρ_pol grid points
 #
-## Finally, you could also choose not to specify a thermal plasma distribution. The thermal
-# plasma temperature and density profiles will then be set to default profiles with specified
+## Finally, you could also choose not to specify a thermal species distribution. The thermal
+# species temperature and density profiles will then be set to default profiles with specified
 # thermal_temp_axis and thermal_dens_axis temperature and density on-axis values, respectively.
 #
 # Please see the start_calcSpec_template.jl file for further input information.
@@ -78,7 +78,7 @@
 ################################################################################################
 
 ## ---------------------------------------------------------------------------------------------
-# Determine the file extensions for the fast-ion and thermal plasma distribution files
+# Determine the file extensions for the fast-ion and thermal species distribution files
 # This is the very first thing that needs to happen, because it determines which packages and dependencies
 # files will be loaded.
 fileext_FI = (split(filepath_FI_distr,"."))[end] # Assume last part after final '.' is the file extension
@@ -353,11 +353,11 @@ if interp
     println("Fast-ion distribution will be interpolated onto a ($(nE_ps),$(np_ps),$(nR_ps),$(nz_ps)) grid in (E,p,R,z) phase space.")
 end
 if !(filepath_thermal_distr=="")
-    println("Thermal plasma profiles file specified: "*filepath_thermal_distr)
+    println("Thermal species profiles file specified: "*filepath_thermal_distr)
 else
-    println("No thermal plasma file specified. Using default temperature/density profiles with: ")
-    println("Thermal plasma temperature on axis: $(thermal_temp_axis) keV")
-    println("Thermal plasma density on axis: $(thermal_dens_axis) m^-3")
+    println("No thermal species file specified. Using default temperature/density profiles with: ")
+    println("Thermal species temperature on axis: $(thermal_temp_axis) keV")
+    println("Thermal species density on axis: $(thermal_dens_axis) m^-3")
 end
 if fileext_FI=="cdf" || fileext_thermal=="cdf"
     println("TRANSP shot file to be used: "*filepath_TRANSP_shot)
@@ -437,7 +437,7 @@ verbose && println("Defining diagnostic energy grid vector... ")
     """
 end
 ## ---------------------------------------------------------------------------------------------
-verbose && println("Defining the thermal plasma distribution (and TRANSP output)... ")
+verbose && println("Defining the thermal species distribution (and TRANSP output)... ")
 @everywhere begin
     py"""
     reaction = $reaction

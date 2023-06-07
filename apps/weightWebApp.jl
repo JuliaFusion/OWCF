@@ -138,8 +138,7 @@ if haskey(myfile,"extra_kw_args")
 elseif haskey(myfile2,"extra_kw_args")
     extra_kw_args = myfile2["extra_kw_args"]
 else
-    extra_kw_args = Dict(:toa => true, :limit_phi => true, :maxiter => 0)
-    # toa is 'try only adaptive'
+    extra_kw_args = Dict(:limit_phi => true, :max_tries => 0)
     # limits the number of toroidal turns for orbits
     # The orbit integration algorithm will try progressively smaller timesteps these number of times
 end

@@ -7,6 +7,7 @@
 #
 # batch_job - If true, the script assumes that it will be executed via an HPC batch job. The script will act accordingly. - Bool
 # distributed - If true, parallel computing with multiple CPU cores will be used. - Bool
+# folderpath_OWCF - The path to the OWCF folder - String
 # numOcores - The number of CPU cores that will be used if distributed is set to true. - Int64
 #
 # saveXYZJacobian - If true, the Jacobian from (x,y,z,vx,vy,vz) to (E,p,R,z) will be computed - Bool
@@ -17,7 +18,6 @@
 # filepath_distr - The path to the .jld2/.h5 weights file to extract particle grid info from (if useDistrFile) - String
 # filepath_equil - The path to the .eqdsk-file (or .geqdsk/.jld2-file) with the tokamak magnetic equilibrium and geometry - String
 # folderpath_o - The path to the folder where the results will be saved - String
-# folderpath_OWCF - The path to the OWCF folder - String
 # saveTransitTimeMaps - If set to true, the poloidal and toroidal transit times will be saved for every valid orbit - Bool
 # timepoint - The timepoint of the tokamak shot for the magnetic equilibrium. Format XX,YYYY where XX are seconds and YYYY are decimals - String
 # tokamak - The tokamak for which the topological map is created - String
@@ -70,8 +70,15 @@
 using Distributed # Needed, even though distributed might be set to false. This is to export all inputs to all workers right away, if needed.
 batch_job = false
 distributed = true
+folderpath_OWCF = "" # OWCF folder path. Finish with '/'
 numOcores = 4 # When executing script via HPC cluster job, make sure you know how many cores you have requested for your batch job
 
+## Navigate to the OWCF folder and activate the OWCF environment
+cd(folderpath_OWCF)
+using Pkg
+Pkg.activate(".")
+
+## If running as a batch job on a SLURM CPU cluster
 if batch_job && distributed
     # Load the SLURM CPU cores
     using ClusterManagers
@@ -86,6 +93,7 @@ if batch_job && distributed
     @show hosts
 end
 
+## If running locally and multi-threaded
 if !batch_job && distributed # Assume you are executing the script on a local laptop (/computer)
     println("Adding processes... ")
     addprocs(numOcores-(nprocs()-1)) # If you didn't execute this script as an HPC cluster job, then you need to add processors like this. Add all remaining available cores.
@@ -102,7 +110,7 @@ end
     filepath_distr = ""
     filepath_equil = ""
     folderpath_o = "../OWCF_results/template/" # Output folder path. Finish with '/'
-    folderpath_OWCF = ""
+    folderpath_OWCF = $folderpath_OWCF # Set path to OWCF folder to same as main process (hence the '$')
     saveTransitTimeMaps = false # If true, then calcEpRzTopoMap.jl will save 4D data of the poloidal and toroidal transit times for the valid orbits
     timepoint = nothing # If unknown, just leave as nothing. The algorithm will try to figure it out automatically.
     tokamak = "" # If unknown, just set ""
@@ -134,14 +142,13 @@ end
     # /\ Only necessary if !(useDistrFile)
 
     # EXTRA KEYWORD ARGUMENTS BELOW
-    extra_kw_args = Dict(:toa => true, :limit_phi => true, :maxiter => 0)
-    # toa is 'try only adaptive'
+    extra_kw_args = Dict(:limit_phi => true, :max_tries => 0)
     # limit_phi limits the number of toroidal turns for orbits
     # The orbit integration algorithm will try progressively smaller timesteps maxiter number of times
 end
 
 ## -----------------------------------------------------------------------------
-# Change directory to OWCF-folder. Activate the environment there to ensure correct package versions
+# Change directory to OWCF-folder on all external processes. Activate the environment there to ensure correct package versions
 # as specified in the Project.toml and Manuscript.toml files. Do this for every 
 # CPU processor (@everywhere)
 @everywhere begin
