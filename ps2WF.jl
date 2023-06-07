@@ -106,7 +106,7 @@
 
 
 ## ---------------------------------------------------------------------------------------------
-# Determine the file extensions for the fast-ion and thermal plasma distribution files
+# Determine the file extensions for the fast-ion and thermal species distribution files
 # This is the very first thing that needs to happen, because it determines which packages and dependencies
 # files will be loaded.
 fileext_FI = (split(filepath_FI_distr,"."))[end] # Assume last part after final '.' is the file extension
@@ -175,7 +175,7 @@ verbose && println("Loading dependencies.jl... ")
 end
 
 ## ---------------------------------------------------------------------------------------------
-# Determine fast-ion and thermal (thermal) plasma species from inputs in start file
+# Determine fast-ion and thermal species from inputs in start file
 FI_species = lowercase((split(reaction,"-"))[2])
 thermal_species = lowercase((split(reaction,"-"))[1])
 
@@ -381,12 +381,12 @@ if fileext_FI=="cdf"
     @warn ".cdf TRANSP file specified for fast-ion distribution. Sampling will take a relatively long time, compared to .h5 or .jld2 format."
 end
 if !(filepath_thermal_distr=="")
-    println("Thermal plasma profiles file specified: ")
+    println("Thermal species profiles file specified: ")
     println("--- "*filepath_thermal_distr)
 else
-    println("--- No thermal plasma file specified. Using default temperature/density profiles with: ")
-    println("------ Thermal plasma temperature on axis: $(thermal_temp_axis) keV")
-    println("------ Thermal plasma density on axis: $(thermal_dens_axis) m^-3")
+    println("--- No thermal species file specified. Using default temperature/density profiles with: ")
+    println("------ Thermal species temperature on axis: $(thermal_temp_axis) keV")
+    println("------ Thermal species density on axis: $(thermal_dens_axis) m^-3")
 end
 println("Magneti equilibrium file specified: ")
 println("--- "*filepath_equil)
@@ -449,7 +449,7 @@ println("Loading helper functions... ")
 end
 
 ## ---------------------------------------------------------------------------------------------
-verbose && println("Defining the thermal plasma distribution (and TRANSP output)... ")
+verbose && println("Defining the thermal species distribution (and TRANSP output)... ")
 py"""
 reaction = $reaction
 forwardmodel = forward.Forward($diagnostic_filepath) # Pre-initialize the forward model

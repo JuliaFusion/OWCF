@@ -6,6 +6,7 @@
 #
 # batch_job - If true, the script assumes that it will be executed via an HPC batch job. The script will act accordingly. - Bool
 # distributed - If true, parallel computing with multiple CPU cores will be used. - Bool
+# folderpath_OWCF - The script needs to know where the OWCF folder is located. Yup, I know. A little bit awkward isn't it? - String
 # numOcores - The number of CPU cores that will be used if distributed is set to true. - Int64
 #
 # addNoise - If set to true, the script will add noise to the synthetic signal, defined by input variables noiseLevel_b and _s. - Bool
@@ -17,19 +18,18 @@
 # filepath_equil - The path to the .eqdsk-file (or .geqdsk/.jld2-file) with the tokamak magnetic equilibrium and geometry - String
 # filepath_FI_distr - The path to the fast-ion distribution file to extract tokamak/fast-ion data from. Must be .cdf, .h5 or .jld2 file format - String
 # filepath_FI_TRANSP_shot - The path to the TRANSP .cdf fast-ion file, if filepath_FI_distr or filepath_thermal_distr is specified as a .cdf TRANSP file. If so, should be same as filepath_FI_distr - String
-# filepath_thermal_distr - The path to the thermal plasma distribution file. Must be .cdf (TRANSP) or .jld2 file format. Otherwise "" - String
+# filepath_thermal_distr - The path to the thermal species distribution file. Must be .cdf (TRANSP) or .jld2 file format. Otherwise "" - String
 # filepath_TRANSP_shot - The path to the TRANSP .cdf shot file, if filepath_FI_distr or filepath_thermal_distr is specified as a .cdf TRANSP file - String
 # folderpath_o - The path to the folder where the results will be saved - String
 # mc_samples - The number of Monte-Carlo samples to use for the signal computation (sample from the fast-ion distribution) - Int64
 # mc_chunk - The number of Monte-Carlo samples in a single sample-partitioned chunk - Int64
 # noiseLevel_b - The level of the background noise for the synthetic signal, if addNoise is set to true - Float64
 # noiseLevel_s - The level of the signal noise for the synthetic signal, if addNoise is set to true - Float64
-# folderpath_OWCF - The script needs to know where it is located. Yup, I know. A little bit awkward isn't it? - String
 # reaction - The nuclear fusion reaction that you want to simulate. Please see OWCF/misc/availReacts.jl for available fusion reactions - String
 # calcProjVel - If true, then the synthetic diagnostic spectrum will be the result of projected fast-ion velocities. Remember to set 'reaction' to 'proj-X' where 'X' is the fast-ion species which projected velocity you want to compute - Bool
 # timepoint - The timepoint of the tokamak shot for the magnetic equilibrium. Format XX,YYYY where XX are seconds and YYYY are decimals - String
-# thermal_temp_axis - The temperature of the thermal plasma distribution on axis, if filepath_thermal_distr is not specified - Float64
-# thermal_dens_axis - The density of the thermal plasma distribution on axis, if filepath_thermal_distr is not specified - Float64
+# thermal_temp_axis - The temperature of the thermal species distribution on axis, if filepath_thermal_distr is not specified - Float64
+# thermal_dens_axis - The density of the thermal species distribution on axis, if filepath_thermal_distr is not specified - Float64
 # verbose - If true, lots of information will be printed during execution. Fun! - Boolean
 # visualizeProgress - If false, progress bar will not be displayed during computations - Boolean
 #
@@ -66,8 +66,15 @@
 using Distributed # Needed, even though distributed might be set to false. This is to export all inputs to all workers right away, if needed.
 batch_job = false
 distributed = true
+folderpath_OWCF = "" # OWCF folder path. Finish with '/'
 numOcores = 4 # When executing script via HPC cluster job, make sure you know how many cores you have requested for your batch job
 
+## Navigate to the OWCF folder and activate the OWCF environment
+cd(folderpath_OWCF)
+using Pkg
+Pkg.activate(".")
+
+## If running as a batch job on a SLURM CPU cluster
 if batch_job && distributed
     # Load the SLURM CPU cores
     using ClusterManagers
@@ -82,6 +89,7 @@ if batch_job && distributed
     @show hosts
 end
 
+## If running locally and multi-threaded
 if !batch_job && distributed # Assume you are executing the script on a local laptop (/computer)
     println("Adding processes... ")
     addprocs(numOcores-(nprocs()-1)) # If you didn't execute this script as an HPC cluster job, then you need to add processors like this. Add all remaining available cores.
@@ -103,14 +111,14 @@ end
     filepath_thermal_distr = "" # for example "96100J01.cdf", "c21_3_thermal_profiles.jld2" or ""
     filepath_TRANSP_shot = "" # As an example, if filepath_FI_distr=="96100J01_fi_1.cdf" then this variable should be "96100J01.cdf". If filepath_thermal_distr=="96100J01.cdf", then filepath_TRANSP_shot==filepath_thermal_distr.
     folderpath_o = "../OWCF_results/template/" # Output folder path. Finish with '/'
+    folderpath_OWCF = $folderpath_OWCF # Set path to OWCF folder to same as main process (hence the '$')
     mc_samples = 1_000_000
     mc_chunk = 10_000 # Should be smaller than mc_samples. If unsure, do not alter from default value of 10_000
     noiseLevel_b = 0.05 # Background noise level. As a decimal fraction of 1.0. Could also be greater than 1.0 but why would you want that?
     noiseLevel_s = 0.05 # Signal noise level. As a decimal fraction of 1.0. Could also be greater than 1.0 but why would you want that?
-    folderpath_OWCF = "" # The OWCF folder path. Finish with '/'
     reaction = "D(d,n)3He" # Specified on the form a(b,c)d where a is thermal ion, b is fast ion, c is emitted particle and d is the product nucleus.
     # PLEASE NOTE! Specify alpha particles as '4he' or '4He' (NOT 'he4' or 'He4'). Same goes for helium-3 (specify as '3he', NOT 'he3')
-    calcProjVel = false # If true, the synthetic diagnostic spectrum will be computed from projected velocities. If true, remember to set the 'reaction' input variable to the format 'proj-X' where 'X' is the fast-ion species of interest. If true, remember to also leave the thermal plasma input variables unspecified.
+    calcProjVel = false # If true, the synthetic diagnostic spectrum will be computed from projected velocities. If true, remember to set the 'reaction' input variable to the format 'proj-X' where 'X' is the fast-ion species of interest. If true, remember to also leave the thermal species input variables unspecified.
     timepoint = nothing # If unknown, just leave as nothing. The algorithm will try to figure it out automatically.
     thermal_temp_axis = nothing # keV. Please specify if filepath_thermal_distr is not specified.
     thermal_dens_axis = nothing # m^-3. Please specify if filepath_thermal_distr is not specified.
@@ -128,7 +136,7 @@ end
 end
 
 ## -----------------------------------------------------------------------------
-# Change directory to OWCF-folder. Activate the environment there to ensure correct package versions
+# Change directory to OWCF-folder on all external processes. Activate the environment there to ensure correct package versions
 # as specified in the Project.toml and Manuscript.toml files. Do this for every 
 # CPU processor (@everywhere)
 @everywhere begin
