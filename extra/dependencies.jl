@@ -1935,61 +1935,13 @@ end
 
 
 """
-    minimizePmRmNorm()
-    minimizePmRmNorm()
+    muPphi_2_pmRm_FuncGen()
+    muPphi_2_pmRm_FuncGen()
 
 Bla bla bla
 """
-function minimizePmRmNorm(M::AbstractEquilibrium, R::Int64, pm_start::Float64, Rm_start::Float64, E::Float64, mu::Float64, Pphi::Float64, dmu_1::Float64, dmu_2::Float64, dPphi_1::Float64, dPphi_2::Float64, FI_species::String; amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species), sigma=1, wall=nothing, nR=500, verbose=false, extra_kw_args=Dict(:max_tries => 0))
-    verbose && println("Recursion level: $(R)")
-
-    if R<1 # Exit condition for recursion (in reality, if R==0)
-        return pm_start, Rm_start
-    end
-
-    pmRm_norm2_start = pm_start*pm_start + Rm_start*Rm_start
-
-    Hc_1 = HamiltonianCoordinate(E, mu-0.25*dmu_1, Pphi; amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species))
-    EPRc_1 = EPRCoordinate4(M, Hc_1; sigma=sigma, wall=wall, nR=nR, verbose=verbose, extra_kw_args=extra_kw_args)
-
-    Hc_2 = HamiltonianCoordinate(E, mu+0.25*dmu_2, Pphi; amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species))
-    EPRc_2 = EPRCoordinate4(M, Hc_2; sigma=sigma, wall=wall, nR=nR, verbose=verbose, extra_kw_args=extra_kw_args)
-
-    Hc_3 = HamiltonianCoordinate(E, mu, Pphi-0.25*dPphi_1; amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species))
-    EPRc_3 = EPRCoordinate4(M, Hc_3; sigma=sigma, wall=wall, nR=nR, verbose=verbose, extra_kw_args=extra_kw_args)
-
-    Hc_4 = HamiltonianCoordinate(E, mu, Pphi+0.25*dPphi_2; amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species))
-    EPRc_4 = EPRCoordinate4(M, Hc_4; sigma=sigma, wall=wall, nR=nR, verbose=verbose, extra_kw_args=extra_kw_args)
-
-    pm_value_1 = Inf
-    Rm_value_1 = Inf
-    if (((EPRc_1.pitch)*(EPRc_1.pitch)+(EPRc_1.r)*(EPRc_1.r)) < pmRm_norm2_start) && (EPRc_1.r > zero(EPRc_1.r))
-        pm_value_1, Rm_value_1 = minimizePmRmNorm(M, R-1, EPRc_1.pitch, EPRc_1.r, E, Hc_1.mu, Hc_1.p_phi, 0.25*dmu_1, 0.25*dmu_1, dPphi_1, dPphi_2, FI_species; amu=amu, q=q, sigma=1, wall=wall, nR=nR, verbose=verbose, extra_kw_args=extra_kw_args)
-    end
-
-    pm_value_2 = Inf
-    Rm_value_2 = Inf
-    if (((EPRc_2.pitch)*(EPRc_2.pitch)+(EPRc_2.r)*(EPRc_2.r)) < pmRm_norm2_start) && (EPRc_2.r > zero(EPRc_2.r))
-        pm_value_2, Rm_value_2 = minimizePmRmNorm(M, R-1, EPRc_2.pitch, EPRc_2.r, E, Hc_2.mu, Hc_2.p_phi, 0.25*dmu_2, 0.25*dmu_2, dPphi_1, dPphi_2, FI_species; amu=amu, q=q, sigma=1, wall=wall, nR=nR, verbose=verbose, extra_kw_args=extra_kw_args)
-    end
-
-    pm_value_3 = Inf
-    Rm_value_3 = Inf
-    if (((EPRc_3.pitch)*(EPRc_3.pitch)+(EPRc_3.r)*(EPRc_3.r)) < pmRm_norm2_start) && (EPRc_3.r > zero(EPRc_3.r))
-        pm_value_3, Rm_value_3 = minimizePmRmNorm(M, R-1, EPRc_3.pitch, EPRc_3.r, E, Hc_3.mu, Hc_3.p_phi, dmu_1, dmu_2, 0.25*dPphi_1, 0.25*dPphi_1, FI_species; amu=amu, q=q, sigma=1, wall=wall, nR=nR, verbose=verbose, extra_kw_args=extra_kw_args)
-    end
-
-    pm_value_4 = Inf
-    Rm_value_4 = Inf
-    if (((EPRc_4.pitch)*(EPRc_4.pitch)+(EPRc_4.r)*(EPRc_4.r)) < pmRm_norm2_start) && (EPRc_4.r > zero(EPRc_4.r))
-        pm_value_4, Rm_value_4 = minimizePmRmNorm(M, R-1, EPRc_4.pitch, EPRc_4.r, E, Hc_4.mu, Hc_4.p_phi, dmu_1, dmu_2, 0.25*dPphi_2, 0.25*dPphi_2, FI_species; amu=amu, q=q, sigma=1, wall=wall, nR=nR, verbose=verbose, extra_kw_args=extra_kw_args)
-    end
-
-    pm_values = [pm_value_1, pm_value_2, pm_value_3, pm_value_4]
-    Rm_values = [Rm_value_1, Rm_value_2, Rm_value_3, Rm_value_4]
-    ind_of_pmRm_norms_minimum = argmin(pm_values .*pm_values .+ Rm_values .*Rm_values)
-
-    return pm_values[ind_of_pmRm_norms_minimum], Rm_values[ind_of_pmRm_norms_minimum]
+function muPphi_2_pmRm_FuncGen(M::AbstractEquilibrium, E::Float64, FI_species::String; amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species), sigma=1, wall=nothing, nR=500, verbose=false, extra_kw_args=Dict(:max_tries => 0))
+    return x -> EPRCoordinate4(M, HamiltonianCoordinate(E, x[1], x[2]; amu=amu, q=amu); sigma=sigma, wall=wall, nR=nR, verbose=verbose, extra_kw_args=extra_kw_args)
 end
 
 """
@@ -2043,8 +1995,7 @@ function muPphiSigma_2_pmRm(M::AbstractEquilibrium, data::Array{Float64,3}, E::U
         Rm_values = Array{ForwardDiff.Dual{Nothing, Float64, 3}}(undef, length(subs))
         topoMap_values = Array{ForwardDiff.Dual{Nothing, Float64, 3}}(undef, length(subs))
     end
-    for (i, sub) in enumerate(subs)
-        vverbose && println("Transforming (μ,Pϕ;σ) coordinate $(i) of $(length(subs))... ")
+    @showprogress 1 "Transforming (μ,Pϕ;σ) coordinates" for (i, sub) in enumerate(subs)
         imu, iPphi, isigma = Tuple(sub)
         myHc = HamiltonianCoordinate(E, mu_array[imu], Pphi_array[iPphi]; amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species))
         myEPRc = EPRCoordinate4(M, myHc; sigma=sigma_array[isigma], wall=wall, lost=((dataIsTopoMap && data[sub]==7) ? true : false), nR=nR, verbose=vverbose, extra_kw_args=extra_kw_args)
@@ -2067,18 +2018,20 @@ function muPphiSigma_2_pmRm(M::AbstractEquilibrium, data::Array{Float64,3}, E::U
     sigma_values = sigma_values[i_goods]
     subs = subs[i_goods]
 
-    # Perform a very simple adaptive-grid scheme, to attempt to correct bad stagnation (and counter-stagnation) orbits
-    verbose && println("Performing adaptive-grid scheme to attempt to improve mapping of (counter)stagnation-orbit coordinates... ")
+    # Perform a very simple optimization scheme, to attempt to correct bad stagnation (and counter-stagnation) orbits
+    verbose && println("Performing optimization scheme to attempt to improve mapping of (counter)stagnation-orbit coordinates... ")
+    # MAYBE I SHOULD DEFINE TWO FUNCTIONS ALREADY UP HERE. TO OPTIMIZE EFFICIENCY. ONE FUNCTION FOR SIGMA=+1 AND ONE FOR SIGMA=-1
     stag_inds = findall(x-> x==1 || x==8, topoMap_values)
     dmu_array = diff(mu_array)
     dPphi_array = diff(Pphi_array)
     for si in stag_inds
         imu, iPphi, isigma = Tuple(subs[si])
-        dmu_1 = (imu==1) ? dmu_array[imu] : dmu_array[imu-1] # Compatible with non-regular grids
-        dmu_2 = (imu==length(mu_array)) ? dmu_array[imu-1] : dmu_array[imu] # Compatible with non-regular grids
-        dPphi_1 = (iPphi==1) ? dPphi_array[iPphi] : dPphi_array[iPphi-1] # Compatible with non-regular grids
-        dPphi_2 = (iPphi==length(Pphi_array)) ? dPphi_array[iPphi-1] : dPphi_array[iPphi] # Compatible with non-regular grids
-        pm_values[si], Rm_values[si] = minimizePmRmNorm(M, 1, pm_values[si], Rm_values[si], E, mu_array[imu], Pphi_array[iPphi], dmu_1, dmu_2, dPphi_1, dPphi_2, FI_species; sigma=sigma_array[isigma], wall=wall, nR=nR, verbose=vverbose, extra_kw_args=extra_kw_args)
+        dmu_1 = (imu==1) ? dmu_array[imu] : dmu_array[imu-1] # Compatible with non-equidistant grids
+        dmu_2 = (imu==length(mu_array)) ? dmu_array[imu-1] : dmu_array[imu] # Compatible with non-equidistant grids
+        dPphi_1 = (iPphi==1) ? dPphi_array[iPphi] : dPphi_array[iPphi-1] # Compatible with non-equidistant grids
+        dPphi_2 = (iPphi==length(Pphi_array)) ? dPphi_array[iPphi-1] : dPphi_array[iPphi] # Compatible with non-equidistant grids
+        com2OSnorm = muPphi_2_pmRm_FuncGen(M, E, FI_species; amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species), sigma=sigma_array[isigma], wall=wall, nR=nR, verbose=verbose, extra_kw_args=extra_kw_args) # Will be a function of mu and Pphi, i.e. com2OS_mini = com2OS_mini(mu,Pphi)
+        res = Optim.optimize(-com2OSnorm, [mu_array[imu],Pphi_array[iPphi]], [], [], Fminbox())
     end
     
     if debug
