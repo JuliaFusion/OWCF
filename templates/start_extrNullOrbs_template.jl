@@ -7,6 +7,7 @@
 #### Inputs
 # batch_job - If true, the script assumes that it will be executed via an HPC batch job. The script will act accordingly. - Bool
 # distributed - If true, parallel computing with multiple CPU cores will be used. - Bool
+# folderpath_OWCF - The path the OWCF-folder on your computer - String
 # numOcores - The number of CPU cores that will be used if distributed is set to true. - Int64
 #
 # signalNullThreshold - A fraction between 0.0 and 1.0. Below this fraction of maximum(S), the diagnostic signal
@@ -20,7 +21,6 @@
 #              diagnostic energy bins used to compute the signal must be equal to the diagnostic
 #              energy bins corresponding to the rows of the weight matrix loaded from filepath_W.
 #              filepath_S can be the output file from calcSpec.jl or ps2WF.jl. - String
-# folderpath_OWCF - The path the OWCF-folder on your computer - String
 # FI_species - The fast-ion species of the orbit space being used - String
 # folderpath_o - The name of the output folder to which to save the results - String
 # include2Dto4D - If true, then orbit-space indices of null orbits will be computed and saved as well - Bool
@@ -53,8 +53,15 @@
 using Distributed # Needed, even though distributed might be set to false. This is to export all inputs to all workers right away, if needed.
 batch_job = false
 distributed = true
+folderpath_OWCF = "" # OWCF folder path. Finish with '/'
 numOcores = 4 # When executing script via HPC cluster job, make sure you know how many cores you have requested for your batch job
 
+## Navigate to the OWCF folder and activate the OWCF environment
+cd(folderpath_OWCF)
+using Pkg
+Pkg.activate(".")
+
+## If running as a batch job on a SLURM CPU cluster
 if batch_job && distributed
     # Load the SLURM CPU cores
     using ClusterManagers
@@ -69,6 +76,7 @@ if batch_job && distributed
     @show hosts
 end
 
+## If running locally and multi-threaded
 if !batch_job && distributed # Assume you are executing the script on a local laptop (/computer)
     println("Adding processes... ")
     addprocs(numOcores-(nprocs()-1)) # If you didn't execute this script as an HPC cluster job, then you need to add processors like this. Add all remaining available cores.
@@ -81,7 +89,7 @@ end
     orbNullThreshold = 0.0
     filepath_W = ""
     filepath_S = ""
-    folderpath_OWCF = ""
+    folderpath_OWCF = $folderpath_OWCF # Set path to OWCF folder to same as main process (hence the '$')
     FI_species = "" # D, p, T, 3he etc
     folderpath_o = ""
     (include2Dto4D = false) && (filepath_equil = "")
@@ -89,14 +97,13 @@ end
     verbose = true
 
     # EXTRA KEYWORD ARGUMENTS BELOW (these will go into the orbit_grid() and get_orbit() functions from GuidingCenterOrbits.jl)
-    extra_kw_args = Dict(:toa => true, :limit_phi => true, :maxiter => 0)
-    # toa is 'try only adaptive'
+    extra_kw_args = Dict(:limit_phi => true, :max_tries => 0)
     # limits the number of toroidal turns for orbits
     # The orbit integration algorithm will try progressively smaller timesteps these number of times
 end
 
 ## -----------------------------------------------------------------------------
-# Change directory to OWCF-folder. Activate the environment there to ensure correct package versions
+# Change directory to OWCF-folder on all external processes. Activate the environment there to ensure correct package versions
 # as specified in the Project.toml and Manuscript.toml files. Do this for every 
 # CPU processor (@everywhere)
 @everywhere begin

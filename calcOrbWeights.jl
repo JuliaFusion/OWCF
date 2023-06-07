@@ -19,22 +19,22 @@
 # The calcOrbWeights.jl script computes orbit weight functions for an equidistant, rectangular grid 
 # in (E,pm,Rm) orbit space. Irregular/non-equidistant grid points are currently not supported.
 #
-### For the thermal plasma distribution (filepath_thermal_distr), you have three options.
+### For the thermal species distribution (filepath_thermal_distr), you have three options.
 ## First, you can specify a TRANSP shot .cdf file (for example '94701V01.cdf'). The thermal
-# plasma temperature and density profiles will then be extracted from the file. Please note, if you
+# species temperature and density profiles will then be extracted from the file. Please note, if you
 # specify a .cdf TRANSP shot file as filepath_thermal_distr, you have to specify a .cdf TRANSP fast-ion file
 # for filepath_FI_cdf as well. This is to let the script know the correct time windows to extract from
 # the TRANSP shot file.
 #
 ## Secondly, you could instead specify a .jld2 file that contains information about the
-# thermal plasma temperature and density profiles as a function of normalized flux coordinate
+# thermal species temperature and density profiles as a function of normalized flux coordinate
 # ρ_pol. The .jld2 file must have the keys:
 # 'thermal_temp' - The 1D array containing the thermal temperature for the ρ_pol grid points
 # 'thermal_dens' - The 1D array containing the thermal density for the ρ_pol grid points
 # 'rho_pol' - The 1D array containing the ρ_pol grid points
 #
-## Finally, you could also choose not to specify a thermal plasma distribution. The thermal
-# plasma temperature and density profiles will then be set to default profiles with specified
+## Finally, you could also choose not to specify a thermal species distribution. The thermal
+# species temperature and density profiles will then be set to default profiles with specified
 # thermal_temp_axis and thermal_dens_axis temperature and density on-axis values, respectively.
 #
 # Please see the start_calcOW_template.jl file for further input information.
@@ -55,7 +55,7 @@
 #   Rm_array - The fast-ion Rm grid array used for orbit space - Array{Float64,1}
 #   Ed_array - The diagnostic energy bin centers - Array{Float64,1}
 #   reaction_full - The nuclear fusion reaction for which the orbit weights are computed - String
-#   filepath_thermal_distr - The filepath of the thermal plasma distribution. For reference - String
+#   filepath_thermal_distr - The filepath of the thermal species distribution. For reference - String
 # If analytical orbit weight functions (with projected velocities) are computed, the saved file will also have the key
 #   analyticalOWs - True if analytical orbit weight functions were computed. False otherwise - Bool
 # If an orbit-space grid file was used to define the orbit grid for the orbit weight functions, the saved file will also have the key
@@ -147,7 +147,7 @@ if !analyticalOWs
 end
 
 ## ---------------------------------------------------------------------------------------------
-# Determine fast-ion and thermal (thermal) plasma species from inputs in start file
+# Determine fast-ion and thermal (thermal) species from inputs in start file
 if !analyticalOWs
     thermal_species, FI_species = checkReaction(reaction_full) # Check the specified fusion reaction, and extract thermal and fast-ion species
 else
@@ -471,7 +471,7 @@ verbose && println("Setting all Python variables and structures on all distribut
     """
 end
 
-# If a .jld2 file has been specified for the thermal plasma distribution, we will need interpolation objects
+# If a .jld2 file has been specified for the thermal species distribution, we will need interpolation objects
 if fileext_thermal=="jld2"
     verbose && println("Creating thermal temperature and density interpolations objects... ")
     thermal_temp_itp = Interpolations.interpolate((ρ_pol_array,), thermal_temp_array, Gridded(Linear()))
@@ -482,13 +482,13 @@ if fileext_thermal=="jld2"
     thermal_dens = thermal_dens_etp
 end
 
-# If a thermal plasma distribution has not been specified, we simply need the thermal plasma temperature and density on axis
+# If a thermal species distribution has not been specified, we simply need the thermal species temperature and density on axis
 if filepath_thermal_distr==""
     thermal_temp = thermal_temp_axis
     thermal_dens = thermal_dens_axis
 end
 
-# If a TRANSP .cdf file has been specified for the thermal plasma distribution, we have everything we need in the Python thermal_dist variable
+# If a TRANSP .cdf file has been specified for the thermal species distribution, we have everything we need in the Python thermal_dist variable
 if lowercase(fileext_thermal)=="cdf"
     thermal_temp = nothing
     thermal_dens = nothing

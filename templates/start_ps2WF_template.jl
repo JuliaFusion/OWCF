@@ -9,6 +9,7 @@
 #
 # batch_job - If true, the script assumes that it will be executed via an HPC batch job. The script will act accordingly. - Bool
 # distributed - If true, parallel computing with multiple CPU cores will be used. - Bool
+# folderpath_OWCF - The path to the OWCF folder - String
 # numOcores - The number of CPU cores that will be used if distributed is set to true. - Int64
 #
 # calcWFOs - If true, then the algorithm will compute the WF densities in orbit format. PLEASE NOTE! Takes extra RAM memory - Bool
@@ -23,14 +24,13 @@
 # filepath_equil - The path to the .eqdsk-file (or .geqdsk/.jld2-file) with the tokamak magnetic equilibrium and geometry - String
 # filepath_FI_distr - The path to the fast-ion distribution file to extract tokamak/fast-ion data from. Must be .h5 or .jld2 file format - String
 # filepath_FI_TRANSP_shot - The path to the TRANSP .cdf fast-ion file, if filepath_thermal_distr is specified as a .cdf TRANSP file - String
-# filepath_thermal_distr - The path to the thermal plasma distribution file. Must be .cdf (TRANSP) or .jld2 file format. Otherwise "" - String
+# filepath_thermal_distr - The path to the thermal species distribution file. Must be .cdf (TRANSP) or .jld2 file format. Otherwise "" - String
 # folderpath_o - The path to the folder where the results will be saved - String
 # inclPrideRockOrbs - If true, then pride-rock/pinch orbits will be included. Otherwise, minimum(Rm) = magnetic axis by default - Bool
 # nE - The number of fast-ion energy grid points in orbit space, if E_array is left unspecified - Int64
 # nEbatch - The batch size of your energy grid in orbit space. Must be <= nE - Int64
 # npm - The number of fast-ion pm grid points in orbit space, if pm_array is left unspecified - Int64
 # nRm - The number of fast-ion Rm grid points in orbit space, if Rm_array is left unspecified - Int64
-# folderpath_OWCF - The path to the OWCF folder - String
 # pm_array - If specified, the ps2WF.jl will use the values in this array as the pm grid points in its (E,pm,Rm) grid - Array{Float64,1}
 # pm_min - The lower boundary for the orbit-grid pitch values - Float64
 # pm_max - THe upper boundary for the orbit-grid pitch values - Float64
@@ -39,8 +39,8 @@
 # Rm_min - The lower boundary for the orbit-grid maximum major radius grid points. Only used if specified together with Rm_max - Float64
 # Rm_max - The upper boundary for the orbit-grid maximum major radius grid points. Only used if specified together with Rm_min - Float64
 # timepoint - The timepoint of the tokamak shot for the magnetic equilibrium. Format XX,YYYY where XX are seconds and YYYY are decimals - String
-# thermal_dens_axis - The density of the thermal plasma distribution on axis, if filepath_thermal_distr is not specified - Float64
-# thermal_temp_axis - The temperature of the thermal plasma distribution on axis, if filepath_thermal_distr is not specified - Float64
+# thermal_dens_axis - The density of the thermal species distribution on axis, if filepath_thermal_distr is not specified - Float64
+# thermal_temp_axis - The temperature of the thermal species distribution on axis, if filepath_thermal_distr is not specified - Float64
 # visualizeProgress - If false, progress bar will not be displayed during computations - Boolean
 # verbose - If true, lots of information will be printed during execution - Boolean
 #
@@ -69,8 +69,15 @@
 using Distributed # Needed, even though distributed might be set to false. This is to export all inputs to all workers right away, if needed.
 batch_job = false
 distributed = true
+folderpath_OWCF = "" # OWCF folder path. Finish with '/'
 numOcores = 4 # When executing script via HPC cluster job, make sure you know how many cores you have requested for your batch job
 
+## Navigate to the OWCF folder and activate the OWCF environment
+cd(folderpath_OWCF)
+using Pkg
+Pkg.activate(".")
+
+## If running as a batch job on a SLURM CPU cluster
 if batch_job && distributed
     # Load the SLURM CPU cores
     using ClusterManagers
@@ -85,6 +92,7 @@ if batch_job && distributed
     @show hosts
 end
 
+## If running locally and multi-threaded
 if !batch_job && distributed # Assume you are executing the script on a local laptop (/computer)
     println("Adding processes... ")
     addprocs(numOcores-(nprocs()-1)) # If you didn't execute this script as an HPC cluster job, then you need to add processors like this. Add all remaining available cores.
@@ -107,13 +115,13 @@ end
     filepath_FI_TRANSP_shot = "" # As an example, if filepath_thermal_distr=="96100J01.cdf" then this variable should be "96100J01_fi_1.cdf".
     filepath_thermal_distr = "" # for example "96100J01.cdf", "c21_3_thermal_profiles.jld2" or ""
     folderpath_o = "../OWCF_results/template/" # Output folder path. Finish with '/'
+    folderpath_OWCF = $folderpath_OWCF # Set path to OWCF folder to same as main process (hence the '$')
     inclPrideRockOrbs = false # If true, then does what it says. Otherwise, magnetic axis will be used.
     nE = 0
     nEbatch = 2
     npm = 0
     nRm = 0
     og_filepath = nothing
-    folderpath_OWCF = "" # OWCF folder path. Finish with '/'
     pm_array = nothing
     pm_min = -1.0
     pm_max = 1.0
@@ -133,15 +141,14 @@ end
     tokamak = "" # Might also be overwritten depending on the specified diagnostic
 
     # EXTRA KEYWORD ARGUMENTS BELOW (these will go into the orbit_grid() and get_orbit() functions from GuidingCenterOrbits.jl)
-    extra_kw_args = Dict(:toa => true, :limit_phi => true, :maxiter => 0)
-    # toa is 'try only adaptive'
+    extra_kw_args = Dict(:limit_phi => true, :max_tries => 0)
     # limits the number of toroidal turns for orbits
     # The orbit integration algorithm will try progressively smaller timesteps these number of times
     debugging = false # For de-bugging purposes
 end
 
 ## -----------------------------------------------------------------------------
-# Change directory to OWCF-folder. Activate the environment there to ensure correct package versions
+# Change directory to OWCF-folder on all external processes. Activate the environment there to ensure correct package versions
 # as specified in the Project.toml and Manuscript.toml files. Do this for every 
 # CPU processor (@everywhere)
 @everywhere begin

@@ -17,7 +17,7 @@
 # Script written by Henrik Järleblad. Last maintained 2022-08-26.
 ###################################################################################################################################################
 
-include(folderpath_OWCF*"misc/temp_n_dens.jl") # Load 'analytical' thermal plasma temperature and thermal plasma density profiles
+include(folderpath_OWCF*"misc/temp_n_dens.jl") # Load 'analytical' thermal species temperature and thermal species density profiles
 
 """
     calcOrbSpec(M, o, nfast, forward, thermal_dist, Ed_bins, reaction)
@@ -28,13 +28,13 @@ Calculate the expected diagnostic spectrum of one orbit. The inputs are as follo
 - o - The orbit for which to compute the expected synthetic spectrum. It is an Orbit struct from GuidingCenterOrbits.jl/orbit.jl.
 - nfast - The number of fast ions on the orbit. Usually set to 1, by default.
 - forward - The Forward Python DRESS object from the forward.py DRESS script. Used to compute the expected synthetic spectrum.
-- thermal_dist -  The Thermal/FBM Python object from the transp_dists.py script. Used to represent the thermal plasma distribution.
+- thermal_dist -  The Thermal/FBM Python object from the transp_dists.py script. Used to represent the thermal species distribution.
 - Ed_bins - The diagnostic measurement bins into which the synthetic measurements will be binned
 - reaction - The reactants of the considered fusion reaction. Format is 'a-b' where a is the thermal species, and b is the fast-ion species
 Keyword arguments include
 - o_interp_length - The number of time points onto which the orbit trajectory will be interpolated. Equidistant points in time are used
-- thermal_temp - An input variable with the thermal plasma temperature profile that the user has specified. It allows for no profile at all, as well as a single value on-axis (in keV)
-- thermal_dens - An input variable with the thermal plasma density profile that the user has specified. It allows for no profile at all, as well as a single value on-axis (in m^-3)
+- thermal_temp - An input variable with the thermal species temperature profile that the user has specified. It allows for no profile at all, as well as a single value on-axis (in keV)
+- thermal_dens - An input variable with the thermal species density profile that the user has specified. It allows for no profile at all, as well as a single value on-axis (in m^-3)
 - debug - A boolean debug input variable. If set to true, the function will run in debug-mode.
 """
 function calcOrbSpec(M::AbstractEquilibrium, o::Orbit{Float64, EPRCoordinate{Float64}}, nfast::Float64, forward::PyObject, thermal_dist::Union{PyObject,AbstractString}, Ed_bins::AbstractArray, reaction::AbstractString; o_interp_length=500, thermal_temp::Union{Nothing,Float64,Int64,Interpolations.Extrapolation,Interpolations.FilledExtrapolation}=3.0, thermal_dens::Union{Nothing,Float64,Int64,Interpolations.Extrapolation,Interpolations.FilledExtrapolation}=1.0e19, debug=false)
@@ -63,7 +63,7 @@ function calcOrbSpec(M::AbstractEquilibrium, o::Orbit{Float64, EPRCoordinate{Flo
     if debug
         # WRITE CODE HERE FOR DEBUGGING
     end
-    if (typeof(thermal_dist) <: AbstractString) && !(split(reaction,"-")[1]=="proj") # If you have not specified a TRANSP thermal plasma and you are not computing analytical orbit weight functions... 
+    if (typeof(thermal_dist) <: AbstractString) && !(split(reaction,"-")[1]=="proj") # If you have not specified a TRANSP thermal species and you are not computing analytical orbit weight functions... 
         thermal_temp_interp = zeros(length(o_energy))
         thermal_dens_interp = zeros(length(o_energy))
         for (i,crs_c) in enumerate(vec_Rz) # Go through them all and their indices
@@ -121,13 +121,13 @@ Calculate the expected diagnostic spectra of the orbits in og_orbs. The inputs a
 - og_orbs - The orbits for which to compute the expected synthetic spectra. It is a vector with orbit structs from GuidingCenterOrbits.jl/orbit.jl.
 - F_os - A vector of length(og_orbs) where each element is the number of fast ions on the corresponding orbit in og_orbs. Usually, the value of every element is set to 1.0, by default.
 - forward - The Forward Python DRESS object from the forward.py DRESS script. Used to compute the expected synthetic spectrum.
-- thermal_dist -  The Thermal/FBM Python object from the transp_dists.py script. Used to represent the thermal plasma distribution.
+- thermal_dist -  The Thermal/FBM Python object from the transp_dists.py script. Used to represent the thermal species distribution.
 - Ed_bins - The diagnostic measurement bins into which the synthetic measurements will be binned
 - reaction - The reactants of the considered fusion reaction. Format is 'a-b' where a is the thermal species, and b is the fast-ion species
 Keyword arguments include
 - o_interp_length - The number of time points onto which the orbit trajectory will be interpolated. Equidistant points in time are used
-- thermal_temp - An input variable with the thermal plasma temperature profile that the user has specified. It allows for no profile at all, as well as a single value on-axis (in keV)
-- thermal_dens - An input variable with the thermal plasma density profile that the user has specified. It allows for no profile at all, as well as a single value on-axis (in m^-3)
+- thermal_temp - An input variable with the thermal species temperature profile that the user has specified. It allows for no profile at all, as well as a single value on-axis (in keV)
+- thermal_dens - An input variable with the thermal species density profile that the user has specified. It allows for no profile at all, as well as a single value on-axis (in m^-3)
 - debug - A boolean debug input variable. If set to true, the function will run in debug-mode.
 """
 function calcOrbSpecs(M::AbstractEquilibrium, og_orbs::Vector{Orbit{Float64, EPRCoordinate{Float64}}}, F_os::Union{Array{Int64,1},Array{Float64,1}}, forward::PyObject, thermal_dist::Union{PyObject,AbstractString}, Ed_bins::AbstractArray, reaction::AbstractString; thermal_temp::Union{Float64,Int64,Interpolations.Extrapolation,Interpolations.FilledExtrapolation}=3.0, thermal_dens::Union{Float64,Int64,Interpolations.Extrapolation,Interpolations.FilledExtrapolation}=1.0e19, distributed=false, visualizeProgress=false, verbose=false, kwargs...)
