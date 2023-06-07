@@ -100,7 +100,7 @@ verbose && println("Loading JULIA packages and OWCF dependencies... ")
     using EFIT # For equilibrium purposes
     using JLD2 # For saving variables to file. For back-up.
     using FileIO # -||-
-    using Equilibrium # For plasma equilibrium loading (read_geqdsk)
+    using Equilibrium # For magnetic equilibrium loading (read_geqdsk)
     using GuidingCenterOrbits # For orbit and Jacobian calculations
     using OrbitTomography # That's what this all is 'bout!
     include(folderpath_OWCF*"extra/dependencies.jl")
