@@ -9,6 +9,7 @@
 #
 # batch_job - If true, the script assumes that it will be executed via an HPC batch job. The script will act accordingly. - Bool
 # distributed - If true, parallel computing with multiple CPU cores will be used. - Bool
+# folderpath_OWCF - The path to the OWCF folder - String
 # numOcores - The number of CPU cores that will be used if distributed is set to true. - Int64
 #
 # analyticalOWs - If set to true, projected velocities will be used to compute the orbit weight functions. In that case, no thermal data is needed - Bool
@@ -23,7 +24,7 @@
 # Emax - The upper boundary for the fast-ion energy in orbit space - Float64
 # filepath_equil - The path to the file with the tokamak magnetic equilibrium and geometry - String
 # filepath_FI_cdf - To be specified, if filepath_thermal_distr is a TRANSP .cdf shot file. See below for specifications - String
-# filepath_thermal_distr - The path to the thermal distribution file to extract thermal plasma data from. Must be TRANSP .cdf, .jld2 file format or "" - String
+# filepath_thermal_distr - The path to the thermal distribution file to extract thermal species data from. Must be TRANSP .cdf, .jld2 file format or "" - String
 # folderpath_o - The path to the folder where the results will be saved - String
 # iiimax - If specified to be greater than 1, several copies of weight functions will be calculated. For comparison. - Int64
 # inclPrideRockOrbs - If true, then pride-rock/pinch orbits will be included. Otherwise, minimum(Rm) = magnetic axis by default - Bool
@@ -32,7 +33,6 @@
 # npm - The number of fast-ion pm grid points in orbit space - Int64
 # nRm - The number of fast-ion Rm grid points in orbit space - Int64
 # og_filepath - The path to a .jld2 file containing the output of the calcOrbGrid.jl script. If specified, the values of E_array, pm_array, Rm_array, nE, npm, nRm, Emin, pm_min, Rm_min, Emax, pm_max and Rm_max won't matter. Leave as 'nothing' to use them instead - String
-# folderpath_OWCF - The path to the OWCF folder - String
 # pm_array - The fast-ion pm grid points of your (E,pm,Rm) grid. If set to 'nothing': npm, pm_min and pm_max must be specified - Vector
 # pm_min - The lower boundary for the orbit-grid pm values - Float64
 # pm_max - THe upper boundary for the orbit-grid pm values - Float64
@@ -41,8 +41,8 @@
 # Rm_min - The lower boundary for the orbit-grid Rm values - Float64
 # Rm_max - The upper boundary for the orbit-grid Rm values - Float64
 # timepoint - The timepoint of the tokamak shot for the magnetic equilibrium. Format XX,YYYY where XX are seconds and YYYY are decimals - String
-# thermal_temp_axis - The temperature of the thermal plasma distribution on axis, if filepath_thermal_distr is not specified - Float64
-# thermal_dens_axis - The density of the thermal plasma distribution on axis, if filepath_thermal_distr is not specified - Float64
+# thermal_temp_axis - The temperature of the thermal species distribution on axis, if filepath_thermal_distr is not specified - Float64
+# thermal_dens_axis - The density of the thermal species distribution on axis, if filepath_thermal_distr is not specified - Float64
 # verbose - If true, lots of information will be printed during execution - Bool
 # visualizeProgress - If false, progress bar will not be displayed during computations - Bool
 #
@@ -62,8 +62,15 @@
 using Distributed # Needed, even though distributed might be set to false. This is to export all inputs to all workers right away, if needed.
 batch_job = false
 distributed = true
+folderpath_OWCF = "" # OWCF folder path. Finish with '/'
 numOcores = 4 # When executing script via HPC cluster job, make sure you know how many cores you have requested for your batch job
 
+## Navigate to the OWCF folder and activate the OWCF environment
+cd(folderpath_OWCF)
+using Pkg
+Pkg.activate(".")
+
+## If running as a batch job on a SLURM CPU cluster
 if batch_job && distributed
     # Load the SLURM CPU cores
     using ClusterManagers
@@ -78,15 +85,16 @@ if batch_job && distributed
     @show hosts
 end
 
+## If running locally and multi-threaded
 if !batch_job && distributed # Assume you are executing the script on a local laptop (/computer)
     println("Adding processes... ")
     addprocs(numOcores-(nprocs()-1)) # If you didn't execute this script as an HPC cluster job, then you need to add processors like this. Add all remaining available cores.
-    # The '-(nprocs()-1)' part is simply to ensure no extra processes are added, in case script needs to be restarted on a local computer
+    # The '-(nprocs()-1)' part is simply to ensure to extra processes are added, in case script needs to be restarted on a local computer
 end
 
 ## -----------------------------------------------------------------------------
 @everywhere begin
-    analyticalOWs = false # If true, then no thermal plasma data is needed. The weight functions will be computed solely from the projected velocity of the ion as it crosses the diagnostic sightline.
+    analyticalOWs = false # If true, then no thermal species data is needed. The weight functions will be computed solely from the projected velocity of the ion as it crosses the diagnostic sightline.
     debug = false
     diagnostic_filepath = "" # Currently supported: "TOFOR", "AB" and ""
     diagnostic_name = ""
@@ -100,6 +108,7 @@ end
     filepath_FI_cdf = "" # If filepath_thermal_distr=="96100J01.cdf", then filepath_FI_cdf should be "96100J01_fi_1.cdf" for example
     filepath_thermal_distr = "" # for example "96100J01.cdf", "myOwnThermalDistr.jld2" or ""
     folderpath_o = "../OWCF_results/template/" # Output folder path. Finish with '/'
+    folderpath_OWCF = $folderpath_OWCF # Set path to OWCF folder to same as main process (hence the '$')
     iiimax = 1 # The script will calculate iiimax number of weight functions. They can then be examined in terms of similarity (to determine MC noise influence etc).
     inclPrideRockOrbs = true # If true, then pride rock orbits will be included. Otherwise, minimum(Rm) = magnetic axis.
     include2Dto4D = true # If true, then the 2D orbit weight functions will be enflated to their 4D form
@@ -107,7 +116,6 @@ end
     npm = 0
     nRm = 0
     og_filepath = nothing # nothing, by default. Specify a string with the path to a .jld2 file computed with the calcOrbGrid.jl to use that orbit grid
-    folderpath_OWCF = "" # OWCF folder path. Finish with '/'
     pm_array = nothing # Array can be specified manually. Otherwise, leave as 'nothing'
     pm_min = -1.0
     pm_max = 1.0
@@ -124,8 +132,7 @@ end
     visualizeProgress = false # If false, progress bar will not be displayed for computations
 
     # EXTRA KEYWORD ARGUMENTS BELOW (these will go into the orbit_grid() and get_orbit() functions from GuidingCenterOrbits.jl)
-    extra_kw_args = Dict(:toa => true, :limit_phi => true, :maxiter => 0)
-    # toa is 'try only adaptive'
+    extra_kw_args = Dict(:limit_phi => true, :max_tries => 0)
     # limits the number of toroidal turns for orbits
     # The orbit integration algorithm will try progressively smaller timesteps these number of times
 
@@ -134,7 +141,7 @@ end
 end
 
 ## -----------------------------------------------------------------------------
-# Change directory to OWCF-folder. Activate the environment there to ensure correct package versions
+# Change directory to OWCF-folder on all external processes. Activate the environment there to ensure correct package versions
 # as specified in the Project.toml and Manuscript.toml files. Do this for every 
 # CPU processor (@everywhere)
 @everywhere begin

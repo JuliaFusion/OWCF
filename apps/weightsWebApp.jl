@@ -333,7 +333,7 @@ if showNullOrbs
 end
 
 ## ---------------------------------------------------------------------------------------------
-# Determine fast-ion plasma species from reaction
+# Determine fast-ion species from reaction
 if (@isdefined reaction_full)
     thermal_species, FI_species = checkReaction(reaction_full; verbose=verbose, projVelocity=analyticalOWs)
 elseif (@isdefined reaction)

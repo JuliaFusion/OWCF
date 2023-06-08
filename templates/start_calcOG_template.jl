@@ -7,6 +7,7 @@
 #
 # batch_job - If true, the script assumes that it will be executed via an HPC batch job. The script will act accordingly. - Bool
 # distributed - If true, parallel computing with multiple CPU cores will be used. - Bool
+# folderpath_OWCF - The path to where the OWCF folder is saved on your computer - String
 # numOcores - The number of CPU cores that will be used if distributed is set to true. - Int64
 #
 # filepath_equil - The path to the .eqdsk-file (or .geqdsk/.jld2-file) with the tokamak magnetic equilibrium and geometry - String
@@ -15,7 +16,6 @@
 # timepoint - The timepoint of the tokamak shot for the magnetic equilibrium. Format XX,YYYY where XX are seconds and YYYY are decimals - String
 # tokamak - The tokamak of the magnetic equilibrium. "JET", "ITER" etc. If not applicable, set to "" - String
 # TRANSP_id - The TRANSP id to identify tokamak/equilibrium data from - String
-# folderpath_OWCF - The path to where the OWCF folder is saved on your computer - String
 # verbose - If set to true, the script will talk a lot! - Bool
 # visualzeProgress - If set to true, the progress of the computations will be clearly visualized via a progress bar - Bool
 # E_array - The fast-ion energy (keV) grid points of your (E,pm,Rm) grid. If set to 'nothing': nE, Emin and Emax must be specified - Vector
@@ -45,8 +45,15 @@
 using Distributed # Needed, even though distributed might be set to false. This is to export all inputs to all workers right away, if needed.
 batch_job = false
 distributed = true
+folderpath_OWCF = "" # OWCF folder path. Finish with '/'
 numOcores = 4 # When executing script via HPC cluster job, make sure you know how many cores you have requested for your batch job
 
+## Navigate to the OWCF folder and activate the OWCF environment
+cd(folderpath_OWCF)
+using Pkg
+Pkg.activate(".")
+
+## If running as a batch job on a SLURM CPU cluster
 if batch_job && distributed
     # Load the SLURM CPU cores
     using ClusterManagers
@@ -61,6 +68,7 @@ if batch_job && distributed
     @show hosts
 end
 
+## If running locally and multi-threaded
 if !batch_job && distributed # Assume you are executing the script on a local laptop (/computer)
     println("Adding processes... ")
     addprocs(numOcores-(nprocs()-1)) # If you didn't execute this script as an HPC cluster job, then you need to add processors like this. Add all remaining available cores.
@@ -72,12 +80,12 @@ end
     debug = false # If you want to run the calcOrbGrid.jl script in debug-mode, please set to true. Otherwise, it should always be set to false.
     filepath_equil = "" #for example "equilibrium/JET/g96100/g96100_0-53.0012.eqdsk" Do NOT finish with '/', it's a file.
     folderpath_o = "../OWCF_results/template/" # Output folder path. Finish with '/', it's a folder.
+    folderpath_OWCF = $folderpath_OWCF # Set path to OWCF folder to same as main process (hence the '$')
     FI_species = "D" # D, T, p, 3he etc
     # PLEASE NOTE! Specify alpha particles as '4he' or '4He' (NOT 'he4' or 'He4'). Same goes for helium-3 (specify as '3he', NOT 'he3')
     timepoint = nothing # If unknown, just leave as nothing. The algorithm will try to figure it out automatically.
     tokamak = "" # You could specify the tokamak, if you know it. Please note, it's only for esthetic purposes
     TRANSP_id = "" # You could specify the TRANSP ID, if you know it. Please note, it's only for esthetic purposes
-    folderpath_OWCF = "" # OWCF folder path. Finish with '/'
     verbose = true # If true, then the program will be very talkative!
     visualizeProgress = false # If false, progress bar will not be displayed for computations
 
@@ -99,13 +107,12 @@ end
     inclPrideRockOrbs = true # If true, then pride rock orbits will be included. Otherwise, minimum(Rm) = magnetic axis.
 
     # EXTRA KEYWORD ARGUMENTS BELOW (these will go into the orbit_grid() and get_orbit() functions from GuidingCenterOrbits.jl)
-    extra_kw_args = Dict(:toa => true, :limit_phi => true, :maxiter => 0, :debug => debug)
-    # toa - toa means 'try only adaptive'. That is, if true, the algorithm will try only adaptive integration
+    extra_kw_args = Dict(:limit_phi => true, :max_tries => 0, :debug => debug)
     # limit_phi - Limits the number of toroidal turns for orbits
     # maxiter - The orbit integration algorithm will try progressively smaller timesteps these number of times
 end
 ## -----------------------------------------------------------------------------
-# Change directory to OWCF-folder. Activate the environment there to ensure correct package versions
+# Change directory to OWCF-folder on all external processes. Activate the environment there to ensure correct package versions
 # as specified in the Project.toml and Manuscript.toml files. Do this for every 
 # CPU processor (@everywhere)
 @everywhere begin

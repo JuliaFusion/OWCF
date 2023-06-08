@@ -8,6 +8,7 @@
 #
 # batch_job - If true, the script assumes that it will be executed via an HPC batch job. The script will act accordingly. - Bool
 # distributed - If true, parallel computing with multiple CPU cores will be used. - Bool
+# folderpath_OWCF - The path to the OWCF folder - String
 # numOcores - The number of CPU cores that will be used if distributed is set to true. - Int64
 #
 # include1Dto3D - If true, then the 3D OS FI distribution will be saved as well - Boolean
@@ -20,7 +21,6 @@
 # numOsamples - The number of orbit samples you want. The more, the better the transform. But takes longer to compute! - Int64
 # nbatch - The algorithm will save the progress every nbatch sample. Useful if the sampling gets cancelled unexpectedly - Int64
 # os_equidistant - If true, script assumes equidistant orbit grid. False not supported yet - Boolean
-# folderpath_OWCF - The path to the OWCF folder - String
 # timepoint - The timepoint of the tokamak shot for the magnetic equilibrium. Format XX,YYYY where XX are seconds and YYYY are decimals - String
 # tokamak - The tokamak for which the topological map is created - String
 # TRANSP_id - The TRANSP id to extract tokamak/equilibrium data from - String
@@ -61,8 +61,15 @@
 using Distributed # Needed, even though distributed might be set to false. This is to export all inputs to all workers right away, if needed.
 batch_job = false
 distributed = true
+folderpath_OWCF = "" # OWCF folder path. Finish with '/'
 numOcores = 4 # When executing script via HPC cluster job, make sure you know how many cores you have requested for your batch job
 
+## Navigate to the OWCF folder and activate the OWCF environment
+cd(folderpath_OWCF)
+using Pkg
+Pkg.activate(".")
+
+## If running as a batch job on a SLURM CPU cluster
 if batch_job && distributed
     # Load the SLURM CPU cores
     using ClusterManagers
@@ -77,6 +84,7 @@ if batch_job && distributed
     @show hosts
 end
 
+## If running locally and multi-threaded
 if !batch_job && distributed # Assume you are executing the script on a local laptop (/computer)
     println("Adding processes... ")
     addprocs(numOcores-(nprocs()-1)) # If you didn't execute this script as an HPC cluster job, then you need to add processors like this. Add all remaining available cores.
@@ -92,10 +100,10 @@ end
     filepath_OG = ""
     flip_F_ps_pitch = false
     folderpath_o = "../OWCF_results/template/" # Output folder path. Finish with '/'
+    folderpath_OWCF = $folderpath_OWCF # Set path to OWCF folder to same as main process (hence the '$')
     numOsamples = 12_000_000 # The total number of monte-carlo samples for the fast-ion distribution
     nbatch = 100_000 # The algorithm will save the sampling progress every nbatch sample
     os_equidistant = true # False is not possible yet.
-    folderpath_OWCF = "" # OWCF folder path. Finish with '/'
     timepoint = nothing # If unknown, just leave as nothing. The algorithm will try to figure it out automatically.
     tokamak = "" # If unknown, leave as ""
     TRANSP_id = "" # If unknown, leave as ""
@@ -127,14 +135,13 @@ end
     # /\ Only necessary if interp is set to true
 
     # EXTRA KEYWORD ARGUMENTS BELOW (these will go into the orbit_grid() and get_orbit() functions from GuidingCenterOrbits.jl)
-    extra_kw_args = Dict(:toa => true, :limit_phi => true, :maxiter => 0)
-    # toa is 'try only adaptive'
+    extra_kw_args = Dict(:limit_phi => true, :max_tries => 0)
     # limits the number of toroidal turns for orbits
     # The orbit integration algorithm will try progressively smaller timesteps these number of times
 end
 
 ## -----------------------------------------------------------------------------
-# Change directory to OWCF-folder. Activate the environment there to ensure correct package versions
+# Change directory to OWCF-folder on all external processes. Activate the environment there to ensure correct package versions
 # as specified in the Project.toml and Manuscript.toml files. Do this for every 
 # CPU processor (@everywhere)
 @everywhere begin

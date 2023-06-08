@@ -65,7 +65,7 @@ verbose && println("Loading Julia packages... ")
     using EFIT # For equilibrium purposes
     using JLD2 # For saving variables to file. For back-up.
     using FileIO # -||-
-    using Equilibrium # For plasma equilibrium loading (read_geqdsk)
+    using Equilibrium # For magnetic equilibrium loading (read_geqdsk)
     using GuidingCenterOrbits # For orbit and Jacobian calculations
     using OrbitTomography # That's what this all is 'bout!
     using HDF5
@@ -157,7 +157,7 @@ else
 end
 
 ## ---------------------------------------------------------------------------------------------
-# Determine fast-ion plasma species from reaction
+# Determine fast-ion species from reaction
 if (@isdefined reaction_full)
     thermal_species, FI_species = checkReaction(reaction_full)
     @everywhere FI_species = $FI_species # Transfer variable to all external processes

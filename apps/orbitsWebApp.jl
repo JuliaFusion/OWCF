@@ -89,7 +89,6 @@ else
     extra_kw_args = Dict(:toa => true, :limit_phi => true)
     # toa is 'try only adaptive'
     # limits the number of toroidal turns for orbits
-    # The orbit integration algorithm will try progressively smaller timesteps these number of times
 end
 close(myfile)
 
