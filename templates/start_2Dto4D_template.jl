@@ -5,6 +5,7 @@
 #
 # batch_job - If true, the script assumes that it will be executed via an HPC batch job. The script will act accordingly. - Bool
 # distributed - If true, parallel computing with multiple CPU cores will be used. - Bool
+# folderpath_OWCF - The path to the OWCF folder - String
 # numOcores - The number of CPU cores that will be used if distributed is set to true. - Int64
 #
 # diagnostic_name - The name of the diagnostic of the orbit weights (esthetic) - String
@@ -23,7 +24,6 @@
 #                to the same diagnostic energy bin, no duplicates will be produced (the weight function will be transformed only once).  
 # filepath_equil - The path to the .eqdsk-file/.jld2-file with the tokamak magnetic equilibrium and geometry - String
 # filepath_W - The path to the .jld2 weights file, containing orbit weights to be enflated - String
-# folderpath_OWCF - The path to the OWCF folder - String
 # FI_species - The ion species for which the orbit weights are computed. E.g. "D", "T" etc. See misc/species_func.jl for further info - String
 # timepoint - The timepoint of the tokamak shot for the magnetic equilibrium. Format XX,YYYY where XX are seconds and YYYY are decimals - String
 # tokamak - The tokamak of the orbit weights - String
@@ -36,17 +36,19 @@
 # Script written by Henrik Järleblad. Last maintained 2022-10-11.
 ############################################################################################################
 
-folderpath_OWCF = ""
-cd(folderpath_OWCF)
-using Pkg
-Pkg.activate(".")
-
 ## First you have to set the system specifications
 using Distributed # Needed, even though distributed might be set to false. This is to export all inputs to all workers right away, if needed.
 batch_job = false
 distributed = true
+folderpath_OWCF = "" # OWCF folder path. Finish with '/'
 numOcores = 4 # When executing script via HPC cluster job, make sure you know how many cores you have requested for your batch job
 
+## Navigate to the OWCF folder and activate the OWCF environment
+cd(folderpath_OWCF)
+using Pkg
+Pkg.activate(".")
+
+## If running as a batch job on a SLURM CPU cluster
 if batch_job && distributed
     # Load the SLURM CPU cores
     using ClusterManagers
@@ -61,6 +63,7 @@ if batch_job && distributed
     @show hosts
 end
 
+## If running locally and multi-threaded
 if !batch_job && distributed # Assume you are executing the script on a local laptop (/computer)
     println("Adding processes... ")
     addprocs(numOcores-(nprocs()-1)) # If you didn't execute this script as an HPC cluster job, then you need to add processors like this. Add all remaining available cores.
@@ -73,8 +76,8 @@ end
     diagnostic_name = "" # TOFOR, AB etc
     Ed_energies = nothing # Specific diagnostic energy bin levels to try to extract. Can be type Nothing, Int64 or Array{Float64,1} (see script description above)
     filepath_equil = "" # for example, g96100_0-53.0012.eqdsk
+    folderpath_OWCF = $folderpath_OWCF # Set path to OWCF folder to same as main process (hence the '$')
     filepath_W = ""
-    folderpath_OWCF = ""
     FI_species = "" # D, T, he3 etc
     timepoint = nothing # If unknown, just leave as nothing. The algorithm will try to figure it out automatically.
     tokamak = "" # JET, DIIID, ITER etc. Can be left blank
@@ -83,14 +86,13 @@ end
     verbose = false
 
     # EXTRA KEYWORD ARGUMENTS BELOW (these will go into the orbit_grid() and get_orbit() functions from GuidingCenterOrbits.jl)
-    extra_kw_args = Dict(:toa => true, :limit_phi => true, :maxiter => 0)
-    # toa is 'try only adaptive'
+    extra_kw_args = Dict(:limit_phi => true, :max_tries => 0)
     # limits the number of toroidal turns for orbits
     # The orbit integration algorithm will try progressively smaller timesteps these number of times
 end
 
 ## -----------------------------------------------------------------------------
-# Change directory to OWCF-folder. Activate the environment there to ensure correct package versions
+# Change directory to OWCF-folder on all external processes. Activate the environment there to ensure correct package versions
 # as specified in the Project.toml and Manuscript.toml files. Do this for every 
 # CPU processor (@everywhere)
 @everywhere begin
