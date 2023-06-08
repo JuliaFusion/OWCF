@@ -16,7 +16,7 @@
 # The resonance between mode and fast ion is then plotted in (E,pm,Rm) (or, via the press of a button in the app, in (E,μ,Pϕ;σ))
 # and is visualized as a heatmap where the values (A) of the figure colorbar are computed according to the equation
 #
-# A = - log10(|ω - n ω_ϕ + m ω_θ|)
+# A = - log10(|ω - n ω_ϕ - m ω_θ|)
 #
 # where larger values of A thus corresponds to greater resonance, and smaller values of A corresponds to less resonance.
 #
@@ -66,13 +66,13 @@
 #
 # n = 1
 # m = 2
-# ω = 150_000 # kHz
+# ω = 150 # kHz
 # E = 150 keV # Example energy 'slice' of 150 keV
 # iE = argmin(abs.(E_array - E)) # Find the closest value to E in E_array
 # npm = length(pm_array)
 # nRm = length(Rm_array)
 # 
-# resonance = -log10.((2*pi/ω) .*ones(size(npm,nRm)) - n .*torTransTimes[iE,:,:] - m .*polTransTimes[iE,:,:])
+# resonance = -log10.((2*pi/(ω*1000)) .*ones(size(npm,nRm)) - n .*torTransTimes[iE,:,:] - m .*polTransTimes[iE,:,:])
 #
 # Plots.heatmap(Rm_array,pm_array,resonance,legend=false,xlabel="Rm [m]", ylabel="pm", title="E: $(round(E,digits=3)) keV", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]))
 
@@ -401,15 +401,15 @@ function app(req) # Start the Interact.jl app
         if (phase_space==:OS) || !enable_COM
             npm = length(pm_array)
             nRm = length(Rm_array)
-            resonance = -log10.(abs.((2*pi/ω) .*ones(npm,nRm) - n .*torTransTimes[Eci,:,:] - m .*polTransTimes[Eci,:,:]))
+            resonance = -log10.(abs.((2*pi/(ω*1000)) .*ones(npm,nRm) - n .*torTransTimes[Eci,:,:] - m .*polTransTimes[Eci,:,:]))
             plt_res = Plots.heatmap(Rm_array,pm_array,resonance,xlabel="Rm [m]", ylabel="pm", title="E: $(round(E,digits=3)) keV", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), ylims=extrema(pm_array), xlims=extrema(Rm_array))
         else
             nμ = size(μ_matrix_tor,2) # tor or pol should not matter
             nPϕ = size(Pϕ_matrix_pol,2) # tor or pol should not matter
             if pm<0.0
-                resonance = -log10.abs(((2*pi/ω) .*ones(nμ,nPϕ) - n .*torTransTimes_COM[Int64(Eci),:,:,1] - m .*polTransTimes_COM[Int64(Eci),:,:,1]))
+                resonance = -log10.abs(((2*pi/(ω*1000)) .*ones(nμ,nPϕ) - n .*torTransTimes_COM[Int64(Eci),:,:,1] - m .*polTransTimes_COM[Int64(Eci),:,:,1]))
             else
-                resonance = -log10.abs(((2*pi/ω) .*ones(nμ,nPϕ) - n .*torTransTimes_COM[Int64(Eci),:,:,2] - m .*polTransTimes_COM[Int64(Eci),:,:,2]))
+                resonance = -log10.abs(((2*pi/(ω*1000)) .*ones(nμ,nPϕ) - n .*torTransTimes_COM[Int64(Eci),:,:,2] - m .*polTransTimes_COM[Int64(Eci),:,:,2]))
             end
 
             plt_res = Plots.heatmap(Pϕ_matrix_tor[Int64(Eci),:],μ_matrix_tor[Int64(Eci),:],resonance,legend=false,xlabel="Pϕ", ylabel="μ", title="E: $(round(E,digits=3)) keV", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), ylims=extrema(μ_matrix_tor[Int64(Eci),:]), xlims=extrema(Pϕ_matrix_tor[Int64(Eci),:]))

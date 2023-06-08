@@ -354,7 +354,7 @@ end
 ################################################################################################
 
 """
-    plotSignalOrbSplits(S_WF, Ed_WF, WFO_E, WFO_pm, WFO_Rm)
+    plotSignalOrbSplits(S_WF, Ed_WF, WFO_E, WFO_pm, WFO_Rm,E_aray,pm_array,Rm_array)
     plotSignalOrbSplits(-||-; normalize=false, verbose=false, save_plot=false, i0=1, iend=0, xlabel="Deposited energy [keV]", ylabel = (normalize ? "Normalized signal [a.u.]" : "Counts [(keV*s)^-1]"), legend_margin = 39, title = (normalize ? "Orbit-split of diagnostic signal" : "Orbit-split of diagnostic signal (normalized)"), WF_marker_color = :green3)
 
 Take the ps2WF.jl results data and plot an orbit split of the synthetic diagnostic signal. 
@@ -473,12 +473,12 @@ function plotSignalOrbSplits(ps2WFoutputFilepath::String; verbose = false, scena
 
     if scenario == :all
         plotSafetyPlot(S_WF, Ed_WF, WFO_E, WFO_pm, WFO_Rm, E_array, pm_array, Rm_array; verbose = verbose, save_plot=save_plot)
-        plotSignalOrbSplits(S_WF, Ed_WF, WFO_E, WFO_pm, WFO_Rm; verbose=verbose, save_plot=save_plot, kwargs... ) # Absolute values. Corresponding to Figure 10 in H. Järleblad et al, NF, 2022
-        plotSignalOrbSplits(S_WF, Ed_WF, WFO_E, WFO_pm, WFO_Rm; verbose=verbose, save_plot=save_plot, normalize=true, kwargs... ) # Normalized values. Corresponding to Figure 11 in H. Järleblad et al, NF, 2022
+        plotSignalOrbSplits(S_WF, Ed_WF, WFO_E, WFO_pm, WFO_Rm, E_array, pm_array, Rm_array; verbose=verbose, save_plot=save_plot, kwargs... ) # Absolute values. Corresponding to Figure 10 in H. Järleblad et al, NF, 2022
+        plotSignalOrbSplits(S_WF, Ed_WF, WFO_E, WFO_pm, WFO_Rm, E_array, pm_array, Rm_array; verbose=verbose, save_plot=save_plot, normalize=true, kwargs... ) # Normalized values. Corresponding to Figure 11 in H. Järleblad et al, NF, 2022
     elseif scenario == :abs
-        plotSignalOrbSplits(S_WF, Ed_WF, WFO_E, WFO_pm, WFO_Rm; verbose=verbose, save_plot=save_plot, kwargs... ) # Absolute values. Corresponding to Figure 10 in H. Järleblad et al, NF, 2022
+        plotSignalOrbSplits(S_WF, Ed_WF, WFO_E, WFO_pm, WFO_Rm, E_array, pm_array, Rm_array; verbose=verbose, save_plot=save_plot, kwargs... ) # Absolute values. Corresponding to Figure 10 in H. Järleblad et al, NF, 2022
     elseif scenario == :norm
-        plotSignalOrbSplits(S_WF, Ed_WF, WFO_E, WFO_pm, WFO_Rm; verbose=verbose, save_plot=save_plot, normalize=true, kwargs... ) # Normalized values. Corresponding to Figure 11 in H. Järleblad et al, NF, 2022
+        plotSignalOrbSplits(S_WF, Ed_WF, WFO_E, WFO_pm, WFO_Rm, E_array, pm_array, Rm_array; verbose=verbose, save_plot=save_plot, normalize=true, kwargs... ) # Normalized values. Corresponding to Figure 11 in H. Järleblad et al, NF, 2022
     elseif scenario == :safety
         plotSafetyPlot(S_WF, Ed_WF, WFO_E, WFO_pm, WFO_Rm, E_array, pm_array, Rm_array; verbose = verbose, save_plot=save_plot)
     else
