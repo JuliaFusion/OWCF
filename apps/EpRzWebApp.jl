@@ -11,9 +11,10 @@
 
 #### Inputs (units given when defined in the script):
 # folderpath_OWCF - The path to the OWCF folder on your computer. Needed for correct loading - String
-# filepath_distr - The path to the .h5/.jld2-file containing the (E,p,R,z) fast-ion distribution - String
+# filepath_distr - (Optional) The path to a .h5/.jld2-file containing the (E,p,R,z) fast-ion distribution - String
 # filepath_equil - The path to the .eqdsk-file (or .jld2-file) with the tokamak magnetic equilibrium and geometry - String
 # filepath_tm - The path to the .jld2-file containing the topological map (and more) - String
+# filepath_tb - (Optional) The path to a .jld2-file containing topological boundaries in (E,pm,Rm) - String
 # FI_species - The fast-ion species, e.g. "D", "T", "alpha", "3he" etc - String
 # verbose - If set to true, the app will talk a lot! - Bool
 # port - An integer. It will correspond to the internet port of your computer through which the app is run - Int64
@@ -24,7 +25,7 @@
 #### Saved files
 # -
 
-# Script written by Henrik Järleblad. Last maintained 2022-08-25.
+# Script written by Henrik Järleblad and Andrea Valentini. Last maintained 2022-08-25.
 #########################################################################################
 
 ## --------------------------------------------------------------------------
@@ -46,6 +47,8 @@ using JLD2
 filepath_distr = ""
 filepath_equil = "" 
 filepath_tm = "" 
+filepath_tb = "" # Energy (E) grid points in (E,pm,Rm) must match E grid points of topoMap in (E,p,R,z)
+isfile(filepath_tb) && (nR_for_mu=500) # If an (E,pm,Rm) topoBounds file has been specified, specify how many R grid points should be used to resolve the magnetic moment across the plasma
 FI_species = "" # Example deuterium: "D"
 verbose = true
 port = 5432
@@ -204,6 +207,28 @@ end
 close(myfile)
 
 ## ------
+# If provided, read the .jld2-file for displaying the topological boundaries in (E,pm,Rm)
+topobo = false
+if isfile(filepath_tb)
+    verbose && println("Loading (E,pm,Rm) topological boundaries... ")
+    myfile = jldopen(filepath_tb,false,false,false,IOStream)
+    topoBounds = myfile["topoBounds"]
+    E_array_tb = myfile["E_array"]
+    pm_array = myfile["pm_array"]
+    Rm_array = myfile["Rm_array"]
+    close(myfile)
+
+    if !(E_array==E_array_tb)
+        error("Energy (E) grid points of (E,pm,Rm) topological boundaries did not match E grid points of topological map in (E,p,R,z). Please correct and re-try!")
+    end
+
+    topobo = true
+
+    ### WRITE CODE TO PRE-COMPUTE R_grid, B_array, ... etc FOR mu_func(). 
+    ### USE INPUT ARGUMENT nR_for_mu TO DETERMINE LENGTH OF R_grid, B_array, ... etc
+end
+
+## ------
 # Check the topological map for incomplete orbits
 # If any are found, attempt to re-compute them
 verbose && print("Checking topological map for incomplete orbits... ")
@@ -233,7 +258,7 @@ else
     verbose && println("Found none!")
 end
 
-if !(filepath_distr=="")
+if isfile(filepath_distr)
     verbose && println("Loading fast-ion distribution... ")
     # Determine fast-ion distribution file type
     fileext_distr = (split(filepath_distr,"."))[end] # Assume last part after final '.' is the file extension
@@ -321,7 +346,7 @@ verbose && println("--- You can access the EpRzWebApp via an internet web browse
 verbose && println("--- When 'Task (runnable)...' has appeared, please visit the website localhost:$(port) ---")
 verbose && println("--- Remember: It might take a minute or two to load the webpage. Please be patient. ---")
 function app(req) # Here is where the app starts!
-    @manipulate for tokamak_wall = Dict("on" => true, "off" => false), E=E_array, p=p_array, R=R_array, z=z_array, study = Dict("Valid orbits" => :orbs, "Fast-ion distribution" => :FI, "Poloidal times" => :tpol, "Toroidal times" => :ttor, "Jacobian" => :jac), save_plots = Dict("on" => true, "off" => false)
+    @manipulate for tokamak_wall = Dict("on" => true, "off" => false), E=E_array, p=p_array, R=R_array, z=z_array, study = Dict("Valid orbits" => :orbs, "Fast-ion distribution" => :FI, "Poloidal times" => :tpol, "Toroidal times" => :ttor, "(E,pm,Rm) at (R,z)" => :OS), save_plots = Dict("on" => true, "off" => false)
         
         my_gcp = getGCP(FI_species)
 
@@ -436,26 +461,18 @@ function app(req) # Here is where the app starts!
             end
             ms = save_plots ? 2.6 : 1.8
             #plt_weights = Plots.scatter!(E_scatvals_tb,p_scatvals_tb,markersize=ms,label="",markercolor=:black,leg=false)
-        elseif study==:jac && jac
-            topoBounds = extractTopoBounds(topoMap[:,:,Rci,zci])
-            ones_carinds = findall(x-> x==1.0,topoBounds)
-            E_scatvals_tb = zeros(length(ones_carinds))
-            p_scatvals_tb = zeros(length(ones_carinds))
+        elseif study==:OS && topobo
+            ones_carinds = findall(x-> x==1.0,topoBounds[Eci,:,:])
+            pm_scatvals_tb = zeros(length(ones_carinds))
+            Rm_scatvals_tb = zeros(length(ones_carinds))
             for (ind,carinds) in enumerate(ones_carinds)
-                E_scatvals_tb[ind] = E_array[carinds[1]]
-                p_scatvals_tb[ind] = p_array[carinds[2]]
+                pm_scatvals_tb[ind] = pm_array[carinds[1]]
+                Rm_scatvals_tb[ind] = Rm_array[carinds[2]]
             end
-            jac_Rz = jacobian[:,:,Rci,zci]
-            nz_coords = findall(x-> x>0.0,jac_Rz) # Find the 2D matrix coordinates of all non-zero elements
-            my_coords = length(nz_coords) > 1 ? nz_coords : CartesianIndices(size(jac_Rz)) # Are there actually more than one non-zero element? If not, use all elements
-            min_pol, max_pol = extrema(jac_Rz[my_coords]) # Find minimum and maximum values
-            min_OOM, max_OOM = (floor(log10(min_pol)),ceil(log10(max_pol))) # The orders of magnitude of the minimum and maximum values
-            if !((max_OOM-min_OOM)==0.0) && (length(nz_coords) > 1) # All values NOT within same order of magnitude AND more than one non-zero element. Use logarithmic colorbar
-                plt_topo = Plots.heatmap(E_array,p_array, jac_Rz', title="Jacobian (x,y,z,vx,vy,vz)->(E,p,R,z) at (R,z) \n J($(round(E,sigdigits=3)),$(round(p,sigdigits=2)),$(round(R,sigdigits=2)),$(round(z,sigdigits=2)))=$(round(jac_Rz[Rci,zci],sigdigits=4))", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), xlabel="E [keV]", ylabel="p [-]", colorbar=true, colorbar_scale=:log10, clims = (10^min_OOM, 10^max_OOM),top_margin=3Plots.mm) # Get nice powers-of-ten limits for the colorbar
-            else # Else, use linear colorbar 
-                plt_topo = Plots.heatmap(E_array,p_array, jac_Rz', title="Jacobian (x,y,z,vx,vy,vz)->(E,p,R,z) at (R,z) \n J($(round(E,sigdigits=3)),$(round(p,sigdigits=2)),$(round(R,sigdigits=2)),$(round(z,sigdigits=2)))=$(round(jac_Rz[Rci,zci],sigdigits=4))", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), xlabel="E [keV]", ylabel="p [-]", colorbar=true,top_margin=3Plots.mm)
-            end
-            ms = save_plots ? 2.6 : 1.8
+
+            array_o_hcTopo_tuples = map(i-> (HamiltonianCoordinate(M,my_gcp(E,p_array[i],R,z)), topoMap[Eci,i,Rci,zci]), 1:length(p_array))
+            array_o_EPRcTopo_tuples = map(x-> (EPRCoordinate4(; R_grid=R_grid, B_array=B_on_R_grid, ...),x[2]), array_o_hcTopo_tuples)
+
         else
             topoMap_raw = topoMap[:,:,Rci,zci] # might not include all integers between 1 and 9 (needed for correct Set1_9 heatmap coloring)
             topoMap_ext = ones(size(topoMap_raw,1),size(topoMap_raw,2)+1) # We ensure 1.0 in data by using ones() function. Add one extra column
