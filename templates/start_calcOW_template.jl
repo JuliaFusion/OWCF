@@ -16,6 +16,22 @@
 # debug - If true, then the script will run in debug-mode. Should almost always be set to false - Bool
 # diagnostic_filepath - The path to the LINE21 data diagnostic line-of-sight file. Leave as "" for assumed sperical emission - String
 # diagnostic_name - The name of the diagnostic. Purely for esthetic purposes - String
+# diagnostic_response_filepath - The path to three .txt-files or one .jld2-file, containing the necessary data for representing 
+#                                the instrumental response of the diagnostic. If paths to three .txt-files are specified, they should 
+#                                be specified together in a vector of strings. That is,
+#                                
+#                                diagnostic_response_filepath = ["/path/to/reponse/matrix.txt","/path/to/particle/inputs.txt","/path/to/diagnostic/outputs.txt"]
+#
+#                                The first string is the filepath to the response matrix. The size of the matrix is ni x no, where ni is the number of diagnostic input 
+#                                grid points and no is the number of output (actually being measured) grid points. The second string is the filepath to the input grid 
+#                                points (vector). The third string is the filepath to the output grid points (vector). So, for example, for a proton recoil diagnostic, 
+#                                the input could be incoming neutron energies and the output could be proton impact positions. If, instead, the path to one .jld2 file 
+#                                is specified, it should be specified as 
+#
+#                                diagnostic_response_filepath = "/path/to/diagnostic/response/data.jld2"
+#
+#                                The keys of the .jld2-file should then be "response_matrix", "input" and "output". Input data should be a vector of length ni, output 
+#                                data should be a vector of length no and response_matrix should be a matrix of size ni x no.
 # Ed_min - The lower boundary for the diagnostic energy grid (measurement grid) - Float64
 # Ed_max - The upper boundary for the diagnostic energy grid (measurement grid) - Float64
 # Ed_diff - The width of the diagnostic energy bins (PLEASE NOTE! THIS WILL INDIRECTLY DEFINE THE NUMBER OF DIAGNOSTIC ENERGY GRID POINTS.) - Float64
@@ -98,6 +114,7 @@ end
     debug = false
     diagnostic_filepath = "" # Currently supported: "TOFOR", "AB" and ""
     diagnostic_name = ""
+    diagnostic_response_filepath = "" # Should be the filepath to three .txt-files or one .jld2-file. Otherwise, leave as ""
     Ed_min = 0000.0 # keV (or m/s if analyticalOWs===true)
     Ed_max = 0000.0 # keV (or m/s if analyticalOWs===true)
     Ed_diff = 00.0 # keV (or m/s if analyticalOWs===true)
