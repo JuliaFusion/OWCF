@@ -309,6 +309,11 @@ if !(diagnostic_filepath=="")
 else
     println("diagnostic_filepath not specified. Spherical emission will be assumed.")
 end
+if !(diagnostic_response_filepath=="")
+    println("Diagnostic response filepath specified: "*diagnostic_response_filepath)
+else
+    println("diagnostic_response_filepath not specified. No instrumental response included.")
+end
 if !(filepath_thermal_distr=="")
     println("Thermal distribution file specified: "*filepath_thermal_distr)
 elseif (filepath_thermal_distr=="") && !analyticalOWs
@@ -471,6 +476,12 @@ verbose && println("Setting all Python variables and structures on all distribut
     """
 end
 
+## ---------------------------------------------------------------------------------------------
+# If available, load instrumental response and process it accordingly
+### CODE HERE
+### CODE HERE
+### CODE HERE
+## ---------------------------------------------------------------------------------------------
 # If a .jld2 file has been specified for the thermal species distribution, we will need interpolation objects
 if fileext_thermal=="jld2"
     verbose && println("Creating thermal temperature and density interpolations objects... ")
@@ -572,6 +583,13 @@ for iii=1:iiimax
             end
         end
     end
+
+    ### CODE THE INSTRUMENTAL RESPONSE MAPPING HERE
+    ### CODE THE INSTRUMENTAL RESPONSE MAPPING HERE
+    ### CODE THE INSTRUMENTAL RESPONSE MAPPING HERE
+    ### W_withReponse = (response_matrix)' * Wtot_i_itp 
+    ### CHECK G:/My Drive/DTU/dissemination/papers/NF_2023/codes/response_transf_weights_KM14.jl
+    ### CHECK G:/My Drive/DTU/dissemination/papers/NF_2023/codes/response_transf_ps2WF_MPRu.jl
 
     if !debug
         verbose && println("Saving orbit weight function matrix in its 2D form... ")

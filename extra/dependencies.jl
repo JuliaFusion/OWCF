@@ -184,6 +184,17 @@ function orbit_grid(M::AbstractEquilibrium, visualizeProgress::Bool, eo::Abstrac
 end
 
 """
+    mu_func()
+    mu_func()
+
+Bla bla bla
+"""
+function mu_func(energy::T, B::T, Pϕ::T, Ψ::T, RBϕ::T;m::Float64=GuidingCenterOrbits.H2_amu*GuidingCenterOrbits.mass_u, q::Float64=1*GuidingCenterOrbits.e0) where {T}
+    res = energy/B - (B/(2*m)) * ((Pϕ-q*Ψ)/RBϕ)^2
+    return (res > zero(energy)) ? res : zero(energy)
+end
+
+"""
     get_orbel_volume(myOrbitGrid, os_equidistant)
 
 Get the orbit element volume of this specific orbit-grid.
@@ -778,6 +789,16 @@ function ps2os_streamlined(filepath_distr::AbstractString, filepath_equil::Abstr
     f, energy, pitch, R, z = h5to4D(filepath_distr, verbose = verbose) # Load fast-ion distribution
 
     return ps2os_streamlined(f,energy,pitch,R,z,filepath_equil, og; numOsamples=numOsamples, verbose=verbose, kwargs...)
+end
+
+"""
+    ps2os_point()
+    ps2os_point()
+
+Bla bla bla
+"""
+function ps2os_point(M::AbstractEquilibrium, E::T, p::T, R::T, z::T, ) where {T}
+    
 end
 
 """
@@ -1935,13 +1956,17 @@ end
 
 
 """
-    muPphi_2_pmRm_FuncGen()
-    muPphi_2_pmRm_FuncGen()
+    muPphi_2_pmRmNorm_funcGen()
+    muPphi_2_pmRmNorm_funcGen()
 
 Bla bla bla
 """
-function muPphi_2_pmRm_FuncGen(M::AbstractEquilibrium, E::Float64, FI_species::String; amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species), sigma=1, wall=nothing, nR=500, verbose=false, extra_kw_args=Dict(:max_tries => 0))
-    return x -> EPRCoordinate4(M, HamiltonianCoordinate(E, x[1], x[2]; amu=amu, q=amu); sigma=sigma, wall=wall, nR=nR, verbose=verbose, extra_kw_args=extra_kw_args)
+function muPphi_2_pmRmNorm_funcGen(M::AbstractEquilibrium, E::Float64, FI_species::String; amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species), sigma=1, wall=nothing, nR=500, verbose=false, extra_kw_args=Dict(:max_tries => 0))
+    f = function func(x)
+        myEPRc = EPRCoordinate4(M, HamiltonianCoordinate(E, x[1], x[2]; amu=amu, q=q); sigma=sigma, wall=wall, nR=nR, verbose=verbose, extra_kw_args=extra_kw_args)
+        return sqrt((myEPRc.pitch)^2 + (myEPRc.r)^2)
+    end
+    return f
 end
 
 """
@@ -2020,23 +2045,38 @@ function muPphiSigma_2_pmRm(M::AbstractEquilibrium, data::Array{Float64,3}, E::U
 
     # Perform a very simple optimization scheme, to attempt to correct bad stagnation (and counter-stagnation) orbits
     verbose && println("Performing optimization scheme to attempt to improve mapping of (counter)stagnation-orbit coordinates... ")
-    # MAYBE I SHOULD DEFINE TWO FUNCTIONS ALREADY UP HERE. TO OPTIMIZE EFFICIENCY. ONE FUNCTION FOR SIGMA=+1 AND ONE FOR SIGMA=-1
+    com2OSnorm_negSigma_func = muPphi_2_pmRmNorm_funcGen(M, E, FI_species; amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species), sigma=-1, wall=wall, nR=nR, verbose=vverbose, extra_kw_args=extra_kw_args) # Will be a function of mu and Pphi, i.e. com2OSnorm_negSigma_func = com2OSnorm_negSigma_func(mu,Pphi)
+    com2OSnorm_posSigma_func = muPphi_2_pmRmNorm_funcGen(M, E, FI_species; amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species), sigma=1, wall=wall, nR=nR, verbose=vverbose, extra_kw_args=extra_kw_args) # Will be a function of mu and Pphi, i.e. com2OSnorm_posSigma_func = com2OSnorm_posSigma_func(mu,Pphi)
     stag_inds = findall(x-> x==1 || x==8, topoMap_values)
     dmu_array = diff(mu_array)
     dPphi_array = diff(Pphi_array)
     for si in stag_inds
         imu, iPphi, isigma = Tuple(subs[si])
-        dmu_1 = (imu==1) ? dmu_array[imu] : dmu_array[imu-1] # Compatible with non-equidistant grids
-        dmu_2 = (imu==length(mu_array)) ? dmu_array[imu-1] : dmu_array[imu] # Compatible with non-equidistant grids
-        dPphi_1 = (iPphi==1) ? dPphi_array[iPphi] : dPphi_array[iPphi-1] # Compatible with non-equidistant grids
-        dPphi_2 = (iPphi==length(Pphi_array)) ? dPphi_array[iPphi-1] : dPphi_array[iPphi] # Compatible with non-equidistant grids
-        com2OSnorm = muPphi_2_pmRm_FuncGen(M, E, FI_species; amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species), sigma=sigma_array[isigma], wall=wall, nR=nR, verbose=verbose, extra_kw_args=extra_kw_args) # Will be a function of mu and Pphi, i.e. com2OS_mini = com2OS_mini(mu,Pphi)
-        res = Optim.optimize(-com2OSnorm, [mu_array[imu],Pphi_array[iPphi]], [], [], Fminbox())
+        dmu_l = (imu==1) ? dmu_array[imu] : dmu_array[imu-1] # Compatible with non-equidistant grids
+        dmu_u = (imu==length(mu_array)) ? dmu_array[imu-1] : dmu_array[imu] # Compatible with non-equidistant grids
+        dPphi_l = (iPphi==1) ? dPphi_array[iPphi] : dPphi_array[iPphi-1] # Compatible with non-equidistant grids
+        dPphi_u = (iPphi==length(Pphi_array)) ? dPphi_array[iPphi-1] : dPphi_array[iPphi] # Compatible with non-equidistant grids
+        mu = mu_array[imu]
+        Pphi = Pphi_array[iPphi]
+        mu_l = mu - dmu_l/2 # mu_l means lower boundary for mu grid point
+        mu_u = mu + dmu_u/2 # mu_u means upper boundary for mu grid point
+        Pphi_l = Pphi - dPphi_l/2 # Similar to mu_l
+        Pphi_u = Pphi + dPphi_u/2 # Similar to mu_u 
+        com2OSnorm_func = (isigma==1) ? com2OSnorm_negSigma_func : com2OSnorm_posSigma_func # Is sigma=-1 (equivalent to isigma=1, since Julia starts indexing at 1 and the first element of sigma_array is -1) ? Then use the negative function. Otherwise, use the positive function.
+        res = Optim.optimize(-com2OSnorm_func, [mu,Pphi], [mu_l,Pphi_l], [mu_u,Pphi_u], Fminbox())
+        X = Optim.minimizer(res)
+
+        mu_opt = X[1]
+        Pphi_opt = X[2]
+        myHc = HamiltonianCoordinate(E, mu_opt, Pphi_opt; amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species))
+        myEPRc = EPRCoordinate4(M, myHc; sigma=sigma_array[isigma], wall=wall, nR=nR, verbose=vverbose, extra_kw_args=extra_kw_args)
+        pm_values[si] = myEPRc.pitch # Update pm-coordinate with optimal pm-value. That is, the pm-value that minimizes sqrt(pm^2 + Rm^2) within the (mu,Pphi)-pixel with boundaries [mu_l,Pphi_l] and [mu_u,Pphi_u]
+        Rm_values[si] = myEPRc.r # Update Rm-coordinate with optimal Rm-value. That is, the Rm-value that minimizes sqrt(pm^2 + Rm^2) within the (mu,Pphi)-pixel with boundaries [mu_l,Pphi_l] and [mu_u,Pphi_u]
     end
     
     if debug
         if !needJac
-            return subs, pm_values, Rm_values, data_values, [], []
+            return subs, pm_values, Rm_values, topoMap_values, data_values, [], []
         end
         detJac_values = zeros(length(pm_values))
         data_values_Jac = zeros(length(pm_values))
@@ -2046,7 +2086,7 @@ function muPphiSigma_2_pmRm(M::AbstractEquilibrium, data::Array{Float64,3}, E::U
             detJac_values[i] = detJac
             data_values_Jac[i] = (1/detJac) * data_values[i]
         end
-        return subs, pm_values, Rm_values, data_values, detJac_values, data_values_Jac
+        return subs, pm_values, Rm_values, topoMap_values, data_values, detJac_values, data_values_Jac
     end
 
     if needJac
