@@ -122,6 +122,7 @@ fileext_FI_cdf = (split(filepath_FI_cdf,"."))[end] # Assume last part after fina
 fileext_FI_cdf = lowercase(fileext_FI_cdf)
 @everywhere fileext_thermal = $fileext_thermal
 @everywhere fileext_FI_cdf = $fileext_FI_cdf
+
 ## ---------------------------------------------------------------------------------------------
 # Error checks
 if (nprocs()>1) && !distributed

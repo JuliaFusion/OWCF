@@ -66,9 +66,9 @@ function plot_fE_comp(F_os_3D::Array{Float64,3}, E_array::AbstractArray, pm_arra
     fileext_distr = (split(filepath_distr,"."))[end] # Assume last part after final '.' is the file extension
     if (lowercase(fileext_distr) == "h5") || (lowercase(fileext_distr) == "hdf5")
         verbose && println("Loading .h5 file and extracting f, E, p, R and z... ")
-        F_ps, energy, pitch, R, z = h5to4D(filepath_distr; verbose = verbose) # Load the (E,p,R,z) fast-ion distribution. For energy comparison.
+        F_EpRz, energy, pitch, R, z = h5to4D(filepath_distr; verbose = verbose) # Load the (E,p,R,z) fast-ion distribution. For energy comparison.
     elseif lowercase(fileext_distr) == "jld2"
-        F_ps, energy, pitch, R, z = JLD2to4D(filepath_distr; verbose = verbose) # Load the (E,p,R,z) fast-ion distribution. For energy comparison.
+        F_EpRz, energy, pitch, R, z = JLD2to4D(filepath_distr; verbose = verbose) # Load the (E,p,R,z) fast-ion distribution. For energy comparison.
     else
         error("Unknown file extension for fast-ion distribution file. Please input a .h5 or .jld2 file.")
     end
@@ -77,7 +77,7 @@ function plot_fE_comp(F_os_3D::Array{Float64,3}, E_array::AbstractArray, pm_arra
     dE4D, dp4D, dR4D, dZ4D = get4DDiffs(energy, pitch, R, z)
 
     verbose && println("Calculting fE_ps... ")
-    fr = F_ps .* reshape(R,(1,1,length(R),1)) # Multiply by R in the R-dimension, to account for toroidal symmetry
+    fr = F_EpRz .* reshape(R,(1,1,length(R),1)) # Multiply by R in the R-dimension, to account for toroidal symmetry
     fE_ps = dropdims(sum(fr.*dp4D.*dR4D.*dZ4D, dims=(2,3,4))*(2*pi), dims=(2,3,4)) # Integrate out all dimensions but the energy.
 
     verbose && println("Calculting fE_os... ")
@@ -233,17 +233,17 @@ function plot_fRm(F_os::AbstractArray, og::OrbitGrid; verbose=false, os_equidist
 end
 
 """
-    plot_F_Ep(F_ps, energy, pitch, R, z)
+    plot_F_Ep(F_EpRz, energy, pitch, R, z)
     plot_F_Ep(-||-, verbose=false, xaxis=extrema(energy), kwargs... )
 
-Take the F_ps (E,p,R,z) fast-ion distribution, integrate over (R,z) and plot the E,p-dependance, i.e. f(E,p).
+Take the F_EpRz (E,p,R,z) fast-ion distribution, integrate over (R,z) and plot the E,p-dependance, i.e. f(E,p).
 """
-function plot_F_Ep(F_ps::Array{Float64,4}, energy::Array{Float64,1}, pitch::Array{Float64,1}, R::Array{Float64,1}, z::Array{Float64,1}; verbose=false, xaxis=extrema(energy), kwargs...)
+function plot_F_Ep(F_EpRz::Array{Float64,4}, energy::Array{Float64,1}, pitch::Array{Float64,1}, R::Array{Float64,1}, z::Array{Float64,1}; verbose=false, xaxis=extrema(energy), kwargs...)
 
     verbose && println("Calculating the 4D differences... ")
     dE4D, dp4D, dR4D, dZ4D = get4DDiffs(energy, pitch, R, z)
 
-    F_R = F_ps .* reshape(R,(1,1,length(R),1)) # Multiply by R in the R-dimension, to account for toroidal symmetry
+    F_R = F_EpRz .* reshape(R,(1,1,length(R),1)) # Multiply by R in the R-dimension, to account for toroidal symmetry
     F_Ep = dropdims(sum(F_R.*dR4D.*dZ4D, dims=(3,4))*(2*pi), dims=(3,4)) # Integrate out R,z
 
     Plots.heatmap(energy,pitch, fEp', xlabel="Energy [keV]", ylabel="Pitch [-]", xaxis=xaxis, fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), kwargs... )
@@ -253,36 +253,36 @@ end
     plot_fEp(filepath_distr)
     plot_fEp(filepath_distr,verbose=true, kwargs... )
 
-Load the F_ps (E,p,R,z) fast-ion distribution from file (.h5/.hdf5/.jld2), integrate over (R,z) and plot the E,p-dependance, i.e. f(E,p).
+Load the F_EpRz (E,p,R,z) fast-ion distribution from file (.h5/.hdf5/.jld2), integrate over (R,z) and plot the E,p-dependance, i.e. f(E,p).
 """
 function plot_F_Ep(filepath_distr::String;verbose=false, kwargs...)
     # Determine filepath_distr file extension
     fileext_distr = (split(filepath_distr,"."))[end] # Assume last part after final '.' is the file extension
     if (lowercase(fileext_distr) == "h5") || (lowercase(fileext_distr) == "hdf5")
         verbose && println("Loading .h5 file and extracting f, E, p, R and z... ")
-        F_ps, energy, pitch, R, z = h5to4D(filepath_distr; verbose = verbose) # Load the (E,p,R,z) fast-ion distribution. For energy comparison.
+        F_EpRz, energy, pitch, R, z = h5to4D(filepath_distr; verbose = verbose) # Load the (E,p,R,z) fast-ion distribution. For energy comparison.
     elseif lowercase(fileext_distr) == "jld2"
         verbose && println("Loading .jld2 file and extracting f, E, p, R and z... ")
-        F_ps, energy, pitch, R, z = JLD2to4D(filepath_distr; verbose = verbose) # Load the (E,p,R,z) fast-ion distribution. For energy comparison.
+        F_EpRz, energy, pitch, R, z = JLD2to4D(filepath_distr; verbose = verbose) # Load the (E,p,R,z) fast-ion distribution. For energy comparison.
     else
         error("Unknown file extension for fast-ion distribution file. Please input a .h5 or .jld2 file.")
     end
 
-    plot_F_Ep(F_ps, energy, pitch, R, z; verbose=verbose, kwargs...)
+    plot_F_Ep(F_EpRz, energy, pitch, R, z; verbose=verbose, kwargs...)
 end
 
 """
-    plot_F_Rz(F_ps, energy, pitch, R, z)
+    plot_F_Rz(F_EpRz, energy, pitch, R, z)
     plot_F_Rz(-||-, wall=wall, verbose=true, kwargs...)
 
-Take the (E,p,R,z) fast-ion distribution F_ps, integrate over (E,p) and plot the R,z-dependance, i.e. f(R,z). Include the tokamak wall, if available.
+Take the (E,p,R,z) fast-ion distribution F_EpRz, integrate over (E,p) and plot the R,z-dependance, i.e. f(R,z). Include the tokamak wall, if available.
 """
-function plot_F_Rz(F_ps::Array{Float64,4}, energy::Array{Float64,1}, pitch::Array{Float64,1}, R::Array{Float64,1}, z::Array{Float64,1}; wall=nothing, verbose=false, kwargs...)
+function plot_F_Rz(F_EpRz::Array{Float64,4}, energy::Array{Float64,1}, pitch::Array{Float64,1}, R::Array{Float64,1}, z::Array{Float64,1}; wall=nothing, verbose=false, kwargs...)
 
     verbose && println("Calculating the 4D differences... ")
     dE4D, dp4D, dR4D, dZ4D = get4DDiffs(energy, pitch, R, z)
 
-    F_Rz = dropdims(sum(F_ps.*dE4D.*dp4D, dims=(1,2)), dims=(1,2)) # Integrate out energy, pitch
+    F_Rz = dropdims(sum(F_EpRz.*dE4D.*dp4D, dims=(1,2)), dims=(1,2)) # Integrate out energy, pitch
 
     # Convert from cm to m
     if minimum(R)>100.0
@@ -301,7 +301,7 @@ end
     plot_F_Rz(filepath_distr)
     plot_F_Rz(-||-, verbose=false, filepath_equil=nothing, clockwise_phi_false, kwargs... )
 
-Load the (E,p,R,z) fast-ion distribution F_ps from file (.h5/.hdf5/.jld2), integrate over (E,p) and plot the R,z-dependance, i.e. f(R,z). 
+Load the (E,p,R,z) fast-ion distribution F_EpRz from file (.h5/.hdf5/.jld2), integrate over (E,p) and plot the R,z-dependance, i.e. f(R,z). 
 Also load and include the tokamak wall, if available.
 """
 function plot_F_Rz(filepath_distr::String; verbose=false, filepath_equil=nothing, clockwise_phi=false, kwargs...)
@@ -309,10 +309,10 @@ function plot_F_Rz(filepath_distr::String; verbose=false, filepath_equil=nothing
     fileext_distr = (split(filepath_distr,"."))[end] # Assume last part after final '.' is the file extension
     if (lowercase(fileext_distr) == "h5") || (lowercase(fileext_distr) == "hdf5")
         verbose && println("Loading .h5 file and extracting f, E, p, R and z... ")
-        F_ps, energy, pitch, R, z = h5to4D(filepath_distr; verbose = verbose) # Load the (E,p,R,z) fast-ion distribution. For energy comparison.
+        F_EpRz, energy, pitch, R, z = h5to4D(filepath_distr; verbose = verbose) # Load the (E,p,R,z) fast-ion distribution. For energy comparison.
     elseif lowercase(fileext_distr) == "jld2"
         verbose && println("Loading .jld2 file and extracting f, E, p, R and z... ")
-        F_ps, energy, pitch, R, z = JLD2to4D(filepath_distr; verbose = verbose) # Load the (E,p,R,z) fast-ion distribution. For energy comparison.
+        F_EpRz, energy, pitch, R, z = JLD2to4D(filepath_distr; verbose = verbose) # Load the (E,p,R,z) fast-ion distribution. For energy comparison.
     else
         error("Unknown file extension for fast-ion distribution file. Please input a .h5 or .jld2 file.")
     end
@@ -326,9 +326,9 @@ function plot_F_Rz(filepath_distr::String; verbose=false, filepath_equil=nothing
             wall = myfile["wall"]
             close(myfile)
         end
-        plot_F_Rz(F_ps, energy, pitch, R, z; wall=wall, verbose=verbose, kwargs... )
+        plot_F_Rz(F_EpRz, energy, pitch, R, z; wall=wall, verbose=verbose, kwargs... )
     else
-        plot_F_Rz(F_ps, energy, pitch, R, z; verbose=verbose, kwargs... )
+        plot_F_Rz(F_EpRz, energy, pitch, R, z; verbose=verbose, kwargs... )
     end
 end
 
