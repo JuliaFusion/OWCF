@@ -204,7 +204,7 @@ include(folderpath_OWCF*"extra/dependencies.jl") # To load the (E,pm,Rm) to (E,m
 # Loading packages on external CPU processors, if anticipated that it will be needed later
 if enable_COM && !isfile(filepath_W_COM) && !isfile(filepath_tm)
     verbose && println("Anticipating the need for several CPU-processors. Adding CPU-processors and loading necessary Julia packages... ")
-    addprocs(4) # Four extra CPU processes should be sufficient, and available on most PCs/Macbook devices
+    addprocs(4) # Four extra CPU processes should be sufficient, and available on most PCs/Macbook/Linux devices
     @everywhere folderpath_OWCF = $folderpath_OWCF # Transfer variable to extra CPU-processes
     @everywhere begin
         cd(folderpath_OWCF)
@@ -706,7 +706,8 @@ function app(req)
         plt_crs = Plots.scatter!([o.coordinate.r],[o.coordinate.z], mc=orb_color, label="(Rm,zm)")
         if save_plots
             if (phase_space==:COM) && enable_COM
-                png(plt_crs, "plt_crs_$(round(Ed, digits=2))_$(round(E, digits=2))_$(round(μ, sigdigits=2))_$(round(Pϕ,sigdigits=2))")
+                sigExt = iσ==1 ? "-1" : "+1" 
+                png(plt_crs, "plt_crs_$(round(Ed, digits=2))_$(round(E, digits=2))_$(round(μ, sigdigits=2))_$(round(Pϕ,sigdigits=2))_"*sigExt)
             else
                 png(plt_crs, "plt_crs_$(round(Ed, digits=2))_$(round(E, digits=2))_$(round(o.coordinate.pitch, digits=2))_$(round(o.coordinate.r,digits=2))")
             end
@@ -796,7 +797,8 @@ function app(req)
         if save_plots
             plt_weights = Plots.plot!(dpi=600)
             if (phase_space==:COM) && enable_COM
-                png(plt_weights, "plt_weights_$(round(Ed, digits=2))_$(round(E, digits=2))_$(round(μ, digits=2))_$(round(Pϕ,digits=2))")
+                sigExt = iσ==1 ? "-1" : "+1" 
+                png(plt_weights, "plt_weights_$(round(Ed, digits=2))_$(round(E, digits=2))_$(round(μ, digits=2))_$(round(Pϕ,digits=2))_"*sigExt)
             else
                 png(plt_weights, "plt_weights_$(round(Ed, digits=2))_$(round(E, digits=2))_$(round(o.coordinate.pitch, digits=2))_$(round(o.coordinate.r,digits=2))")
             end
@@ -816,7 +818,8 @@ function app(req)
         if save_plots
             plt_Fos = Plots.plot!(dpi=600)
             if (phase_space==:COM) && enable_COM
-                png(plt_Fos, "plt_Fos_$(round(Ed, digits=2))_$(round(E, digits=2))_$(round(μ, digits=2))_$(round(Pϕ,digits=2))")
+                sigExt = iσ==1 ? "-1" : "+1" 
+                png(plt_Fos, "plt_Fos_$(round(Ed, digits=2))_$(round(E, digits=2))_$(round(μ, sigdigits=2))_$(round(Pϕ,sigdigits=2))_"*sigExt)
             else
                 png(plt_Fos, "plt_Fos_$(round(Ed, digits=2))_$(round(E, digits=2))_$(round(o.coordinate.pitch, digits=2))_$(round(o.coordinate.r,digits=2))")
             end
@@ -837,7 +840,8 @@ function app(req)
         if save_plots
             plt_WFdens = Plots.plot!(dpi=600)
             if (phase_space==:COM) && enable_COM
-                png(plt_WFdens, "plt_WFdens_$(round(Ed, digits=2))_$(round(E, digits=2))_$(round(μ, digits=2))_$(round(Pϕ,digits=2))")
+                sigExt = iσ==1 ? "-1" : "+1" 
+                png(plt_WFdens, "plt_WFdens_$(round(Ed, digits=2))_$(round(E, digits=2))_$(round(μ, sigdigits=2))_$(round(Pϕ,sigdigits=2))_"*sigExt)
             else
                 png(plt_WFdens, "plt_WFdens_$(round(Ed, digits=2))_$(round(E, digits=2))_$(round(o.coordinate.pitch, digits=2))_$(round(o.coordinate.r,digits=2))")
             end
@@ -857,7 +861,8 @@ function app(req)
         plt_top = Plots.plot!(topview_o_x,topview_o_y,label="$(o.class) orbit", color=orb_color, linestyle=orb_linestyle, linewidth=1.5)
         if save_plots
             if (phase_space==:COM) && enable_COM
-                png(plt_top, "plt_top_$(round(Ed, digits=2))_$(round(E, digits=2))_$(round(μ, digits=2))_$(round(Pϕ,digits=2))")
+                sigExt = iσ==1 ? "-1" : "+1" 
+                png(plt_top, "plt_top_$(round(Ed, digits=2))_$(round(E, digits=2))_$(round(μ, sigdigits=2))_$(round(Pϕ,sigdigits=2))_"*sigExt)
             else
                 png(plt_top, "plt_top_$(round(Ed, digits=2))_$(round(E, digits=2))_$(round(o.coordinate.pitch, digits=2))_$(round(o.coordinate.r,digits=2))")
             end
@@ -891,7 +896,8 @@ function app(req)
         if save_plots
             plt_sig = Plots.plot!(title="", legend=false)
             if (phase_space==:COM) && enable_COM
-                png(plt_sig, "plt_sig_$(round(Ed, digits=2))_$(round(E, digits=2))_$(round(μ, digits=2))_$(round(Pϕ,digits=2))")
+                sigExt = iσ==1 ? "-1" : "+1" 
+                png(plt_top, "plt_top_$(round(Ed, digits=2))_$(round(E, digits=2))_$(round(μ, sigdigits=2))_$(round(Pϕ,sigdigits=2))_"*sigExt)
             else
                 png(plt_sig, "plt_sig_$(round(Ed, digits=2))_$(round(E, digits=2))_$(round(o.coordinate.pitch, digits=2))_$(round(o.coordinate.r,digits=2))")
             end

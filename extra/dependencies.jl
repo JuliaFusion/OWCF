@@ -371,18 +371,18 @@ function flip_along_pm(W::AbstractArray; with_channels=false)
 end
 
 """
-    flip_along_p(F_ps)
+    flip_along_p(F_EpRz)
 
 This function flips the elements of a 4D fast-ion distribution along the pitch axis.
 Assume the fast-ion distribution to be of the form (E,p,R,z)
 """
-function flip_along_p(F_ps::AbstractArray)
+function flip_along_p(F_EpRz::AbstractArray)
 
-    F_ps_res = zeros(size(F_ps))
-    for pi=1:size(F_ps,2)
-        F_ps_res[:,end+1-pi,:,:] .= F_ps[:,pi,:,:]
+    F_EpRz_res = zeros(size(F_EpRz))
+    for pi=1:size(F_EpRz,2)
+        F_EpRz_res[:,end+1-pi,:,:] .= F_EpRz[:,pi,:,:]
     end
-    return F_ps_res
+    return F_EpRz_res
 end
 
 """
@@ -442,13 +442,13 @@ function JLD2to4D(filepath_distr; verbose=false)
     myfile = jldopen(filepath_distr,false,false,false,IOStream)
     if haskey(myfile,"F_ps")
         verbose && println("Found F_ps key in .jld2 file.")
-        F_ps = myfile["F_ps"]
+        F_EpRz = myfile["F_ps"]
     elseif haskey(myfile,"f")
         verbose && println("Found f key in .jld2 file.")
-        F_ps = myfile["f"]
+        F_EpRz = myfile["f"]
     elseif haskey(myfile,"F_EpRz")
         verbose && println("Found F_EpRz key in .jld2 file.")
-        F_ps = myfile["F_EpRz"]
+        F_EpRz = myfile["F_EpRz"]
     else
         error("Fast-ion distribution .jld2 file did not have any expected keys for the distribution (F_ps, f or F_EpRz).")
     end
@@ -464,7 +464,7 @@ function JLD2to4D(filepath_distr; verbose=false)
     end
     close(myfile)
 
-    return F_ps, E_array, p_array, R_array, z_array
+    return F_EpRz, E_array, p_array, R_array, z_array
 end
 
 """
@@ -485,9 +485,9 @@ verbose - If set to true, you will get a talkative function indeed - Bool
 """
 function h5toSampleReady(filepath_distr::AbstractString; interp=false, nE_ps=100, np_ps=51, nR_ps=60, nz_ps=61, backwards = true, verbose = false)
     verbose && println("Loading fast-ion distribution from .h5 file... ")
-    F_ps, E_array, p_array, R_array, z_array = h5to4D(filepath_distr, backwards=backwards, verbose=verbose)
+    F_EpRz, E_array, p_array, R_array, z_array = h5to4D(filepath_distr, backwards=backwards, verbose=verbose)
 
-    return toSampleReady(F_ps, E_array, p_array, R_array, z_array; interp=interp, nE_ps=nE_ps, np_ps=np_ps, nR_ps=nR_ps, nz_ps=nz_ps, verbose=verbose)
+    return toSampleReady(F_EpRz, E_array, p_array, R_array, z_array; interp=interp, nE_ps=nE_ps, np_ps=np_ps, nR_ps=nR_ps, nz_ps=nz_ps, verbose=verbose)
 end
 
 """
@@ -502,13 +502,13 @@ verbose - If set to true, you will get a talkative function indeed - Bool
 """
 function jld2toSampleReady(filepath_distr::AbstractString; verbose = false, kwargs...)
     verbose && println("Loading fast-ion distribution from .jld2 file... ")
-    F_ps, E_array, p_array, R_array, z_array = JLD2to4D(filepath_distr; verbose=verbose)
+    F_EpRz, E_array, p_array, R_array, z_array = JLD2to4D(filepath_distr; verbose=verbose)
     
-    return toSampleReady(F_ps, E_array, p_array, R_array, z_array; verbose=verbose, kwargs...)
+    return toSampleReady(F_EpRz, E_array, p_array, R_array, z_array; verbose=verbose, kwargs...)
 end
 
 """
-    toSampleReady(F_ps, E_array, p_array, R_array, z_array)
+    toSampleReady(F_EpRz, E_array, p_array, R_array, z_array)
     toSampleReady(-||-, nE_ps=202, np_ps=57, nR_ps=62, nz_ps=64, verbose=true)
 
 Interpolate the fast-ion distribution and grid arrays if specified, then compute the necessary
@@ -516,7 +516,7 @@ quantities needed to be able to sample from the fast-ion distribution with the s
 method (for example in calcSpec.jl). Then return those quantities.
 
 --- Input:
-F_ps - The 4D fast-ion distribution - Array{Float64,4}
+F_EpRz - The 4D fast-ion distribution - Array{Float64,4}
 E_array - The 1D array containing the energy grid points - Array{Float64,1}
 p_array - The 1D array containing the pitch grid points - Array{Float64,1}
 R_array - The 1D array containing the R grid points - Array{Float64,1}
@@ -528,28 +528,28 @@ nR_ps - R grid dimension to be interpolated onto, if interp - Int64
 nz_ps - z grid dimension to be interpolated onto, if interp - Int64
 verbose - If set to true, you will get a talkative function indeed - Bool
 """
-function toSampleReady(F_ps::Array{Float64,4}, E_array::Array{Float64,1}, p_array::Array{Float64,1}, R_array::Array{Float64,1}, z_array::Array{Float64,1}; interp=false, nE_ps=100, np_ps=51, nR_ps=60, nz_ps=61, verbose = false)
+function toSampleReady(F_EpRz::Array{Float64,4}, E_array::Array{Float64,1}, p_array::Array{Float64,1}, R_array::Array{Float64,1}, z_array::Array{Float64,1}; interp=false, nE_ps=100, np_ps=51, nR_ps=60, nz_ps=61, verbose = false)
     if interp
         energyq = range(E_array[1], E_array[end], length=nE_ps) # Set the energy query points
         pitchq = range(p_array[1], p_array[end], length=np_ps) # Etc
         Rq = range(R_array[1], R_array[end], length=nR_ps) # Etc
         zq = range(z_array[1], z_array[end], length=nz_ps) # Etc
         verbose && println("Interpolating Julia fast-ion distribution... ")
-        F_ps = interpFps(F_ps, E_array, p_array, R_array, z_array, energyq, pitchq, Rq, zq) # Interpolate
+        F_EpRz = interpFps(F_EpRz, E_array, p_array, R_array, z_array, energyq, pitchq, Rq, zq) # Interpolate
         E_array = energyq # The energy query points are now the energy points
         p_array = pitchq # Etc
         R_array = Rq
         z_array = zq
     end
 
-    fr = F_ps.*reshape(R_array,(1,1,length(R_array),1))
+    fr = F_EpRz.*reshape(R_array,(1,1,length(R_array),1))
     verbose && println("Computing 4D vols... ")
     dvols = get4DVols(E_array, p_array, R_array, z_array)
     nfast = sum(fr.*dvols)*(2*pi)
 
     # Checking if units of R,z is meters or centimeters. Correct to meters if units is centimeters
     # PLEASE NOTE! IT IS VERY IMPORTANT TO DO THIS STEP AFTER YOU HAVE COMPUTED fr, dvols and nfast
-    # OTHERWISE, THE TOTAL NUMBER OF FAST IONS WILL BE WRONG, BECAUSE THE ORIGINAL F_ps DATA WAS
+    # OTHERWISE, THE TOTAL NUMBER OF FAST IONS WILL BE WRONG, BECAUSE THE ORIGINAL F_EpRz DATA WAS
     # IN UNITS OF PER CENTIMETER
     if maximum(R_array)>100.0 # Assume no tokamak has a major radius larger than 100 meters...
         verbose && println("Converting R- and z-arrays from centimeters to meters... ")
@@ -804,7 +804,7 @@ end
 """
 Continuation of the ps2os_streamlined function above.
 """
-function ps2os_streamlined(F_ps::Array{Float64,4}, energy::AbstractVector, pitch::AbstractVector, R::AbstractVector, z::AbstractVector, filepath_equil::AbstractString, og::OrbitGrid; numOsamples::Int64, verbose=false, distr_dim = [], flip_F_ps_pitch=false, GCP = GCDeuteron, distributed=true, nbatch = 1_000_000, clockwise_phi=false, kwargs...)
+function ps2os_streamlined(F_EpRz::Array{Float64,4}, energy::AbstractVector, pitch::AbstractVector, R::AbstractVector, z::AbstractVector, filepath_equil::AbstractString, og::OrbitGrid; numOsamples::Int64, verbose=false, distr_dim = [], flip_F_EpRz_pitch=false, GCP = GCDeuteron, distributed=true, nbatch = 1_000_000, clockwise_phi=false, kwargs...)
 
     verbose && println("Loading the magnetic equilibrium... ")
     if ((split(filepath_equil,"."))[end] == "eqdsk") || ((split(filepath_equil,"."))[end] == "geqdsk")
@@ -830,7 +830,7 @@ function ps2os_streamlined(F_ps::Array{Float64,4}, energy::AbstractVector, pitch
         pitchq = range(pitch[1], pitch[end], length=distr_dim[2]) # Etc
         Rq = range(R[1], R[end], length=distr_dim[3]) # Etc
         zq = range(z[1], z[end], length=distr_dim[4]) # Etc
-        F_ps = interpFps(F_ps, energy, pitch, R, z, energyq, pitchq, Rq, zq) # Interpolate
+        F_EpRz = interpFps(F_EpRz, energy, pitch, R, z, energyq, pitchq, Rq, zq) # Interpolate
 
         energy = energyq # The energy query points are now the energy points
         pitch = pitchq # Etc
@@ -840,15 +840,15 @@ function ps2os_streamlined(F_ps::Array{Float64,4}, energy::AbstractVector, pitch
 
     # This operation will be necessary when working with old .h5-file distributions (16th April 2021 and earlier).
     # This is because a (M.sigma*) multiplication operation was removed in the get_orbit() calls in the helper functions (etc).
-    if flip_F_ps_pitch
-        F_ps = flip_along_p(F_ps)
+    if flip_F_EpRz_pitch
+        F_EpRz = flip_along_p(F_EpRz)
     end
 
-    return ps2os(M, wall, F_ps, energy, pitch, R, z, og; numOsamples=numOsamples, verbose=verbose, kwargs...)
+    return ps2os(M, wall, F_EpRz, energy, pitch, R, z, og; numOsamples=numOsamples, verbose=verbose, kwargs...)
 end
 
 """
-    ps2os(M, wall, F_ps, energy, pitch, R, z, og)
+    ps2os(M, wall, F_EpRz, energy, pitch, R, z, og)
     ps2os(-||-; numOsamples, verbose=false, GCP = GCDeuteron, distributed=true, nbatch=1_000_000, saveProgress=true, performance=true, kwargs...)
 
 Take the (E,p,R,z) fast-ion distribution and use Monte-Carlo sampling to transform it to (E,pm,Rm) orbit space.
@@ -860,7 +860,7 @@ Take the (E,p,R,z) fast-ion distribution and use Monte-Carlo sampling to transfo
 - if saveProgress, a progress bar will be displayed when sampling
 - If performance, then performance sampling will be used. Highly recommended! Normal sampling will be deprecated in later versions of the OWCF
 """
-function ps2os(M::AbstractEquilibrium, wall::Boundary, F_ps::Array{Float64,4}, energy::AbstractVector, pitch::AbstractVector, R::AbstractVector, z::AbstractVector, og::OrbitGrid; numOsamples::Int64, verbose=false, GCP = GCDeuteron, distributed=true, nbatch = 1_000_000, saveProgress=true, performance=true, kwargs...)
+function ps2os(M::AbstractEquilibrium, wall::Boundary, F_EpRz::Array{Float64,4}, energy::AbstractVector, pitch::AbstractVector, R::AbstractVector, z::AbstractVector, og::OrbitGrid; numOsamples::Int64, verbose=false, GCP = GCDeuteron, distributed=true, nbatch = 1_000_000, saveProgress=true, performance=true, kwargs...)
 
     if verbose
         println("Acquiring fr, dvols and nfast... ")
@@ -877,12 +877,12 @@ function ps2os(M::AbstractEquilibrium, wall::Boundary, F_ps::Array{Float64,4}, e
     dp = vcat(abs.(diff(pitch)),abs(pitch[end]-pitch[end-1]))
     dp = reshape(dp,1,length(dp),1,1)
     dp4D = repeat(dp,length(energy),1,length(R),length(z))
-    fr = F_ps.*reshape(R,(1,1,length(R),1))
+    fr = F_EpRz.*reshape(R,(1,1,length(R),1))
     dvols = get4DVols(energy, pitch, R, z)
     nfast = sum(fr.*dE4D.*dp4D.*dR4D.*dz4D)*(2*pi)
 
     # Keeping memory usage to minimum
-    F_ps = nothing
+    F_EpRz = nothing
     dE = nothing
     dp = nothing
     dR = nothing
@@ -1939,13 +1939,15 @@ function os2COM(M::AbstractEquilibrium, data::Union{Array{Float64, 3},Array{Floa
     verbose && println("Mapping (E,pm,Rm) -> (E,μ,Pϕ;σ) for 3D quantity 1 of $(size(data,1))... ")
     data_COM[1, :, :, :, :], E_array, μ_matrix, Pϕ_matrix = os2COM(M, good_coords, data[1,:,:,:], E_array, pm_array, Rm_array, FI_species; nμ=nμ, nPϕ=nPϕ, isTopoMap=isTopoMap, needJac=needJac, verbose=verbose, vverbose=vverbose)
     if size(data,1)>1 # To avoid distributed errors
-        data_COM = @distributed (+) for iEd in collect(2:size(data,1))
+        data_COM_mp = @distributed (+) for iEd in collect(2:size(data,1))
             verbose && println("Mapping (E,pm,Rm) -> (E,μ,Pϕ;σ) for 3D quantity $(iEd) of $(size(data,1))... ")
             data_COM_part = zeros(size(data,1),length(E_array),nμ, nPϕ, 2)
             # E_array_part, μ_matrix_part and Pϕ_matrix_part do not matter. But they need to be returned by os2COM.
             data_COM_part[iEd, :, :, :, :], E_array_part, μ_matrix_part, Pϕ_matrix_part = os2COM(M, good_coords, data[iEd,:,:,:], E_array, pm_array, Rm_array, FI_species; nμ=nμ, nPϕ=nPϕ, isTopoMap=isTopoMap, needJac=needJac, verbose=verbose, vverbose=vverbose)
             data_COM_part # Declare ready for reduction (data_COM += data_COM_part but distributed over several CPU cores)
         end
+
+        data_COM = data_COM + data_COM_mp # Maybe inefficient/non-optimal coding, but I don't care. It works!
     end
 
     if !input_4D
