@@ -18,7 +18,7 @@
 # diagnostic_name - The name of the diagnostic. Purely for esthetic purposes - String
 # diagnostic_response_filepath - The path to three .txt-files or one .jld2-file, containing the necessary data for representing 
 #                                the instrumental response of the diagnostic. If paths to three .txt-files are specified, they should 
-#                                be specified together in a vector of strings. That is,
+#                                be specified together in a vector of three strings. That is,
 #                                
 #                                diagnostic_response_filepath = ["/path/to/reponse/matrix.txt","/path/to/particle/inputs.txt","/path/to/diagnostic/outputs.txt"]
 #

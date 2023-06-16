@@ -27,8 +27,8 @@
 # species - The fast-ion species of the fast-ion distribution. Saved as a String
 # timepoint - The timepoint of the tokamak shot of the TRANSP simulation. Saved as a Float64
 # ntot - The total number of fast ions. Saved as a Float64
-# f - The (E,p,R,z) fast-ion distribution. Saved as a 4D matrix
-# f_Rz - The f(R,z). The energy and pitch dependence has been integrated out. Saved as a 2D array
+# F_EpRz - The (E,p,R,z) fast-ion distribution. Saved as a 4D matrix
+# F_Rz - The f(R,z). The energy and pitch dependence has been integrated out. Saved as a 2D array
 # energy - The energy grid points saved as a 1D array
 # pitch - The pitch grid points saved as a 1D array
 # R - The major radius position grid points saved as a 1D array. cm
