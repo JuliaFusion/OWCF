@@ -7,14 +7,14 @@
 # 
 # The fast-ion distribution data can be specified in either .jld2 or .h5/.hdf5 file format.
 # If the fast-ion distribution is provided as an .h5 file, it must have the keys:
-# 'f' or 'F_ps' - The 4D matrix containing the fast-ion distribution.
+# 'f', 'F_EpRz' or 'F_ps' - The 4D matrix containing the fast-ion distribution.
 # 'energy' - The 1D array containing the energy grid points
 # 'pitch ' - The 1D array containing the pitch grid points
 # 'R' - The 1D array containing the R grid points
 # 'z' - The 1D array containing the z grid points
 #
 # If the fast-ion distribution is provided as a .jld2 file, it must have the keys:
-# 'F_ps' - The 4D matrix containing the fast-ion distribution. Order [energy,pitch,R,z] (forwards).
+# 'F_EpRz' - The 4D matrix containing the fast-ion distribution. Order [energy,pitch,R,z] (forwards).
 # 'energy' - The 1D array containing the energy grid points
 # 'pitch ' - The 1D array containing the pitch grid points
 # 'R' - The 1D array containing the R grid points
@@ -200,7 +200,7 @@ else
     println("--- Radius maximum: [$(minimum(Rm_array)),$(maximum(Rm_array))] meters")
 end
 println("")
-if flip_F_ps_pitch
+if flip_F_EpRz_pitch
     println("Fast-ion distribution will be mirrored in pitch before being sampled from.")
     println("")
 end
@@ -233,13 +233,15 @@ end
 ## --------------------------------------------------------------------------------------
 verbose && println("Loading fast-ion distribution data from file... ")
 if fileext_FI=="h5" || fileext_FI=="hdf5"
-    F_ps, E_array_ps, p_array, R_array, z_array = h5to4D(filepath_distr, verbose = verbose) # Load fast-ion distribution
+    F_EpRz, E_array_ps, p_array, R_array, z_array = h5to4D(filepath_distr, verbose = verbose) # Load fast-ion distribution
 else # Else, assume .jld2 file format
     myfile = jldopen(filepath_distr,false,false,false,IOStream)
     if haskey(myfile,"F_ps")
-        F_ps = myfile["F_ps"]
+        F_EpRz = myfile["F_ps"]
     elseif haskey(myfile,"f")
-        F_ps = myfile["f"]
+        F_EpRz = myfile["f"]
+    elseif haskey(myfile,"F_EpRz")
+        F_EpRz = myfile["F_EpRz"]
     else
         error("Unrecognized .jld2 key for fast-ion distribution in filepath_distr. Please correct and re-try.")
     end
@@ -264,7 +266,7 @@ end
 
 ## --------------------------------------------------------------------------------------
 verbose && println("Going into ps2os_streamlined (performance=true manually set)... ")
-F_os_raw, nfast = ps2os_streamlined(F_ps, E_array_ps, p_array, R_array, z_array, filepath_equil, og; numOsamples=numOsamples, verbose=verbose, distr_dim=distr_dim, visualizeProgress=visualizeProgress, nbatch=nbatch, distributed=distributed, flip_F_ps_pitch=flip_F_ps_pitch, performance=true, GCP=getGCP(FI_species), extra_kw_args... )
+F_os_raw, nfast = ps2os_streamlined(F_EpRz, E_array_ps, p_array, R_array, z_array, filepath_equil, og; numOsamples=numOsamples, verbose=verbose, distr_dim=distr_dim, visualizeProgress=visualizeProgress, nbatch=nbatch, distributed=distributed, flip_F_EpRz_pitch=flip_F_EpRz_pitch, performance=true, GCP=getGCP(FI_species), extra_kw_args... )
 
 ## --------------------------------------------------------------------------------------
 verbose && println("Saving results... ")
