@@ -103,6 +103,30 @@ function estimate_noise(S_tot; bad_inds=nothing)
 end
 
 """
+    instrumental_response!()
+    instrumental_response!()
+
+Bla bla bla. Explain input variables and function
+"""
+function instrumental_response!(W::Union{Array{Float64,4},Array{Float64,5}}, Ed_W::AbstractVector, R::Array{Float64,2}, Ed_in::AbstractVector, Ed_out::AbstractVector; verbose::Bool=false)
+    lo = findfirst(x-> x>minimum(Ed_W),Ed_in)
+    hi = findlast(x-> x<maximum(Ed_W),Ed_in)
+    coords = CartesianIndices(size(W)[2:end])
+    transf_mat_transp_trim = (transf_matrix[lo:hi,:])'
+    i = 1
+    for coord in coords
+        verbose && println("$(i)/$(length(coords))")
+        W_c = W[:,Tuple(coord)...]
+        itp = LinearInterpolation(Ed_W,W_c)
+        W_c_itp = itp.(Ed_in[lo:hi])
+        W_c_out = transf_mat_transp_trim * W_c_itp
+        W[:,Tuple(coord)...] = W_c_out
+        i += 1
+    end
+    W
+end
+
+"""
     orbit_grid(M,false,eo,po,ro)
     orbit_grid(-||-, q=2, amu=OrbitTomography.p_amu, kwargs... )
 
