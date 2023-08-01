@@ -112,13 +112,14 @@ close(myfile)
 ## ------
 # Determining diagnostic from file
 verbose && println("Determining diagnostic... ")
-diagnostic = lowercase((split(split(filepath_ps2WF_output,"/")[end],"_"))[5]) # Know that the fourth element will be the diagnostic
+diagnostic = lowercase((split(split(filepath_ps2WF_output,"/")[end],"_"))[6]) # Know that the sixth element will be the diagnostic
 if diagnostic=="tofor"
     sig_color = :green3
 elseif diagnostic=="ab"
     sig_color = :red1
 else
-    @warn "Unknown diagnostic for loaded data"
+    println("Diagnostic: "*diagnostic)
+    @warn "Unknown diagnostic for loaded data. Signal color will be gray."
     sig_color = :gray
 end
 
@@ -126,7 +127,7 @@ verbose && println("--- You can access the signalWebApp via an internet web brow
 verbose && println("--- When 'Task (runnable)...' has appeared, please visit the website localhost:$(port) ---")
 verbose && println("--- Remember: It might take a minute or two to load the webpage. Please be patient. ---")
 function app(req)
-    @manipulate for Ed=Ed_array, coord = Dict("E" => "E", "pm" => "pm", "Rm" => "Rm"), density = Dict("orbits" => "orbits", "total" => "total"), mode = Dict("absolute" => "absolute", "fraction" => "fraction"),y_scale = Dict("linear" => :identity, "logarithmic" => :log10), save_plots = Dict("on" => true, "off" => false)
+    @manipulate for Ed=Ed_array, coord = Dict("E" => "E", "pm" => "pm", "Rm" => "Rm"), density = Dict("orbits" => "orbits", "total" => "total"), mode = Dict("absolute" => "absolute", "fraction" => "fraction"),y_scale = Dict("linear" => :identity, "logarithmic" => :log10), legend_position = Dict("Top-left" => :topleft, "Top-right" => :topright, "Bottom-left" => :bottomleft, "Bottom-right" => :bottomright), save_plots = Dict("on" => true, "off" => false)
     
         iEd = findfirst(x-> x==Ed, Ed_array)
 
@@ -237,7 +238,7 @@ function app(req)
                 plt_WF = Plots.plot!(size=(1200,400),left_margin=5Plots.mm,bottom_margin=5Plots.mm)
                 plt_WF = Plots.vline!([maximum(E_array)],color=:gray,linewidth=1.0,label="",linestyle=:dash)
                 plt_WF = Plots.plot!(xlims=(minimum(E_array)-0.02*(maximum(E_array) - minimum(E_array)),maximum(E_array) + 0.3333*(maximum(E_array) - minimum(E_array))))
-                plt_WF = Plots.plot!(xticks=energy_ticks, yscale=y_scale)
+                plt_WF = Plots.plot!(xticks=energy_ticks, yscale=y_scale, legend=legend_position)
                 save_plots && (plt_WF = Plots.plot!(dpi=600); png(plt_WF,"WF_$(Ed_array[iEd])"*"_"*coord*"_"*density*"_"*mode*"_$(y_scale)"))
 
                 plt_F = Plots.plot(E_array[gi_F_1], (FO_E[:,1] ./denom_F)[gi_F_1], label="Stagnation", color=:red, linewidth=2.5)
@@ -249,7 +250,7 @@ function app(req)
                 plt_F = Plots.plot!(size=(1200,400),left_margin=5Plots.mm,bottom_margin=5Plots.mm)
                 plt_F = Plots.vline!([maximum(E_array)],color=:gray,linewidth=1.0,label="",linestyle=:dash)
                 plt_F = Plots.plot!(xlims=(minimum(E_array)-0.02*(maximum(E_array) - minimum(E_array)),maximum(E_array) + 0.3333*(maximum(E_array) - minimum(E_array))))
-                plt_F = Plots.plot!(xticks=energy_ticks, yscale=y_scale)
+                plt_F = Plots.plot!(xticks=energy_ticks, yscale=y_scale, legend=legend_position)
                 save_plots && (plt_F = Plots.plot!(dpi=600); png(plt_F,"F_$(Ed_array[iEd])"*"_"*coord*"_"*density*"_"*mode*"_$(y_scale)"))
 
                 plt_W = Plots.plot(E_array[gi_W_1], (WO_E[iEd,:,1] ./denom_W)[gi_W_1], label="Stagnation", color=:red, linewidth=2.5)
@@ -261,7 +262,7 @@ function app(req)
                 plt_W = Plots.plot!(size=(1200,400),left_margin=5Plots.mm,bottom_margin=5Plots.mm)
                 plt_W = Plots.vline!([maximum(E_array)],color=:gray,linewidth=1.0,label="",linestyle=:dash)
                 plt_W = Plots.plot!(xlims=(minimum(E_array)-0.02*(maximum(E_array) - minimum(E_array)),maximum(E_array) + 0.3333*(maximum(E_array) - minimum(E_array))))
-                plt_W = Plots.plot!(xticks=energy_ticks, yscale=y_scale)
+                plt_W = Plots.plot!(xticks=energy_ticks, yscale=y_scale, legend=legend_position)
                 save_plots && (plt_W = Plots.plot!(dpi=600); png(plt_W,"W_$(Ed_array[iEd])"*"_"*coord*"_"*density*"_"*mode*"_$(y_scale)"))
             else
                 WF = dropdims(sum(WFO_E[iEd,:,:],dims=2), dims=2) # Sum over all orbit types
@@ -305,21 +306,21 @@ function app(req)
                 plt_WF = Plots.plot!(size=(1200,400),left_margin=5Plots.mm,bottom_margin=5Plots.mm)
                 plt_WF = Plots.vline!([maximum(E_array)],color=:gray,linewidth=1.0,label="",linestyle=:dash)
                 plt_WF = Plots.plot!(xlims=(minimum(E_array)-0.02*(maximum(E_array) - minimum(E_array)),maximum(E_array) + 0.3333*(maximum(E_array) - minimum(E_array))))
-                plt_WF = Plots.plot!(xticks=energy_ticks, yscale=y_scale)
+                plt_WF = Plots.plot!(xticks=energy_ticks, yscale=y_scale, legend=legend_position)
                 save_plots && (plt_WF = Plots.plot!(dpi=600); png(plt_WF,"WF_$(Ed_array[iEd])"*"_"*coord*"_"*density*"_"*mode*"_$(y_scale)"))
 
                 plt_F = Plots.plot(E_array[gi_F], (F ./denom_F)[gi_F], label="Total", color=:black, linewidth=2.5, xlabel="Fast-ion energy [keV]", ylabel=ylabel_F, title=title_F)
                 plt_F = Plots.plot!(size=(1200,400),left_margin=5Plots.mm,bottom_margin=5Plots.mm)
                 plt_F = Plots.vline!([maximum(E_array)],color=:gray,linewidth=1.0,label="",linestyle=:dash)
                 plt_F = Plots.plot!(xlims=(minimum(E_array)-0.02*(maximum(E_array) - minimum(E_array)),maximum(E_array) + 0.3333*(maximum(E_array) - minimum(E_array))))
-                plt_F = Plots.plot!(xticks=energy_ticks, yscale=y_scale)
+                plt_F = Plots.plot!(xticks=energy_ticks, yscale=y_scale, legend=legend_position)
                 save_plots && (plt_F = Plots.plot!(dpi=600); png(plt_F,"F_$(Ed_array[iEd])"*"_"*coord*"_"*density*"_"*mode*"_$(y_scale)"))
 
                 plt_W = Plots.plot(E_array[gi_W], (W ./denom_W)[gi_W], label="Total", color=:black, linewidth=2.5, xlabel="Fast-ion energy [keV]", ylabel=ylabel_W, title=title_W)
                 plt_W = Plots.plot!(size=(1200,400),left_margin=5Plots.mm,bottom_margin=5Plots.mm)
                 plt_W = Plots.vline!([maximum(E_array)],color=:gray,linewidth=1.0,label="",linestyle=:dash)
                 plt_W = Plots.plot!(xlims=(minimum(E_array)-0.02*(maximum(E_array) - minimum(E_array)),maximum(E_array) + 0.3333*(maximum(E_array) - minimum(E_array))))
-                plt_W = Plots.plot!(xticks=energy_ticks, yscale=y_scale)
+                plt_W = Plots.plot!(xticks=energy_ticks, yscale=y_scale, legend=legend_position)
                 save_plots && (plt_W = Plots.plot!(dpi=600); png(plt_W,"W_$(Ed_array[iEd])"*"_"*coord*"_"*density*"_"*mode*"_$(y_scale)"))
             end
         elseif coord=="pm"
@@ -401,7 +402,7 @@ function app(req)
                 plt_WF = Plots.plot!(size=(1200,400),left_margin=5Plots.mm,bottom_margin=5Plots.mm)
                 plt_WF = Plots.vline!([maximum(pm_array)],color=:gray,linewidth=1.0,label="",linestyle=:dash)
                 plt_WF = Plots.plot!(xlims=(minimum(pm_array)-0.02*(maximum(pm_array) - minimum(pm_array)),maximum(pm_array) + 0.3333*(maximum(pm_array) - minimum(pm_array))))
-                plt_WF = Plots.plot!(xticks=pm_ticks, yscale=y_scale)
+                plt_WF = Plots.plot!(xticks=pm_ticks, yscale=y_scale, legend=legend_position)
                 save_plots && (plt_WF = Plots.plot!(dpi=600); png(plt_WF,"WF_$(Ed_array[iEd])"*"_"*coord*"_"*density*"_"*mode*"_$(y_scale)"))
 
                 plt_F = Plots.plot(pm_array[gi_F_1], (FO_pm[:,1] ./denom_F)[gi_F_1], label="Stagnation", color=:red, linewidth=2.5)
@@ -413,7 +414,7 @@ function app(req)
                 plt_F = Plots.plot!(size=(1200,400),left_margin=5Plots.mm,bottom_margin=5Plots.mm)
                 plt_F = Plots.vline!([maximum(pm_array)],color=:gray,linewidth=1.0,label="",linestyle=:dash)
                 plt_F = Plots.plot!(xlims=(minimum(pm_array)-0.02*(maximum(pm_array) - minimum(pm_array)),maximum(pm_array) + 0.3333*(maximum(pm_array) - minimum(pm_array))))
-                plt_F = Plots.plot!(xticks=pm_ticks, yscale=y_scale)
+                plt_F = Plots.plot!(xticks=pm_ticks, yscale=y_scale, legend=legend_position)
                 save_plots && (plt_F = Plots.plot!(dpi=600); png(plt_F,"F_$(Ed_array[iEd])"*"_"*coord*"_"*density*"_"*mode*"_$(y_scale)"))
 
                 plt_W = Plots.plot(pm_array[gi_W_1], (WO_pm[iEd,:,1] ./denom_W)[gi_W_1], label="Stagnation", color=:red, linewidth=2.5)
@@ -425,7 +426,7 @@ function app(req)
                 plt_W = Plots.plot!(size=(1200,400),left_margin=5Plots.mm,bottom_margin=5Plots.mm)
                 plt_W = Plots.vline!([maximum(pm_array)],color=:gray,linewidth=1.0,label="",linestyle=:dash)
                 plt_W = Plots.plot!(xlims=(minimum(pm_array)-0.02*(maximum(pm_array) - minimum(pm_array)),maximum(pm_array) + 0.3333*(maximum(pm_array) - minimum(pm_array))))
-                plt_W = Plots.plot!(xticks=pm_ticks, yscale=y_scale)
+                plt_W = Plots.plot!(xticks=pm_ticks, yscale=y_scale, legend=legend_position)
                 save_plots && (plt_W = Plots.plot!(dpi=600); png(plt_W,"W_$(Ed_array[iEd])"*"_"*coord*"_"*density*"_"*mode*"_$(y_scale)"))
             else
                 WF = dropdims(sum(WFO_pm[iEd,:,:],dims=2), dims=2) # Sum over all orbit types
@@ -469,21 +470,21 @@ function app(req)
                 plt_WF = Plots.plot!(size=(1200,400),left_margin=5Plots.mm,bottom_margin=5Plots.mm)
                 plt_WF = Plots.vline!([maximum(pm_array)],color=:gray,linewidth=1.0,label="",linestyle=:dash)
                 plt_WF = Plots.plot!(xlims=(minimum(pm_array)-0.02*(maximum(pm_array) - minimum(pm_array)),maximum(pm_array) + 0.3333*(maximum(pm_array) - minimum(pm_array))))
-                plt_WF = Plots.plot!(xticks=pm_ticks, yscale=y_scale)
+                plt_WF = Plots.plot!(xticks=pm_ticks, yscale=y_scale, legend=legend_position)
                 save_plots && (plt_WF = Plots.plot!(dpi=600); png(plt_WF,"WF_$(Ed_array[iEd])"*"_"*coord*"_"*density*"_"*mode*"_$(y_scale)"))
 
                 plt_F = Plots.plot(pm_array[gi_F], (F ./denom_F)[gi_F], label="Total", color=:black, linewidth=2.5, xlabel="Pitch maximum [-]", ylabel=ylabel_F, title=title_F)
                 plt_F = Plots.plot!(size=(1200,400),left_margin=5Plots.mm,bottom_margin=5Plots.mm)
                 plt_F = Plots.vline!([maximum(pm_array)],color=:gray,linewidth=1.0,label="",linestyle=:dash)
                 plt_F = Plots.plot!(xlims=(minimum(pm_array)-0.02*(maximum(pm_array) - minimum(pm_array)),maximum(pm_array) + 0.3333*(maximum(pm_array) - minimum(pm_array))))
-                plt_F = Plots.plot!(xticks=pm_ticks, yscale=y_scale)
+                plt_F = Plots.plot!(xticks=pm_ticks, yscale=y_scale, legend=legend_position)
                 save_plots && (plt_F = Plots.plot!(dpi=600); png(plt_F,"F_$(Ed_array[iEd])"*"_"*coord*"_"*density*"_"*mode*"_$(y_scale)"))
 
                 plt_W = Plots.plot(pm_array[gi_W], (W ./denom_W)[gi_W], label="Total", color=:black, linewidth=2.5, xlabel="Pitch maximum [-]", ylabel=ylabel_W, title=title_W)
                 plt_W = Plots.plot!(size=(1200,400),left_margin=5Plots.mm,bottom_margin=5Plots.mm)
                 plt_W = Plots.vline!([maximum(pm_array)],color=:gray,linewidth=1.0,label="",linestyle=:dash)
                 plt_W = Plots.plot!(xlims=(minimum(pm_array)-0.02*(maximum(pm_array) - minimum(pm_array)),maximum(pm_array) + 0.3333*(maximum(pm_array) - minimum(pm_array))))
-                plt_W = Plots.plot!(xticks=pm_ticks, yscale=y_scale)
+                plt_W = Plots.plot!(xticks=pm_ticks, yscale=y_scale, legend=legend_position)
                 save_plots && (plt_W = Plots.plot!(dpi=600); png(plt_W,"W_$(Ed_array[iEd])"*"_"*coord*"_"*density*"_"*mode*"_$(y_scale)"))
             end
         else # Else, it's Rm!
@@ -565,7 +566,7 @@ function app(req)
                 plt_WF = Plots.plot!(size=(1200,400),left_margin=5Plots.mm,bottom_margin=5Plots.mm)
                 plt_WF = Plots.vline!([maximum(Rm_array)],color=:gray,linewidth=1.0,label="",linestyle=:dash)
                 plt_WF = Plots.plot!(xlims=(minimum(Rm_array)-0.02*(maximum(Rm_array) - minimum(Rm_array)),maximum(Rm_array) + 0.3333*(maximum(Rm_array) - minimum(Rm_array))))
-                plt_WF = Plots.plot!(xticks=Rm_ticks, yscale=y_scale)
+                plt_WF = Plots.plot!(xticks=Rm_ticks, yscale=y_scale, legend=legend_position)
                 save_plots && (plt_WF = Plots.plot!(dpi=600); png(plt_WF,"WF_$(Ed_array[iEd])"*"_"*coord*"_"*density*"_"*mode*"_$(y_scale)"))
 
                 plt_F = Plots.plot(Rm_array[gi_F_1], (FO_Rm[:,1] ./denom_F)[gi_F_1], label="Stagnation", color=:red, linewidth=2.5)
@@ -577,7 +578,7 @@ function app(req)
                 plt_F = Plots.plot!(size=(1200,400),left_margin=5Plots.mm,bottom_margin=5Plots.mm)
                 plt_F = Plots.vline!([maximum(Rm_array)],color=:gray,linewidth=1.0,label="",linestyle=:dash)
                 plt_F = Plots.plot!(xlims=(minimum(Rm_array)-0.02*(maximum(Rm_array) - minimum(Rm_array)),maximum(Rm_array) + 0.3333*(maximum(Rm_array) - minimum(Rm_array))))
-                plt_F = Plots.plot!(xticks=Rm_ticks, yscale=y_scale)
+                plt_F = Plots.plot!(xticks=Rm_ticks, yscale=y_scale, legend=legend_position)
                 save_plots && (plt_F = Plots.plot!(dpi=600); png(plt_F,"F_$(Ed_array[iEd])"*"_"*coord*"_"*density*"_"*mode*"_$(y_scale)"))
 
                 plt_W = Plots.plot(Rm_array[gi_W_1], (WO_Rm[iEd,:,1] ./denom_W)[gi_W_1], label="Stagnation", color=:red, linewidth=2.5)
@@ -589,7 +590,7 @@ function app(req)
                 plt_W = Plots.plot!(size=(1200,400),left_margin=5Plots.mm,bottom_margin=5Plots.mm)
                 plt_W = Plots.vline!([maximum(Rm_array)],color=:gray,linewidth=1.0,label="",linestyle=:dash)
                 plt_W = Plots.plot!(xlims=(minimum(Rm_array)-0.02*(maximum(Rm_array) - minimum(Rm_array)),maximum(Rm_array) + 0.3333*(maximum(Rm_array) - minimum(Rm_array))))
-                plt_W = Plots.plot!(xticks=Rm_ticks, yscale=y_scale)
+                plt_W = Plots.plot!(xticks=Rm_ticks, yscale=y_scale, legend=legend_position)
                 save_plots && (plt_W = Plots.plot!(dpi=600); png(plt_W,"W_$(Ed_array[iEd])"*"_"*coord*"_"*density*"_"*mode*"_$(y_scale)"))
             else
                 WF = dropdims(sum(WFO_Rm[iEd,:,:],dims=2), dims=2) # Sum over all orbit types
@@ -633,21 +634,21 @@ function app(req)
                 plt_WF = Plots.plot!(size=(1200,400),left_margin=5Plots.mm,bottom_margin=5Plots.mm)
                 plt_WF = Plots.vline!([maximum(Rm_array)],color=:gray,linewidth=1.0,label="",linestyle=:dash)
                 plt_WF = Plots.plot!(xlims=(minimum(Rm_array)-0.02*(maximum(Rm_array) - minimum(Rm_array)),maximum(Rm_array) + 0.3333*(maximum(Rm_array) - minimum(Rm_array))))
-                plt_WF = Plots.plot!(xticks=Rm_ticks, yscale=y_scale)
+                plt_WF = Plots.plot!(xticks=Rm_ticks, yscale=y_scale, legend=legend_position)
                 save_plots && (plt_WF = Plots.plot!(dpi=600); png(plt_WF,"WF_$(Ed_array[iEd])"*"_"*coord*"_"*density*"_"*mode*"_$(y_scale)"))
                 
                 plt_F = Plots.plot(Rm_array[gi_F], (F ./denom_F)[gi_F], label="Total", color=:black, linewidth=2.5, xlabel="Radius maximum [m]", ylabel=ylabel_F, title=title_F)
                 plt_F = Plots.plot!(size=(1200,400),left_margin=5Plots.mm,bottom_margin=5Plots.mm)
                 plt_F = Plots.vline!([maximum(Rm_array)],color=:gray,linewidth=1.0,label="",linestyle=:dash)
                 plt_F = Plots.plot!(xlims=(minimum(Rm_array)-0.02*(maximum(Rm_array) - minimum(Rm_array)),maximum(Rm_array) + 0.3333*(maximum(Rm_array) - minimum(Rm_array))))
-                plt_F = Plots.plot!(xticks=Rm_ticks, yscale=y_scale)
+                plt_F = Plots.plot!(xticks=Rm_ticks, yscale=y_scale, legend=legend_position)
                 save_plots && (plt_F = Plots.plot!(dpi=600); png(plt_F,"F_$(Ed_array[iEd])"*"_"*coord*"_"*density*"_"*mode*"_$(y_scale)"))
 
                 plt_W = Plots.plot(Rm_array[gi_W], (W ./denom_W)[gi_W], label="Total", color=:black, linewidth=2.5, xlabel="Radius maximum [m]", ylabel=ylabel_W, title=title_W)
                 plt_W = Plots.plot!(size=(1200,400),left_margin=5Plots.mm,bottom_margin=5Plots.mm)
                 plt_W = Plots.vline!([maximum(Rm_array)],color=:gray,linewidth=1.0,label="",linestyle=:dash)
                 plt_W = Plots.plot!(xlims=(minimum(Rm_array)-0.02*(maximum(Rm_array) - minimum(Rm_array)),maximum(Rm_array) + 0.3333*(maximum(Rm_array) - minimum(Rm_array))))
-                plt_W = Plots.plot!(xticks=Rm_ticks, yscale=y_scale)
+                plt_W = Plots.plot!(xticks=Rm_ticks, yscale=y_scale, legend=legend_position)
                 save_plots && (plt_W = Plots.plot!(dpi=600); png(plt_W,"W_$(Ed_array[iEd])"*"_"*coord*"_"*density*"_"*mode*"_$(y_scale)"))
             end
         end

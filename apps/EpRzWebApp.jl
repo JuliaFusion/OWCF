@@ -212,7 +212,7 @@ topobo = false
 if isfile(filepath_tb)
     verbose && println("Loading (E,pm,Rm) topological boundaries... ")
     myfile = jldopen(filepath_tb,false,false,false,IOStream)
-    topoBounds = myfile["topoBounds"]
+    topoBounds_OS = myfile["topoBounds"]
     E_array_tb = myfile["E_array"]
     pm_array = myfile["pm_array"]
     Rm_array = myfile["Rm_array"]
@@ -223,9 +223,7 @@ if isfile(filepath_tb)
     end
 
     topobo = true
-
-    ### WRITE CODE TO PRE-COMPUTE R_grid, B_array, ... etc FOR mu_func(). 
-    ### USE INPUT ARGUMENT nR_for_mu TO DETERMINE LENGTH OF R_grid, B_array, ... etc
+    println("topobo is true")
 end
 
 ## ------
@@ -293,6 +291,8 @@ if isfile(filepath_distr)
         myfile = jldopen(filepath_distr,false,false,false,IOStream)
         if haskey(myfile,"F_ps")
             F = myfile["F_ps"]
+        elseif haskey(myfile,"F_EpRz")
+            F = myfile["F_EpRz"]
         else
             F = myfile["f"] # Otherwise, assume has 'f' key
         end
@@ -340,6 +340,7 @@ p_array = vec(collect(p_array)) # Ensure type Array{Float64,1}
 R_array = vec(collect(R_array)) # Ensure type Array{Float64,1}
 z_array = vec(collect(z_array)) # Ensure type Array{Float64,1}
 
+c_array = [:red, :blue, :green, :purple, :orange, :yellow, :brown, :pink, :gray]
 ## ------
 # The web application
 verbose && println("--- You can access the EpRzWebApp via an internet web browser when you see 'Task (runnable)...' ")
@@ -388,11 +389,11 @@ function app(req) # Here is where the app starts!
             plt_crs = Plots.scatter([magnetic_axis(M)[1]],[magnetic_axis(M)[2]],label="Magnetic axis", mc=:gray, aspect_ratio=:equal, xlabel="R [m]", ylabel="z [m]",title="Poloidal cross-section")
         end
         if tokamak_wall
-            plt_crs = Plots.contour!(flux_r,flux_z,psi_rz',levels=collect(range(psi_mag,stop=psi_bdry,length=5)),color=:gray, linestyle=:dot,linewidth=1.5, label="",colorbar=false)
+            plt_crs = Plots.contour!(flux_r,flux_z,psi_rz',levels=collect(range(psi_mag,stop=psi_bdry,length=5)),color=:gray, linestyle=:dot,linewidth=2.5, label="",colorbar=false)
             wall_dR = maximum(wall.r)-minimum(wall.r)
             plt_crs = Plots.plot!(wall.r,wall.z, label="Tokamak wall", color=:black, linewidth=1.5,xaxis=[minimum(wall.r)-wall_dR/10,maximum(wall.r)+wall_dR])
         end
-        plt_crs = Plots.plot!(o.path.r,o.path.z, label="$(o.class) orbit", color=orb_color, linestyle=orb_linestyle, linewidth=1.5)
+        plt_crs = Plots.plot!(o.path.r,o.path.z, label="$(o.class) orbit", color=orb_color, linestyle=orb_linestyle, linewidth=2.5)
         plt_crs = Plots.vline!([R],linestyle=:dot,color=:gray,linewidth=1.0,label="")
         plt_crs = Plots.hline!([z],linestyle=:dot,color=:gray,linewidth=1.0,label="")
         plt_crs = Plots.scatter!([R],[z], mc=orb_color, label="(R,z)", grid=false)
@@ -462,7 +463,8 @@ function app(req) # Here is where the app starts!
             ms = save_plots ? 2.6 : 1.8
             #plt_weights = Plots.scatter!(E_scatvals_tb,p_scatvals_tb,markersize=ms,label="",markercolor=:black,leg=false)
         elseif study==:OS && topobo
-            ones_carinds = findall(x-> x==1.0,topoBounds[Eci,:,:])
+            ms = save_plots ? 2.6 : 1.8
+            ones_carinds = findall(x-> x==1.0,topoBounds_OS[Eci,:,:])
             pm_scatvals_tb = zeros(length(ones_carinds))
             Rm_scatvals_tb = zeros(length(ones_carinds))
             for (ind,carinds) in enumerate(ones_carinds)
@@ -470,9 +472,17 @@ function app(req) # Here is where the app starts!
                 Rm_scatvals_tb[ind] = Rm_array[carinds[2]]
             end
 
-            array_o_hcTopo_tuples = map(i-> (HamiltonianCoordinate(M,my_gcp(E,p_array[i],R,z)), topoMap[Eci,i,Rci,zci]), 1:length(p_array))
-            array_o_EPRcTopo_tuples = map(x-> (EPRCoordinate4(; R_grid=R_grid, B_array=B_on_R_grid, ...),x[2]), array_o_hcTopo_tuples)
-
+            array_o_orb_tuples = map(i-> (get_orbit(M,my_gcp(E,p_array[i],R,z); wall=wall, toa=true), topoMap[Eci,i,Rci,zci]), 1:length(p_array)) # Genius line <3
+            
+            plt_topo = Plots.scatter(Rm_scatvals_tb,pm_scatvals_tb,markersize=ms,leg=false,markercolor=:black, xlabel="Rm [m]", ylabel="pm")
+            for orb_tuple in array_o_orb_tuples
+                oo, ic = orb_tuple
+                if !(o.class == :lost)
+                    plt_topo = Plots.scatter!([oo.coordinate.r],[oo.coordinate.pitch],mc=c_array[Int64(ic)])
+                else
+                    ### WRITE A SPECIAL ALGORITHM TO DETERMINE Rm FOR LOST ORBITS. If possible/makes sense? Some lost orbits might not go through midplane?
+                end
+            end
         else
             topoMap_raw = topoMap[:,:,Rci,zci] # might not include all integers between 1 and 9 (needed for correct Set1_9 heatmap coloring)
             topoMap_ext = ones(size(topoMap_raw,1),size(topoMap_raw,2)+1) # We ensure 1.0 in data by using ones() function. Add one extra column
@@ -481,9 +491,19 @@ function app(req) # Here is where the app starts!
             p_array_ext = vcat(p_array,2*p_array[end]-p_array[end-1]) # Extend p_array by one dummy element
             plt_topo = Plots.heatmap(E_array,p_array_ext,topoMap_ext',color=:Set1_9,legend=false,xlabel="E [keV]", ylabel="p [-]", title="(E,p) orbit topology at (R,z)", ylims=(minimum(p_array),maximum(p_array)))
         end
-        plt_topo = Plots.vline!([E],linestyle=:dot,color=:gray,linewidth=1.0)
-        plt_topo = Plots.hline!([p],linestyle=:dot,color=:gray,linewidth=1.0)
-        plt_topo = Plots.scatter!([E],[p],markershape=:circle,mc=orb_color,legend=false,markersize=6, grid=false)
+        if !(study==:OS && topobo)
+            plt_topo = Plots.vline!([E],linestyle=:dot,color=:gray,linewidth=1.0)
+            plt_topo = Plots.hline!([p],linestyle=:dot,color=:gray,linewidth=1.0)
+            plt_topo = Plots.scatter!([E],[p],markershape=:circle,mc=orb_color,legend=false,markersize=6, grid=false)
+        else
+            if !(o.class == :lost)
+                plt_topo = Plots.vline!([o.coordinate.r],linestyle=:dot,color=:gray,linewidth=1.0)
+                plt_topo = Plots.hline!([o.coordinate.pitch],linestyle=:dot,color=:gray,linewidth=1.0)
+                plt_topo = Plots.scatter!([o.coordinate.r],[o.coordinate.pitch],mc=:black, markersize=6)
+            else
+                ### WRITE A SPECIAL ALGORITHM TO DETERMINE Rm FOR LOST ORBITS. If possible/makes sense? Some lost orbits might not go through midplane?
+            end
+        end
         if save_plots
             plt_topo = Plots.plot!(dpi=600)
             png(plt_topo, "plt_topo_$(round(E, digits=2))_$(round(p, digits=2))_$(round(R,digits=2))_$(round(z,digits=2))")

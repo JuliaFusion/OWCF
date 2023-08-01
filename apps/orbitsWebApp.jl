@@ -92,6 +92,10 @@ else
 end
 close(myfile)
 
+if haskey(extra_kw_args, :maxiter)
+    delete!(extra_kw_args, :maxiter)
+end
+
 ## --------------------------------------------------------------------------
 # Loading packages
 verbose && println("Loading packages... ")
