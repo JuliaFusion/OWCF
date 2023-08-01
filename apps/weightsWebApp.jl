@@ -202,9 +202,9 @@ include(folderpath_OWCF*"extra/dependencies.jl") # To load the (E,pm,Rm) to (E,m
 
 ## ------
 # Loading packages on external CPU processors, if anticipated that it will be needed later
-if enable_COM && !isfile(filepath_W_COM) && !isfile(filepath_tm)
+if enable_COM && !isfile(filepath_W_COM)
     verbose && println("Anticipating the need for several CPU-processors. Adding CPU-processors and loading necessary Julia packages... ")
-    addprocs(4) # Four extra CPU processes should be sufficient, and available on most PCs/Macbook/Linux devices
+    addprocs(2) # Two extra CPU processes should be sufficient, and available on most PCs/Macbook/Linux devices, also in terms of RAM
     @everywhere folderpath_OWCF = $folderpath_OWCF # Transfer variable to extra CPU-processes
     @everywhere begin
         cd(folderpath_OWCF)

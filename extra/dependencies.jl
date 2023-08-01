@@ -1094,8 +1094,8 @@ function ps2os_performance(M::AbstractEquilibrium,
         subdivide = false
         while numOsamples > nbatch
             subdivide = true
-            numOsamples = numOsamples - nbatch
             verbose && println("Samples left: $(numOsamples)")
+            numOsamples = numOsamples - nbatch
             result_p = performance_helper(M, nbatch, frdvols_cumsum_vector, subs, dE_vector, dp_vector, dR_vector, dz_vector, energy, pitch, R, z, og; wall=wall, GCP=GCP, kwargs...)
             result_sofar .+= result_p
             numOsamples_sofar += nbatch
@@ -1642,6 +1642,46 @@ function getSpeciesCharge(species_identifier::AbstractString)
 end
 
 """
+    getOSTopoMap()
+    getOSTopoMap()
+
+Bla bla bla bla
+"""
+function getOSTopoMap(M::AbstractEquilibrium, E::Float64, pmRm_inds_array::Vector{Tuple{CartesianIndex{1}, CartesianIndex{1}}}, pm_array::AbstractVector, Rm_array::AbstractVector; FI_species::String="D", wall=nothing, distinguishLost=false, distinguishIncomplete=false, extra_kw_args=Dict(:toa => true))
+    topoMap = @showprogress 1 "Computing topoMap for E=$(E) keV... " @distributed (+) for i=1:length(pmRm_inds_array)
+        pmRm_inds = pmRm_inds_array[i]
+        ipm = pmRm_inds[1]
+        iRm = pmRm_inds[2]
+        pm = pm_array[ipm]
+        Rm = Rm_array[iRm]
+        topoMap_i = zeros(length(pm_array),length(Rm_array))
+        EPRc = EPRCoordinate(M,E,pm,Rm;amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species))
+        o = get_orbit(M,EPRc;wall=wall,store_path=false, extra_kw_args...)
+        topoMap_i[ipm,iRm] = class2int(M, o; plot=true, distinguishLost=distinguishLost, distinguishIncomplete=distinguishIncomplete) # Plot=true ensures correct integer for c-stag orbits
+        topoMap_i
+    end
+
+    return topoMap
+end
+
+"""
+    getOSTopoMap()
+    getOSTopoMap()
+
+Bla bla bla
+"""
+function getOSTopoMap(M::AbstractEquilibrium, E_array::AbstractVector, pm_array::AbstractVector, Rm_array::AbstractVector; kwargs... )
+    pm_inds_rep = repeat(CartesianIndices(pm_array),inner=length(Rm_array)) # To get all points
+    Rm_inds_rep = repeat(CartesianIndices(Rm_array),outer=length(pm_array)) # To get all points
+    topoMap = zeros(length(E_array),length(pm_array),length(Rm_array)) # The total 3D topological map
+    pmRm_inds_array = collect(zip(pm_inds_rep,Rm_inds_rep)) # All points in an energy slice, in one long vector
+    for iE=1:length(E_array)
+        topoMap[iE,:,:] = getOSTopoMap(M, E_array[iE], pmRm_inds_array, pm_array, Rm_array; kwargs... )
+    end
+    return topoMap
+end
+
+"""
     interpDelaunayTess(tess, data, x_array, y_array, vertices_hash)
     interpDelaunayTess(-||-; outside_value=0.0, nearest=false, verbose=false, vverbose=false)
 
@@ -1963,11 +2003,11 @@ function os2COM(M::AbstractEquilibrium, data::Union{Array{Float64, 3},Array{Floa
     verbose && println("Mapping (E,pm,Rm) -> (E,μ,Pϕ;σ) for 3D quantity 1 of $(size(data,1))... ")
     data_COM[1, :, :, :, :], E_array, μ_matrix, Pϕ_matrix = os2COM(M, good_coords, data[1,:,:,:], E_array, pm_array, Rm_array, FI_species; nμ=nμ, nPϕ=nPϕ, isTopoMap=isTopoMap, needJac=needJac, verbose=verbose, vverbose=vverbose)
     if size(data,1)>1 # To avoid distributed errors
-        data_COM_mp = @distributed (+) for iEd in collect(2:size(data,1))
-            verbose && println("Mapping (E,pm,Rm) -> (E,μ,Pϕ;σ) for 3D quantity $(iEd) of $(size(data,1))... ")
+        data_COM_mp = @showprogress 1 "Mapping (E,pm,Rm) -> (E,μ,Pϕ;σ)... " @distributed (+) for iEd in collect(2:size(data,1))
+            #verbose && println("Mapping (E,pm,Rm) -> (E,μ,Pϕ;σ) for 3D quantity $(iEd) of $(size(data,1))... ")
             data_COM_part = zeros(size(data,1),length(E_array),nμ, nPϕ, 2)
             # E_array_part, μ_matrix_part and Pϕ_matrix_part do not matter. But they need to be returned by os2COM.
-            data_COM_part[iEd, :, :, :, :], E_array_part, μ_matrix_part, Pϕ_matrix_part = os2COM(M, good_coords, data[iEd,:,:,:], E_array, pm_array, Rm_array, FI_species; nμ=nμ, nPϕ=nPϕ, isTopoMap=isTopoMap, needJac=needJac, verbose=verbose, vverbose=vverbose)
+            data_COM_part[iEd, :, :, :, :], E_array_part, μ_matrix_part, Pϕ_matrix_part = os2COM(M, good_coords, data[iEd,:,:,:], E_array, pm_array, Rm_array, FI_species; nμ=nμ, nPϕ=nPϕ, isTopoMap=isTopoMap, needJac=needJac, verbose=false, vverbose=false)
             data_COM_part # Declare ready for reduction (data_COM += data_COM_part but distributed over several CPU cores)
         end
 
@@ -1990,7 +2030,7 @@ Bla bla bla
 function muPphi_2_pmRmNorm_funcGen(M::AbstractEquilibrium, E::Float64, FI_species::String; amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species), sigma=1, wall=nothing, nR=500, verbose=false, extra_kw_args=Dict(:max_tries => 0))
     f = function func(x)
         myEPRc = EPRCoordinate4(M, HamiltonianCoordinate(E, x[1], x[2]; amu=amu, q=q); sigma=sigma, wall=wall, nR=nR, verbose=verbose, extra_kw_args=extra_kw_args)
-        return sqrt((myEPRc.pitch)^2 + (myEPRc.r)^2)
+        return (myEPRc.r > 0.0) ? sqrt((myEPRc.pitch)^2 + (myEPRc.r)^2) : Inf
     end
     return f
 end
@@ -2004,9 +2044,11 @@ Bla bla bla. Talk about function, inputs, keyword arguments etc
 function muPphiSigma_2_pmRm(M::AbstractEquilibrium, data::Array{Float64,3}, E::Union{Float64, Int64}, mu_array::AbstractVector, 
     Pphi_array::AbstractVector, FI_species::AbstractString, npm::Int64, nRm::Int64, wall::Union{GuidingCenterOrbits.Boundary{Float64},Nothing}, 
     pm_array::Union{AbstractVector,Nothing}, Rm_array::Union{AbstractVector,Nothing}, dataIsTopoMap::Bool, topoMap::Array{Float64,3}, needJac::Bool, 
-    nR::Int64, verbose::Bool, vverbose::Bool, debug::Bool, extra_kw_args::T) where {T<:Dict}
+    nR::Int64, n_stagopt::Int64, verbose::Bool, vverbose::Bool, debug::Bool, extra_kw_args::T) where {T<:Dict}
+    ######################
+end
 
-    transform = x -> x # Probably redundant
+function com2OS(M::AbstractEquilibrium, data::Array{Float64,4}, E_array::AbstractVector, mu_matrix::AbstractMatrix, Pphi_matrix::AbstractMatrix, FI_species::String; npm=length(mu_matrix[1,:]), nRm=length(Pphi_matrix[1,:]), wall=nothing, pm_array=nothing, Rm_array=nothing, dataIsTopoMap::Bool=false, needJac::Bool=false, transform = x -> x, verbose::Bool=false, debug::Bool=false, kwargs...)
     if !(pm_array===nothing)
         npm = length(pm_array)
     else
@@ -2023,245 +2065,110 @@ function muPphiSigma_2_pmRm(M::AbstractEquilibrium, data::Array{Float64,3}, E::U
         end
     end
 
-    verbose && println("Transforming (μ,Pϕ;σ) coordinates into (pm,Rm) coordinates... ")
-    if !dataIsTopoMap
-        subs = findall(x-> x!=9.0, topoMap)
-    else
-        subs = findall(x-> x!=9.0, data)
-        topoMap = data
+    # Before computing an (E,pm,Rm) topological map, assume that lost and incomplete orbits are not of interest
+    distinguishLost = false
+    distinguishIncomplete = false
+    if dataIsTopoMap # If data is a topological map
+        if 7 in data # If 7 is present, then we know that lost orbits have been distinguished, and are of interest
+            distinguishLost = true
+        end
+        if 6 in data # If 6 is present, then we know that incomplete orbits have been distinguished, and are of interest
+            distinguishIncomplete = true
+        end
     end
-    sigma_array = [-1,1] # Counter- (-1) or co-passing (1)
-    pm_values = Array{Float64}(undef, length(subs))
-    Rm_values = Array{Float64}(undef, length(subs))
-    data_values = Array{Float64}(undef, length(subs))
-    topoMap_values = Array{Float64}(undef, length(subs))
-    sigma_values = Array{Float64}(undef, length(subs))
-    if needJac # If a Jacobian is needed for the (μ,Pϕ;σ) -> (pm,Rm) mapping (i.e. for distributions)...
-        # We need to convert our (E,μ,Pϕ;σ) coordinates to Dual numbers (a+ϵb), where the dual part (b) is a unique orthonormal vector for each E-, μ- and Pϕ-direction (σ is taken care of separately)
-        verbose && println("Converting μPϕ-arrays, and pre-allocating pmRm-arrays, as Dual-number arrays... ")
-        E = ForwardDiff.Dual(E,(1.0,0.0,0.0))
-        mu_array = map(x-> ForwardDiff.Dual(x,(0.0,1.0,0.0)), mu_array)
-        Pphi_array = map(x-> ForwardDiff.Dual(x,(0.0,0.0,1.0)), Pphi_array)
-        pm_values = Array{ForwardDiff.Dual{Nothing, Float64, 3}}(undef, length(subs))
-        Rm_values = Array{ForwardDiff.Dual{Nothing, Float64, 3}}(undef, length(subs))
-        topoMap_values = Array{ForwardDiff.Dual{Nothing, Float64, 3}}(undef, length(subs))
-    end
-    @showprogress 1 "Transforming (μ,Pϕ;σ) coordinates" for (i, sub) in enumerate(subs)
-        imu, iPphi, isigma = Tuple(sub)
-        myHc = HamiltonianCoordinate(E, mu_array[imu], Pphi_array[iPphi]; amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species))
-        myEPRc = EPRCoordinate4(M, myHc; sigma=sigma_array[isigma], wall=wall, lost=((dataIsTopoMap && data[sub]==7) ? true : false), nR=nR, verbose=vverbose, extra_kw_args=extra_kw_args)
-        pm_values[i] = myEPRc.pitch
-        Rm_values[i] = myEPRc.r
-        data_values[i] = data[imu,iPphi,isigma]
-        topoMap_values[i] = topoMap[imu,iPphi,isigma]
-        sigma_values[i] = sigma_array[isigma]
+    ## DON'T WANT TO DO THIS FOR EACH WEIGHT FUNCTION
+    ## DON'T WANT TO DO THIS FOR EACH WEIGHT FUNCTION
+    ## DON'T WANT TO DO THIS FOR EACH WEIGHT FUNCTION
+    topoMap = getOSTopoMap(M, E_array, pm_array, Rm_array; FI_species=FI_species, wall=wall, distinguishLost=distinguishLost, distinguishIncomplete=distinguishIncomplete, kwargs... )
+    if dataIsTopoMap # If data is topoMap, then we are done!
+        return topoMap, E_array, pm_array, Rm_array
     end
 
-    verbose && println("Removing impossible and incorrect (pm,Rm) coordinates... ")
-    # Remove (pm,Rm) coordinates corresponding to impossible (E,mu,Pphi;sigma) coordinates
-    i_goods = findall(x-> x>zero(x), Rm_values)
-    # Remove (pm,Rm) coordinates that are not correct (due to, most likely, too low (mu,Pphi)-grid resolution)
-    filter!(i-> sign(pm_values[i])*sign(sigma_values[i])>0.0,i_goods)
-    pm_values = pm_values[i_goods]
-    Rm_values = Rm_values[i_goods]
-    data_values = data_values[i_goods]
-    topoMap_values = topoMap_values[i_goods]
-    sigma_values = sigma_values[i_goods]
-    subs = subs[i_goods]
-
-    # Perform a very simple optimization scheme, to attempt to correct bad stagnation (and counter-stagnation) orbits
-    verbose && println("Performing optimization scheme to attempt to improve mapping of (counter)stagnation-orbit coordinates... ")
-    com2OSnorm_negSigma_func = muPphi_2_pmRmNorm_funcGen(M, E, FI_species; amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species), sigma=-1, wall=wall, nR=nR, verbose=vverbose, extra_kw_args=extra_kw_args) # Will be a function of mu and Pphi, i.e. com2OSnorm_negSigma_func = com2OSnorm_negSigma_func(mu,Pphi)
-    com2OSnorm_posSigma_func = muPphi_2_pmRmNorm_funcGen(M, E, FI_species; amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species), sigma=1, wall=wall, nR=nR, verbose=vverbose, extra_kw_args=extra_kw_args) # Will be a function of mu and Pphi, i.e. com2OSnorm_posSigma_func = com2OSnorm_posSigma_func(mu,Pphi)
-    stag_inds = findall(x-> x==1 || x==8, topoMap_values)
-    dmu_array = diff(mu_array)
-    dPphi_array = diff(Pphi_array)
-    for si in stag_inds
-        imu, iPphi, isigma = Tuple(subs[si])
-        dmu_l = (imu==1) ? dmu_array[imu] : dmu_array[imu-1] # Compatible with non-equidistant grids
-        dmu_u = (imu==length(mu_array)) ? dmu_array[imu-1] : dmu_array[imu] # Compatible with non-equidistant grids
-        dPphi_l = (iPphi==1) ? dPphi_array[iPphi] : dPphi_array[iPphi-1] # Compatible with non-equidistant grids
-        dPphi_u = (iPphi==length(Pphi_array)) ? dPphi_array[iPphi-1] : dPphi_array[iPphi] # Compatible with non-equidistant grids
-        mu = mu_array[imu]
-        Pphi = Pphi_array[iPphi]
-        mu_l = mu - dmu_l/2 # mu_l means lower boundary for mu grid point
-        mu_u = mu + dmu_u/2 # mu_u means upper boundary for mu grid point
-        Pphi_l = Pphi - dPphi_l/2 # Similar to mu_l
-        Pphi_u = Pphi + dPphi_u/2 # Similar to mu_u 
-        com2OSnorm_func = (isigma==1) ? com2OSnorm_negSigma_func : com2OSnorm_posSigma_func # Is sigma=-1 (equivalent to isigma=1, since Julia starts indexing at 1 and the first element of sigma_array is -1) ? Then use the negative function. Otherwise, use the positive function.
-        res = Optim.optimize(-com2OSnorm_func, [mu,Pphi], [mu_l,Pphi_l], [mu_u,Pphi_u], Fminbox())
-        X = Optim.minimizer(res)
-
-        mu_opt = X[1]
-        Pphi_opt = X[2]
-        myHc = HamiltonianCoordinate(E, mu_opt, Pphi_opt; amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species))
-        myEPRc = EPRCoordinate4(M, myHc; sigma=sigma_array[isigma], wall=wall, nR=nR, verbose=vverbose, extra_kw_args=extra_kw_args)
-        pm_values[si] = myEPRc.pitch # Update pm-coordinate with optimal pm-value. That is, the pm-value that minimizes sqrt(pm^2 + Rm^2) within the (mu,Pphi)-pixel with boundaries [mu_l,Pphi_l] and [mu_u,Pphi_u]
-        Rm_values[si] = myEPRc.r # Update Rm-coordinate with optimal Rm-value. That is, the Rm-value that minimizes sqrt(pm^2 + Rm^2) within the (mu,Pphi)-pixel with boundaries [mu_l,Pphi_l] and [mu_u,Pphi_u]
-    end
-    
+    # If data is NOT a topological map, we need to extract valid (E,pm,Rm) coordinates to map to (E,mu,Pphi;sigma)
+    ctrgo_inds = findall(x-> x<0, pm_array)
+    cogo_inds = findall(x-> x>=0, pm_array)
+    data_OS = zeros(length(E_array), length(pm_array), length(Rm_array))
     if debug
-        if !needJac
-            return subs, pm_values, Rm_values, topoMap_values, data_values, [], []
-        end
-        detJac_values = zeros(length(pm_values))
-        data_values_Jac = zeros(length(pm_values))
-        for i in eachindex(pm_values)
-            x = transform([E,pm_values[i], Rm_values[i]]) # Probably redundant
-            detJac = max(abs(det(hcat((ForwardDiff.partials(xx) for xx in x)...))),0.0)
-            detJac_values[i] = detJac
-            data_values_Jac[i] = (1/detJac) * data_values[i]
-        end
-        return subs, pm_values, Rm_values, topoMap_values, data_values, detJac_values, data_values_Jac
-    end
-
-    if needJac
-        verbose && print("Scaling data with 1/|J|...")
-        for i in eachindex(pm_values)
-            x = transform([E,pm_values[i], Rm_values[i]]) # Probably redundant
-            detJac = max(abs(det(hcat((ForwardDiff.partials(xx) for xx in x)...))),0.0) # Extract the determinant of the Jacobi matrix (dEdpmdRm/dEdμdPϕ)
-            data_values[i] = (1/detJac) * data_values[i] # Multiply by the inverse of the Jacobian to go from (E,μ,Pϕ;σ) to (E,pm,Rm). Please note! σ is automatically accounted for by the dual numbers
-        end
-        verbose && println("Success!")
-        verbose && println("Reducing Dual-number arrays to real arrays... ")
-        E = ForwardDiff.value(E) # Extract the real part of E (remove the dual part)
-        mu_array = map(x-> ForwardDiff.value(x),mu_array) # Extract the real part of mu (remove the dual part)
-        Pphi_array = map(x-> ForwardDiff.value(x),Pphi_array) # Extract the real part of Pphi (remove the dual part)
-        pm_values = map(x-> ForwardDiff.value(x),pm_values) # Extract the real part of pm (remove the dual part)
-        Rm_values = map(x-> ForwardDiff.value(x),Rm_values) # Extract the real part of Rm (remove the dual part)
-        topoMap_values = map(x-> ForwardDiff.value(x),topoMap_values) # Extract the real part of Rm (remove the dual part)
-    end
-
-    # We will let pm>=0.0 correspond to all types of co-going orbits.
-    # We will need to treat them separately, because we would like to keep the 'sea of invalid orbits' at pm≈0.
-    # 'cogo' is short for 'co-going'
-    cogo_inds = findall(x-> x>=0.0, pm_values)
-    data_values_cogo = data_values[cogo_inds]
-    pm_values_cogo = pm_values[cogo_inds]
-    Rm_values_cogo = Rm_values[cogo_inds]
-
-    # Since the pm- and Rm-values will be irregularly scattered in the (pm,Rm)-plane
-    # (because we simply just computed them from (μ,Pϕ;σ) points), we need to create 
-    # a Delaunay tesselation to be able to interpolate onto our desired (npm,nRm) 
-    # output grid (which will be regularly spaced)
-    tess = DelaunayTessellation(length(pm_values_cogo))
-
-    # The Delaunay tesselation unfortunately only works if the nodes are
-    # within (1+eps, 2-eps). We therefore need to map all our (pm,Rm)-points
-    # into the box with vertices (1,1), (1,2), (2,1), (2,2).
-    # min_coord = 1 + eps is automatically loaded from the DelaunayVoronoi.jl package
-    # max_coord = 2 - eps is automatically loaded from the DelaunayVoronoi.jl package
-    min_Rm, max_Rm = minimum(Rm_array), maximum(Rm_array)
-    min_pm, max_pm = minimum(pm_array), maximum(pm_array)
-    Rm_tess(Rm) = min_coord + (max_coord-min_coord)*(Rm-min_Rm)/(max_Rm-min_Rm) # DelaunayTesselation expects all points to be within [min_coord,max_coord] (given by VoronoiDelaunay.min_coord etc). We therefore need a conversion function.
-    Rm_tess_inv(Rm_tess) = min_Rm + (max_Rm-min_Rm)*(Rm_tess-min_coord)/(max_coord-min_coord) # We need a function to convert back to normal Rm values
-    pm_tess(pm) = min_coord + (max_coord-min_coord)*(pm-min_pm)/(max_pm-min_pm) # DelaunayTesselation expects all points to be within [min_coord,max_coord] (given by VoronoiDelaunay.min_coord etc). We therefore need a conversion function.
-    pm_tess_inv(pm_tess) = min_pm + (max_pm-min_pm)*(pm_tess-min_coord)/(max_coord-min_coord) # We need a function to convert back to normal pm values
-
-    pmRm_iterator_tess = zip(pm_tess.(pm_values_cogo),Rm_tess.(Rm_values_cogo)) # Create an iterator with all the co-going (pm,Rm) values as tuples
-    a = Point2D[Point(mm_tess, pp_tess) for (mm_tess,pp_tess) in pmRm_iterator_tess] # Put them all in a Point() object within a Point2D array
-    push!(tess, a) # Feed all points to the Delaunay tessellation
-
-    verbose && println("Mapping all co-going triangles to original vertex indices... ")
-    vertices_hash = getDelaunayTessVerticesHash(tess, pmRm_iterator_tess)
-
-    if dataIsTopoMap
-        outside_value = 9.0 # If we are mapping a topological map and the query point is outside of the tesselation, it's an invalid orbit
-    else
-        outside_value = 0.0 # If we are mapping anything else (orbit weight function slice, transit time map etc.), all values should be zero outside of the tesselation
-    end
-    data_OS_cogo = interpDelaunayTess(tess, data_values_cogo, pm_tess.(pm_array), Rm_tess.(Rm_array), vertices_hash; outside_value=outside_value, nearest=dataIsTopoMap, verbose=verbose, vverbose=vverbose)
-
-    # Now we need to do the same for the counter-going orbits
-    # Orbits with pm<0 are counter-going. Let's continue with them now.
-    # 'ctgo' is short for 'counter-going'
-    ctgo_inds = findall(x-> x<0.0, pm_values)
-    if dataIsTopoMap
-        lost_inds = findall(x-> x==7.0, data_values)
-        lost_ctgo_inds = filter(x-> x in lost_inds, ctgo_inds)
-        ctgo_inds = filter(x-> !(x in lost_inds), ctgo_inds) # Remove all lost orbits. They need to be treated separately
-    end
-    data_values_ctgo = data_values[ctgo_inds]
-    pm_values_ctgo = pm_values[ctgo_inds]
-    Rm_values_ctgo = Rm_values[ctgo_inds]
-    tess = DelaunayTessellation(length(pm_values_ctgo))
-    pmRm_iterator_tess = zip(pm_tess.(pm_values_ctgo),Rm_tess.(Rm_values_ctgo)) # Create an iterator with all the counter-going (pm,Rm) values as tuples
-    a = Point2D[Point(mm_tess, pp_tess) for (mm_tess,pp_tess) in pmRm_iterator_tess] # Put them all in a Point() object within a Point2D array
-    push!(tess, a) # Feed all points to the Delaunay tessellation
-    verbose && println("Mapping all counter-going triangles to original vertex indices... ")
-    vertices_hash = getDelaunayTessVerticesHash(tess, pmRm_iterator_tess)
-    data_OS_ctgo = interpDelaunayTess(tess, data_values_ctgo, pm_tess.(pm_array), Rm_tess.(Rm_array), vertices_hash; outside_value=outside_value, nearest=dataIsTopoMap, verbose=verbose, vverbose=vverbose)
-    if dataIsTopoMap && !(length(lost_inds)==0) # If we are transforming a topological map, and there are lost orbits included
-        # We need to do the same for the lost (counter-going) orbits as we just did for the counter-going orbits
-        vverbose && println("Mapping all lost counter-going orbits to (pm, Rm)... ")
-        data_values_lost_ctgo = data_values[lost_ctgo_inds]
-        pm_values_lost_ctgo = pm_values[lost_ctgo_inds]
-        Rm_values_lost_ctgo = Rm_values[lost_ctgo_inds]
-        tess = DelaunayTessellation(length(pm_values_lost_ctgo))
-        pmRm_iterator_tess = zip(pm_tess.(pm_values_lost_ctgo),Rm_tess.(Rm_values_lost_ctgo)) # Create an iterator with all the counter-going (pm,Rm) values as tuples
-        a = Point2D[Point(mm_tess, pp_tess) for (mm_tess,pp_tess) in pmRm_iterator_tess] # Put them all in a Point() object within a Point2D array
-        push!(tess, a) # Feed all points to the Delaunay tessellation
-        if debug
-            # Write your own debug code here. For example:
-            x, y = getplotxy(delaunayedges(tess))
-            test_plt_1 = Plots.plot(Rm_tess_inv.(y),pm_tess_inv.(x); label="Delaunay tessellation",ylims=extrema(pm_tess_inv.(x)), xlims=extrema(Rm_tess_inv.(y)))
-            display(test_plt_1)
-        end
-        vertices_hash = getDelaunayTessVerticesHash(tess, pmRm_iterator_tess)
-        data_OS_lost_ctgo = interpDelaunayTess(tess, data_values_lost_ctgo, pm_tess.(pm_array), Rm_tess.(Rm_array), vertices_hash; outside_value=outside_value, nearest=dataIsTopoMap, verbose=verbose, vverbose=vverbose)
-        data_OS_ctgo = [((data_OS_ctgo[sub] != 9.0) ? data_OS_ctgo[sub] : data_OS_lost_ctgo[sub]) for sub in CartesianIndices(data_OS_ctgo)]
-    end
-
-    if dataIsTopoMap
-        valid_cogo_subs = findall(x-> x!=9.0,data_OS_cogo)
-        data_OS_ctgo[valid_cogo_subs] = data_OS_cogo[valid_cogo_subs]
-        data_OS = data_OS_ctgo
-    else
-        data_OS = data_OS_cogo + data_OS_ctgo
-    end
-
-    if debug
-        # Write your own debug code here
-    end
-
-    return map(x-> isnan(x) ? 0.0 : x, data_OS), E, pm_array, Rm_array # Make sure to remove all NaNs. Sometimes, NaNs arise. It's inevitable.
-end
-
-function muPphiSigma_2_pmRm(M::AbstractEquilibrium, data::Array{Float64,3}, E::Union{Float64, Int64}, mu_array::AbstractVector, Pphi_array::AbstractVector, FI_species::AbstractString; npm=length(mu_array), nRm=length(Pphi_array), wall=nothing, pm_array=nothing, Rm_array=nothing, dataIsTopoMap::Bool=false, topoMap::Union{Nothing,Array{Float64,3}}=nothing, needJac=false, nR=500, verbose=false, vverbose=false, debug=false, extra_kw_args=Dict(:max_tries => 0))
-    if typeof(topoMap)==Nothing && !dataIsTopoMap
-        error("Either a topological map must be provided via the 'topoMap' keyword argument, or the data must be a topological map itself and the 'dataIsTopoMap' set to true. Please correct and re-try.")
-    elseif typeof(topoMap)==Array{Float64,3} && !dataIsTopoMap
-        if !(size(data)==size(topoMap))
-            error("Size of 'topoMap' keyword argument does not match size of data. Please correct and re-try.")
-        end
-    else
-        verbose && println("Input data to muPphiSigma_2_pmRm() is topological map.")
-        topoMap = rand(size(data)...) # Then we don't care about the 'topoMap' keyword argument. Just set it to something random, to enable function execution without error
-    end
-
-    return muPphiSigma_2_pmRm(M, data, E, mu_array, Pphi_array, FI_species, npm, nRm, wall, pm_array, Rm_array, dataIsTopoMap, topoMap, needJac, nR, verbose, vverbose, debug, extra_kw_args)
-end
-
-function com2OS(M::AbstractEquilibrium, data::Array{Float64,4}, E_array::AbstractVector, mu_matrix::AbstractMatrix, Pphi_matrix::AbstractMatrix, FI_species::String; npm=length(mu_matrix[1,:]), nRm=length(Pphi_matrix[1,:]), wall=nothing, pm_array=nothing, Rm_array=nothing, dataIsTopoMap::Bool=false, topoMap::Union{Nothing,Array{Float64,3}}=nothing, verbose=false, kwargs...)
-    if !(pm_array===nothing)
-        npm = length(pm_array)
-    else
-        pm_array = range(-1.0,stop=1.0,length=npm)
-    end
-    if !(Rm_array===nothing)
-        nRm = length(Rm_array)
-    else
-        if !(wall===nothing)
-            Rm_array = vec(range((4*magnetic_axis(M)[1]+minimum(wall.r))/5, stop=maximum(wall.r), length=nRm))
+        if needJac
+            Hc_OS = Array{HamiltonianCoordinate{ForwardDiff.Dual{Nothing, Float64, 3}}}(undef,size(data_OS))
         else
-            R_lims, z_lims = limits(M)
-            Rm_array = vec(range((4*magnetic_axis(M)[1]+R_lims[1])/5, stop=R_lims[2], length=nRm))
+            Hc_OS = Array{HamiltonianCoordinate}(undef,size(data_OS))
         end
     end
-    data_OS = zeros(length(E_array), npm, nRm)
-    for (iE, E) in enumerate(E_array)
-        verbose && println("Mapping energy slice $(iE) of $(length(E_array))... ")
-        data_OS[iE,:,:], E, pm_array, Rm_array = muPphiSigma_2_pmRm(M, data[iE,:,:,:], E, mu_matrix[iE,:], Pphi_matrix[iE,:], FI_species; wall=wall, pm_array=pm_array, Rm_array=Rm_array, dataIsTopoMap=dataIsTopoMap, topoMap=topoMap, verbose=verbose, kwargs...)
+    numObadInds = 0
+    @showprogress 1 "Mapping energy slices... " for (iE,E) in enumerate(E_array)
+        valid_OSinds = findall(x-> (x!=9) && (x!=7) && (x!=6), topoMap[iE,:,:])
+        valid_ctrgo_OSinds = filter(x-> x[1] in ctrgo_inds, valid_OSinds)
+        valid_cogo_OSinds = filter(x-> x[1] in cogo_inds, valid_OSinds)
+
+        # Counter-going
+        nodes = (mu_matrix[iE,:], Pphi_matrix[iE,:])
+        itp = interpolate(nodes, data[iE,:,:,1], Gridded(Linear()))
+        if needJac
+            valid_ctrgo_OScoords = map(x-> (ForwardDiff.Dual(E,(1.0,0.0,0.0)), ForwardDiff.Dual(pm_array[x[1]],(0.0,1.0,0.0)), ForwardDiff.Dual(Rm_array[x[2]],(0.0,0.0,1.0))), valid_ctrgo_OSinds)
+            #mu_values = Array{ForwardDiff.Dual{Nothing, Float64, 3}}(undef, length(valid_ctrgo_OScoords))
+            #Pphi_values = Array{ForwardDiff.Dual{Nothing, Float64, 3}}(undef, length(valid_ctrgo_OScoords))
+        else
+            valid_ctrgo_OScoords = map(x-> (E, pm_array[x[1]], Rm_array[x[2]]), valid_ctrgo_OSinds)
+            #mu_values = Array{Float64}(undef,length(valid_ctrgo_OScoords))
+            #Pphi_values = Array{Float64}(undef,length(valid_ctrgo_OScoords))
+        end
+
+        for (i,OS_coord) in enumerate(valid_ctrgo_OScoords)
+            myEPRc = EPRCoordinate(M, OS_coord[1], OS_coord[2], OS_coord[3]; amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species))
+            myHc = HamiltonianCoordinate(M, myEPRc)
+
+            #mu_values[i] = myHc.mu
+            #Pphi_values[i] = myHc.p_phi
+
+            try
+                x = transform([E,myHc.mu,myHc.p_phi]) # Probably redundant
+                jac = (isempty(ForwardDiff.partials(myHc.mu))) ? 1.0 : max(abs(det(hcat((ForwardDiff.partials(xx) for xx in x)...))),0.0)
+                data_OS[iE, (valid_ctrgo_OSinds[i])[1], (valid_ctrgo_OSinds[i])[2]] = jac * itp(ForwardDiff.value(myHc.mu), ForwardDiff.value(myHc.p_phi))
+            catch
+                numObadInds += 1
+                debug && println("BAD INTERPOLATION COORDINATE ---> E: $(ForwardDiff.value(OS_coord[1]))  pm: $(ForwardDiff.value(OS_coord[2]))  Rm: $(ForwardDiff.value(OS_coord[3]))  mu: $(myHc.mu)  Pphi: $(myHc.p_phi)")
+            end
+            debug && (Hc_OS[iE, (valid_ctrgo_OSinds[i])[1], (valid_ctrgo_OSinds[i])[2]] = myHc )
+        end
+
+        # Co-going
+        itp = interpolate(nodes, data[iE,:,:,2], Gridded(Linear()))
+        if needJac
+            valid_cogo_OScoords = map(x-> (ForwardDiff.Dual(E,(1.0,0.0,0.0)), ForwardDiff.Dual(pm_array[x[1]],(0.0,1.0,0.0)), ForwardDiff.Dual(Rm_array[x[2]],(0.0,0.0,1.0))), valid_cogo_OSinds)
+            #mu_values = Array{ForwardDiff.Dual{Nothing, Float64, 3}}(undef, length(valid_ctrgo_OScoords))
+            #Pphi_values = Array{ForwardDiff.Dual{Nothing, Float64, 3}}(undef, length(valid_ctrgo_OScoords))
+        else
+            valid_cogo_OScoords = map(x-> (E, pm_array[x[1]], Rm_array[x[2]]), valid_cogo_OSinds)
+            #mu_values = Array{Float64}(undef,length(valid_ctrgo_OScoords))
+            #Pphi_values = Array{Float64}(undef,length(valid_ctrgo_OScoords))
+        end
+
+        for (i,OS_coord) in enumerate(valid_cogo_OScoords)
+            myEPRc = EPRCoordinate(M, OS_coord[1], OS_coord[2], OS_coord[3]; amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species))
+            myHc = HamiltonianCoordinate(M, myEPRc)
+
+            #mu_values[i] = myHc.mu
+            #Pphi_values[i] = myHc.p_phi
+
+            try
+                x = transform([E,myHc.mu,myHc.p_phi]) # Probably redundant
+                jac = (isempty(ForwardDiff.partials(myHc.mu))) ? 1.0 : max(abs(det(hcat((ForwardDiff.partials(xx) for xx in x)...))),0.0)
+                data_OS[iE, (valid_cogo_OSinds[i])[1], (valid_cogo_OSinds[i])[2]] = jac * itp(ForwardDiff.value(myHc.mu), ForwardDiff.value(myHc.p_phi))
+            catch
+                numObadInds += 1
+                debug && println("BAD INTERPOLATION COORDINATE ---> E: $(ForwardDiff.value(OS_coord[1]))  pm: $(ForwardDiff.value(OS_coord[2]))  Rm: $(ForwardDiff.value(OS_coord[3]))  mu: $(myHc.mu)  Pphi: $(myHc.p_phi)")
+            end
+            debug && (Hc_OS[iE, (valid_cogo_OSinds[i])[1], (valid_cogo_OSinds[i])[2]] = myHc )
+        end
+    end
+
+    if numObadInds > 0
+        @warn "The interpolation algorithm failed to interpolate $(numObadInds) (E,mu,Pphi;sigma) points."
+    end
+
+    if debug
+        return data_OS, E_array, pm_array, Rm_array, Hc_OS, valid_cogo_OScoords
     end
 
     return data_OS, E_array, pm_array, Rm_array
@@ -2271,19 +2178,16 @@ end
     com2OS(M, data, E_array, mu_matrix, Pphi_matrix, FI_species)
     com2OS(M, data, E_array, mu_matrix, Pphi_matrix, FI_species; npm=length(mu_matrix[1,:]), nRm=length(Pphi_matrix[1,:]), wall=nothing, dataIsTopoMap=false, topoMap=nothing, verbose=false, kwargs...)
 
-This function maps a constants-of-motion (E,mu,Pphi;sigma) quantity into orbit space (E,pm,Rm). If a 5D quantity is given as input data, the function will assume it's a collection of 4D (E,mu,Pphi;sigma) quantities with
+This function maps a constants-of-motion (E,mu,Pphi;sigma) quantity into orbit space (E,pm,Rm). The input data is given as a 5D quantity, and the function will assume it's a collection of 4D (E,mu,Pphi;sigma) quantities with
 the last four dimensions corresponding to E, mu, Pphi and sigma, in that order. sigma is a binary coordinate (+1 or -1) that keeps track of co- (+1) and counter-passing (-1) orbits that has the same (E,mu,Pphi) triplet. The first Julia index (1) 
-corresponds to sigma=-1 and the second Julia index (2) corresponds to sigma=+1. Return transformed data in OS, along with E-array, pm-array and Rm-array. The output will be either 3D or 4D.
+corresponds to sigma=-1 and the second Julia index (2) corresponds to sigma=+1. Return transformed data in OS, along with E-array, pm-array and Rm-array. The output will be 4D with the last three dimensions corresponding to
+E, pm and Rm, in that order.
 
 If you have data for your tokamak first wall, it needs to be provided via the 'wall' keyword input argument. From an EFIT magnetic equilibrium, you get the wall via 
 M, wall = read_geqdsk(filepath_eqdsk,clockwise_phi=true/false)
 From a Solov'ev equilibrium S, you get the wall via boundary(S). Please see Equilibrium.jl/boundary.jl for more info.
 
-If the input data is a topological map, you need to pass the extra keyword argument 'dataIsTopoMap=true'. This is because topological maps need to be treated differently,
-compared to weight functions or fast-ion distributions. Lost regions might need to be included and treated separately etc.
-
-If the input data is NOT a topological map (i.e. a fast-ion distribution, an orbit weight function, an orbit weight matrix etc), then you need to pass the 'topoMap'
-keyword input argument. It has to be a 4D array with dimensions (E,mu,Pphi,sigma), as returned by the os2COM() function.
+If the input data is a topological map, you need to pass the extra keyword argument 'dataIsTopoMap=true'.
 
 If the input data is a fast-ion distribution, the mapping will need a Jacobian. For this, you pass the extra keyword argument needJac=true.
 
@@ -2294,24 +2198,15 @@ To explain via example, mu_matrix[3,:] and Pphi_matrix[3,:] correspond to the mu
 energy E_array[3]. This is to keep the number of (mu,Pphi)-grid points the same for all energies, while also minimizing
 the number of invalid/impossible (E,mu,Pphi;sigma) coordinates.
 
-kwargs... => dataIsTopoMap, topoMap, needJac, vverbose, nR, nz, dz, debug, extra_kw_args
+kwargs... => dataIsTopoMap, needJac, vverbose, debug, extra_kw_args
 
 dataIsTopoMap - Should be set to true if 'data' is a topological map.
-topoMap - Should be passed as a 4D array with dimensions (E,mu,Pphi,sigma) if dataIsTopoMap=false.
 needJac - Should be set to true if mapping a quantity that requires a Jacobian e.g. a fast-ion distribution.
 vverbose - Should be set to true if you want the algorithm to be VERY talkative!
-nR - The number of major radius grid points for computing the mu contours. A higher number will result in a more accurate mapping.
 debug - If set to true, debug mode will be active.
 extra_kw_args - A dictionary with extra keyword arguments for the orbit integration algorithm found in GuidingCenterOrbits.jl/orbit.jl, used to finalize (E,mu,Phi;sigma) -> (E,pm,Rm) transform.
 """
-function com2OS(M::AbstractEquilibrium, data::Union{Array{Float64, 4},Array{Float64, 5}}, E_array::AbstractVector, mu_matrix::Array{Float64, 2}, Pphi_matrix::Array{Float64, 2}, FI_species::AbstractString; npm=length(mu_matrix[1,:]), nRm=length(Pphi_matrix[1,:]), wall=nothing, verbose=false, kwargs...)
-
-    input_5D = true
-    if !(length(size(data))==5)
-        verbose && println("Input data not 5D. Reshaping... ")
-        input_5D = false
-        data = reshape(data,(1,size(data)...)) # Reshape into general 5D shape. Sometimes, data might be 5D (many 4D OWs) and it's therefore best to always have the code handle 5D data.
-    end
+function com2OS(M::AbstractEquilibrium, data::Array{Float64, 5}, E_array::AbstractVector, mu_matrix::Array{Float64, 2}, Pphi_matrix::Array{Float64, 2}, FI_species::AbstractString; npm=length(mu_matrix[1,:]), nRm=length(Pphi_matrix[1,:]), wall=nothing, verbose=false, kwargs...)
 
     if pm_array===nothing
         pm_array = range(-1.0,stop=1.0,length=npm)
@@ -2329,8 +2224,7 @@ function com2OS(M::AbstractEquilibrium, data::Union{Array{Float64, 4},Array{Floa
     verbose && println("Mapping (E,μ,Pϕ;σ) -> (E,pm,Rm) for 4D quantity 1 of $(size(data,1))... ")
     data_OS[1, :, :, :], E_array, pm_array, Rm_array = com2OS(M, data[1,:,:,:,:], E_array, mu_matrix, Pphi_matrix, FI_species; pm_array=pm_array, Rm_array=Rm_array, wall=wall, verbose=verbose, kwargs...)
     if size(data,1)>1 # To avoid distributed errors
-        data_OS[2,:,:,:] = @distributed (+) for iEd in collect(2:size(data,1))
-            verbose && println("Mapping (E,μ,Pϕ;σ) -> (E,pm,Rm) for 4D quantity $(iEd) of $(size(data,1))... ")
+        data_OS[2,:,:,:] = @showprogress 1 "Mapping (E,μ,Pϕ;σ) -> (E,pm,Rm)... "@distributed (+) for iEd in collect(2:size(data,1))
             data_OS_part = zeros(size(data,1),length(E_array),npm, nRm)
             # E_array_part, pm_array_part and Rm_array_part do not matter. But they need to be returned by com2OS.
             data_OS_part[iEd, :, :, :], E_array_part, pm_array_part, Rm_array_part = com2OS(M, data[iEd,:,:,:,:], E_array, mu_matrix, Pphi_matrix, FI_species; pm_array=pm_array, Rm_array=Rm_array, wall=wall, verbose=verbose, kwargs...)
@@ -2338,8 +2232,5 @@ function com2OS(M::AbstractEquilibrium, data::Union{Array{Float64, 4},Array{Floa
         end
     end
 
-    if !input_5D
-        return dropdims(data_OS,dims=1), E_array, pm_array, Rm_array 
-    end
     return data_OS, E_array, pm_array, Rm_array
 end
