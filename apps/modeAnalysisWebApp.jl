@@ -4,10 +4,11 @@
 # This script provides a web application to visualize resonances between fast ions and magnetohydrodynamic (MHD)
 # Alfvén eigenmodes in an interactive and intuitive manner. The resonance criterion is based on the equation
 #
-# ω = n ω_ϕ + m ω_θ
+# ω = n ω_ϕ + m ω_θ + ω_rot
 # 
 # where ω is the mode (angular) frequency, n is the toroidal mode number, ω_ϕ is the toroidal transit (angular) frequency 
-# of the fast ion, m is the poloidal mode number and ω_θ is the poloidal transit (angular) frequency of the fast ion. 
+# of the fast ion, m is the poloidal mode number, ω_θ is the poloidal transit (angular) frequency of the fast ion and ω_rot
+# is the plasma rotation (angular) frequency.
 # ω_ϕ and ω_θ are computed by integrating the guiding-centre equations of motion, and then evaluating the toroidal (τ_ϕ)
 # and poloidal (τ_θ) transit times. ω, n and m can be interactively changed by the user using the sliders in the web application.
 #
@@ -16,7 +17,7 @@
 # The resonance between mode and fast ion is then plotted in (E,pm,Rm) (or, via the press of a button in the app, in (E,μ,Pϕ;σ))
 # and is visualized as a heatmap where the values (A) of the figure colorbar are computed according to the equation
 #
-# A = - log10(|ω - n ω_ϕ - m ω_θ|)
+# A = - log10(|ω - n ω_ϕ - m ω_θ - ω_rot|)
 #
 # where larger values of A thus corresponds to greater resonance, and smaller values of A corresponds to less resonance.
 #
@@ -30,7 +31,8 @@
 # filepath_equil - The path to the file with the tokamak magnetic equilibrium and geometry - String
 # filepath_tm - The path to the .jld2-file containing the topological map (and toroidal and poloidal transit times) - String
 # FI_species - The species of the particle being simulated (deuterium, tritium etc) - String
-# ω - The mode frequency to investigate (in kHz). This can be interactively changed later in app - Float64
+# ω_init - The mode frequency to investigate (in kHz). This can be interactively changed later in the app - Float64
+# ω_rot_init - The plasma rotation frequency (in kHz). This can be interactively changed later in the app - Float64
 # n - The toroidal mode number to investigate. This can be interactively changed later in web application - Int64
 # m - The toroidal mode number to investigate. This can be interactively changed later in web application - Int64
 # verbose - If set to true, the app will talk a lot! - Bool
@@ -103,6 +105,7 @@ filepath_equil = ""  # Example JET shot 96100 at 13s (53 minus 40): g96100/g9610
 filepath_tm = ""
 FI_species = "" # Example deuterium: "D"
 ω_init = 0.0 # Mode frequency. kHz
+ω_rot_init = 0.0 # Plasma rotation frequency. kHz
 n_init = 1 # Toroidal mode number
 m_init = 2 # Poloidal mode number
 verbose = true
@@ -119,6 +122,10 @@ else
     # The orbit integration algorithm will try progressively smaller timesteps these number of times
 end
 close(myfile)
+
+if haskey(extra_kw_args, :maxiter)
+    delete!(extra_kw_args, :maxiter)
+end
 
 ## --------------------------------------------------------------------------
 # Loading packages
@@ -288,7 +295,7 @@ verbose && println("--- You can access the modeAnalysisWebApp via an internet we
 verbose && println("--- When 'Task (runnable)...' has appeared, please visit the website localhost:$(port) ---")
 verbose && println("--- Remember: It might take a minute or two to load the webpage. Please be patient. ---")
 function app(req) # Start the Interact.jl app
-    @manipulate for E=E_array, pm=pm_array, Rm=Rm_array, ω=ω_init, n=n_init, m=m_init, phase_space = Dict("(E,μ,Pϕ;σ)" => :COM, "(E,pm,Rm)" => :OS), tokamak_wall = Dict("on" => true, "off" => false), show_coordinate = Dict("on" => true, "off" => false), save_plots = Dict("on" => true, "off" => false)
+    @manipulate for E=E_array, pm=pm_array, Rm=Rm_array, ω=ω_init, ω_rot=ω_rot_init, n=n_init, m=m_init, phase_space = Dict("(E,μ,Pϕ;σ)" => :COM, "(E,pm,Rm)" => :OS), tokamak_wall = Dict("on" => true, "off" => false), show_coordinate = Dict("on" => true, "off" => false), save_plots = Dict("on" => true, "off" => false)
 
         EPRc = EPRCoordinate(M, E, pm, Rm; amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species))
         o = get_orbit(M,EPRc; wall=wall, extra_kw_args...)
@@ -400,15 +407,15 @@ function app(req) # Start the Interact.jl app
         if (phase_space==:OS) || !enable_COM
             npm = length(pm_array)
             nRm = length(Rm_array)
-            resonance = -log10.(abs.((2*pi/(ω*1000)) .*ones(npm,nRm) - n .*torTransTimes[Eci,:,:] - m .*polTransTimes[Eci,:,:]))
+            resonance = -log10.(abs.((2*pi/(ω*1000)) .*ones(npm,nRm) - n .*torTransTimes[Eci,:,:] - m .*polTransTimes[Eci,:,:] - (2*pi/(ω_rot*1000)) .*ones(npm,nRm)))
             plt_res = Plots.heatmap(Rm_array,pm_array,resonance,xlabel="Rm [m]", ylabel="pm", title="E: $(round(E,digits=3)) keV", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), ylims=extrema(pm_array), xlims=extrema(Rm_array))
         else
             nμ = size(μ_matrix_tor,2) # tor or pol should not matter
             nPϕ = size(Pϕ_matrix_pol,2) # tor or pol should not matter
             if pm<0.0
-                resonance = -log10.abs(((2*pi/(ω*1000)) .*ones(nμ,nPϕ) - n .*torTransTimes_COM[Int64(Eci),:,:,1] - m .*polTransTimes_COM[Int64(Eci),:,:,1]))
+                resonance = -log10.abs(((2*pi/(ω*1000)) .*ones(nμ,nPϕ) - n .*torTransTimes_COM[Int64(Eci),:,:,1] - m .*polTransTimes_COM[Int64(Eci),:,:,1]) - (2*pi/(ω_rot*1000)) .*ones(nμ,nPϕ))
             else
-                resonance = -log10.abs(((2*pi/(ω*1000)) .*ones(nμ,nPϕ) - n .*torTransTimes_COM[Int64(Eci),:,:,2] - m .*polTransTimes_COM[Int64(Eci),:,:,2]))
+                resonance = -log10.abs(((2*pi/(ω*1000)) .*ones(nμ,nPϕ) - n .*torTransTimes_COM[Int64(Eci),:,:,2] - m .*polTransTimes_COM[Int64(Eci),:,:,2]) - (2*pi/(ω_rot*1000)) .*ones(nμ,nPϕ))
             end
 
             plt_res = Plots.heatmap(Pϕ_matrix_tor[Int64(Eci),:],μ_matrix_tor[Int64(Eci),:],resonance,legend=false,xlabel="Pϕ", ylabel="μ", title="E: $(round(E,digits=3)) keV", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), ylims=extrema(μ_matrix_tor[Int64(Eci),:]), xlims=extrema(Pϕ_matrix_tor[Int64(Eci),:]))
