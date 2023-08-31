@@ -1,13 +1,11 @@
 ########################################## rewriteReacts.jl #######################################
-# This simple script contains a function that converts a fusion reaction of the format A(b,c)D to 
-# the format A-b=c-D.
+# This script contains functions that re-write reactions and species, to respect conventions of 
+# different codes and/or file systems.
 #
-# In future versions of the OWCF, it is envisioned how several re-writing functions might be added
-# to this script, and forming a small library of re-writing functions. This would ensure cross-platform
-# support for the OWCF and its results files.
-#
-# This is simply to allow for Linux and Windows file browsers (terminal/Powershell) to be 
-# able to reconize file names containing fusion reactions without producing errors.
+# pretty2scpok()
+# This function converts a fusion reaction of the format A(b,c)D to 
+# the format A-b=c-D. This is simply to allow for Linux and Windows file browsers (terminal/Powershell) 
+# to be able to reconize file names containing fusion reactions without producing errors.
 # For example, if I would try to securely copy the file
 #
 # orbWeights_JET_96100J01_TOFOR_D(d,n)3He_13x11x12.jld2
@@ -21,7 +19,13 @@
 #
 # would produce no errors and would be able to be copied perfectly across computers.
 #
-# Written by Henrik Järleblad. Last maintained 2022-02-11
+#
+# thermalSpecies_OWCFtoTRANSP()
+# This function converts a particle species notation from OWCF to TRANSP standard.
+# For example, the OWCF would write helium-3 as 3he, while TRANSP would write it as HE3.
+# This conversion function is simply to be able to let the OWCF seemlessly interact with TRANSP.
+#
+# Written by Henrik Järleblad. Last maintained 2023-08-25
 ##################################################################################################
 
 """
@@ -47,4 +51,35 @@ function pretty2scpok(reaction_full::String; projVel=false)
     bulk_product = split(products,")")[2]
 
     return bulk_reactant*"-"*fast_reactant*"="*fast_product*"-"*bulk_product
+end
+
+"""
+    thermalSpecies_OWCFtoTRANSP(species)
+
+Re-write a species notation from OWCF to TRANSP standard.
+
+Example:
+
+julia> x = thermalSpecies_OWCFtoTRANSP("3he")
+julia> println(x)
+"HE3"
+"""
+function thermalSpecies_OWCFtoTRANSP(species::String)
+    if lowercase(species)=="d"
+        return "D"
+    elseif lowercase(species)=="t"
+        return "T"
+    elseif lowercase(species)=="3he"
+        return "HE3"
+    elseif lowercase(species)=="p"
+        return "H"
+    elseif lowercase(species)=="e"
+        return "E"
+    elseif lowercase(species)=="4he"
+        return "HE4"
+    elseif lowercase(species)=="alpha"
+        return "HE4"
+    else
+        error("Unknown input species. Please correct and re-try")
+    end
 end

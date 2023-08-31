@@ -198,12 +198,6 @@ if haskey(myfile,"polTransTimes")
     torTransTimes = myfile["torTransTimes"]
     poltor = true
 end
-jac = false
-if haskey(myfile,"jacobian")
-    verbose && println("-- Jacobian from (x,y,z,vx,vy,vz) to (E,p,R,z) found! Including... ")
-    jacobian = myfile["jacobian"]
-    jac = true
-end
 close(myfile)
 
 ## ------
@@ -340,6 +334,8 @@ p_array = vec(collect(p_array)) # Ensure type Array{Float64,1}
 R_array = vec(collect(R_array)) # Ensure type Array{Float64,1}
 z_array = vec(collect(z_array)) # Ensure type Array{Float64,1}
 
+keV = 1000*(GuidingCenterOrbits.e0)
+
 c_array = [:red, :blue, :green, :purple, :orange, :yellow, :brown, :pink, :gray]
 ## ------
 # The web application
@@ -347,11 +343,12 @@ verbose && println("--- You can access the EpRzWebApp via an internet web browse
 verbose && println("--- When 'Task (runnable)...' has appeared, please visit the website localhost:$(port) ---")
 verbose && println("--- Remember: It might take a minute or two to load the webpage. Please be patient. ---")
 function app(req) # Here is where the app starts!
-    @manipulate for tokamak_wall = Dict("on" => true, "off" => false), E=E_array, p=p_array, R=R_array, z=z_array, study = Dict("Valid orbits" => :orbs, "Fast-ion distribution" => :FI, "Poloidal times" => :tpol, "Toroidal times" => :ttor, "(E,pm,Rm) at (R,z)" => :OS), save_plots = Dict("on" => true, "off" => false)
+    @manipulate for tokamak_wall = Dict("on" => true, "off" => false), E=E_array, p=p_array, R=R_array, z=z_array, study = Dict("Valid orbits" => :orbs, "Fast-ion distribution" => :FI, "Poloidal times" => :tpol, "Toroidal times" => :ttor, "(E,pm,Rm) at (R,z)" => :OS), space = Dict("(E,p)" => :EP, "(v_para,v_perp)" => :VEL), save_plots = Dict("on" => true, "off" => false)
         
-        my_gcp = getGCP(FI_species)
+        my_gcp_func = getGCP(FI_species)
+        my_gcp = my_gcp_func(E,p,R,z)
 
-        o = get_orbit(M,my_gcp(E,p,R,z); wall=wall, extra_kw_args...)
+        o = get_orbit(M,my_gcp; wall=wall, extra_kw_args...)
         
         topview_o_x = cos.(o.path.phi).*(o.path.r)
         topview_o_y = sin.(o.path.phi).*(o.path.r)
@@ -382,7 +379,7 @@ function app(req) # Here is where the app starts!
         end
 
         #cross-sectional (R,z) plot
-        if study==:FI && !(filepath_distr=="")
+        if study==:FI && isfile(filepath_distr)
             plt_crs = Plots.heatmap(R_array, z_array, F_Rz', fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]))
             plt_crs = Plots.scatter!([magnetic_axis(M)[1]],[magnetic_axis(M)[2]],label="Magnetic axis", mc=:gray, aspect_ratio=:equal, xlabel="R [m]", ylabel="z [m]",title="Poloidal cross-section")
         else
@@ -417,9 +414,12 @@ function app(req) # Here is where the app starts!
                 E_scatvals_tb[ind] = E_array[carinds[1]]
                 p_scatvals_tb[ind] = p_array[carinds[2]]
             end
-            plt_topo = Plots.heatmap(E_array,p_array, F[:,:,Rci,zci]', fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), xlabel="E [keV]", ylabel="p [-]", title="f(E,p) at (R,z)", right_margin=3Plots.mm)
-            ms = save_plots ? 2.6 : 1.8
-            #plt_weights = Plots.scatter!(E_scatvals_tb,p_scatvals_tb,markersize=ms,leg=false,markercolor=:black)
+            if space==:EP # (E,p) plot
+                plt_topo = Plots.heatmap(E_array,p_array, F[:,:,Rci,zci]', fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), xlabel="E [keV]", ylabel="p [-]", title="f(E,p) at (R,z)", right_margin=3Plots.mm)
+            else # :VEL => (v_para, v_perp) plot
+                vpara_array, vperp_array, F_VEL = Ep2VparaVperp(E_array, p_array, F[:,:,Rci,zci]; my_gcp=my_gcp, needJac=true)
+                plt_topo = Plots.heatmap(vpara_array, vperp_array, F_VEL', fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), xlabel="v_para [m/s]", ylabel="v_perp [m/s]", title="f(v_para,v_perp) at (R,z)", right_margin=3Plots.mm )
+            end
         elseif study==:tpol && poltor
             topoBounds = extractTopoBounds(topoMap[:,:,Rci,zci])
             ones_carinds = findall(x-> x==1.0,topoBounds)
@@ -434,10 +434,21 @@ function app(req) # Here is where the app starts!
             my_coords = length(nz_coords) > 1 ? nz_coords : CartesianIndices(size(pTT_microsecs)) # Are there actually more than one non-zero element? If not, use all elements
             min_pol, max_pol = extrema(pTT_microsecs[my_coords]) # Find minimum and maximum values
             min_OOM, max_OOM = (floor(log10(min_pol)),ceil(log10(max_pol))) # The orders of magnitude of the minimum and maximum values
+            if space==:EP
+                x_array, y_array, z_matrix = E_array, p_array, pTT_microsecs
+                title = "tau_pol(E,p) at (R,z) [microseconds] \n tau_pol($(round(E,sigdigits=3)),$(round(p,sigdigits=2)))=$(round(o.tau_p /(1.0e-6),sigdigits=3)) microseconds"
+                xlabel = "E [keV]"
+                ylabel = "p [-]"
+            else
+                x_array, y_array, z_matrix = Ep2VparaVperp(E_array, p_array, pTT_microsecs; my_gcp=my_gcp)
+                title = "tau_pol(vpara,vperp) at (R,z) [microseconds] \n tau_pol($(round(p*sqrt(2*keV*E/my_gcp.m),sigdigits=3)),$(round(sqrt(1-p^2)*sqrt(2*keV*E/my_gcp.m),sigdigits=3)))=$(round(o.tau_p /(1.0e-6),sigdigits=3)) microseconds"
+                xlabel = "vpara [m/s]"
+                ylabel = "vperp [m/s]"
+            end
             if !((max_OOM-min_OOM)==0.0) && (length(nz_coords) > 1) # All values NOT within same order of magnitude AND more than one non-zero element. Use logarithmic colorbar
-                plt_topo = Plots.heatmap(E_array,p_array, pTT_microsecs', title="tau_pol(E,p) at (R,z) [microseconds] \n tau_pol($(round(E,sigdigits=3)),$(round(p,sigdigits=2)))=$(round(o.tau_p /(1.0e-6),sigdigits=3)) microseconds", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), xlabel="E [keV]", ylabel="p [-]", colorbar=true, colorbar_scale=:log10, clims = (10^min_OOM, 10^max_OOM), top_margin=3Plots.mm) # Get nice powers-of-ten limits for the colorbar
+                plt_topo = Plots.heatmap(x_array,y_array, z_matrix', title=title, fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), xlabel=xlabel, ylabel=ylabel, colorbar=true, colorbar_scale=:log10, clims = (10^min_OOM, 10^max_OOM), top_margin=3Plots.mm) # Get nice powers-of-ten limits for the colorbar
             else # Else, use linear colorbar 
-                plt_topo = Plots.heatmap(E_array,p_array, pTT_microsecs', title="tau_pol(E,p) at (R,z) [microseconds] \n tau_pol($(round(E,sigdigits=3)),$(round(p,sigdigits=2)))=$(round(o.tau_p /(1.0e-6),sigdigits=3)) microseconds", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), xlabel="E [keV]", ylabel="p [-]", colorbar=true, top_margin=3Plots.mm)
+                plt_topo = Plots.heatmap(x_array,y_array, z_matrix', title=title, fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), xlabel=xlabel, ylabel=ylabel, colorbar=true, top_margin=3Plots.mm)
             end
             ms = save_plots ? 2.6 : 1.8
             #plt_weights = Plots.scatter!(E_scatvals_tb,p_scatvals_tb,markersize=ms,label="",markercolor=:black,leg=false)
@@ -455,10 +466,21 @@ function app(req) # Here is where the app starts!
             my_coords = length(nz_coords) > 1 ? nz_coords : CartesianIndices(size(tTT_microsecs)) # Are there actually more than one non-zero element? If not, use all elements
             min_pol, max_pol = extrema(tTT_microsecs[my_coords]) # Find minimum and maximum values
             min_OOM, max_OOM = (floor(log10(min_pol)),ceil(log10(max_pol))) # The orders of magnitude of the minimum and maximum values
+            if space==:EP
+                x_array, y_array, z_matrix = E_array, p_array, tTT_microsecs
+                title = "tau_tor(E,p) at (R,z) [microseconds] \n tau_tor($(round(E,sigdigits=3)),$(round(p,sigdigits=2)))=$(round(o.tau_t /(1.0e-6),sigdigits=3)) microseconds"
+                xlabel = "E [keV]"
+                ylabel = "p [-]"
+            else
+                x_array, y_array, z_matrix = Ep2VparaVperp(E_array, p_array, tTT_microsecs; my_gcp=my_gcp)
+                title = "tau_tor(vpara,vperp) at (R,z) [microseconds] \n tau_tor($(round(p*sqrt(2*keV*E/my_gcp.m),sigdigits=3)),$(round(sqrt(1-p^2)*sqrt(2*keV*E/my_gcp.m),sigdigits=3)))=$(round(o.tau_t /(1.0e-6),sigdigits=3)) microseconds"
+                xlabel = "vpara [m/s]"
+                ylabel = "vperp [m/s]"
+            end
             if !((max_OOM-min_OOM)==0.0) && (length(nz_coords) > 1) # All values NOT within same order of magnitude AND more than one non-zero element. Use logarithmic colorbar
-                plt_topo = Plots.heatmap(E_array,p_array, tTT_microsecs', title="tau_tor(E,p) at (R,z) [microseconds] \n tau_tor($(round(E,sigdigits=3)),$(round(p,sigdigits=2)))=$(round(o.tau_t /(1.0e-6),sigdigits=3)) microseconds", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), xlabel="E [keV]", ylabel="p [-]", colorbar=true, colorbar_scale=:log10, clims = (10^min_OOM, 10^max_OOM),top_margin=3Plots.mm) # Get nice powers-of-ten limits for the colorbar
+                plt_topo = Plots.heatmap(x_array,y_array, z_matrix', title=title, fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), xlabel=xlabel, ylabel=ylabel, colorbar=true, colorbar_scale=:log10, clims = (10^min_OOM, 10^max_OOM),top_margin=3Plots.mm) # Get nice powers-of-ten limits for the colorbar
             else # Else, use linear colorbar 
-                plt_topo = Plots.heatmap(E_array,p_array, tTT_microsecs', title="tau_tor(E,p) at (R,z) [microseconds] \n tau_tor($(round(E,sigdigits=3)),$(round(p,sigdigits=2)))=$(round(o.tau_t /(1.0e-6),sigdigits=3)) microseconds", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), xlabel="E [keV]", ylabel="p [-]", colorbar=true,top_margin=3Plots.mm)
+                plt_topo = Plots.heatmap(x_array,y_array, z_matrix', title=title, fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), xlabel=xlabel, ylabel=ylabel, colorbar=true,top_margin=3Plots.mm)
             end
             ms = save_plots ? 2.6 : 1.8
             #plt_weights = Plots.scatter!(E_scatvals_tb,p_scatvals_tb,markersize=ms,label="",markercolor=:black,leg=false)
@@ -472,7 +494,7 @@ function app(req) # Here is where the app starts!
                 Rm_scatvals_tb[ind] = Rm_array[carinds[2]]
             end
 
-            array_o_orb_tuples = map(i-> (get_orbit(M,my_gcp(E,p_array[i],R,z); wall=wall, toa=true), topoMap[Eci,i,Rci,zci]), 1:length(p_array)) # Genius line <3
+            array_o_orb_tuples = map(i-> (get_orbit(M,my_gcp_func(E,p_array[i],R,z); wall=wall, toa=true), topoMap[Eci,i,Rci,zci]), 1:length(p_array)) # Genius line <3
             
             plt_topo = Plots.scatter(Rm_scatvals_tb,pm_scatvals_tb,markersize=ms,leg=false,markercolor=:black, xlabel="Rm [m]", ylabel="pm")
             for orb_tuple in array_o_orb_tuples
@@ -485,16 +507,31 @@ function app(req) # Here is where the app starts!
             end
         else
             topoMap_raw = topoMap[:,:,Rci,zci] # might not include all integers between 1 and 9 (needed for correct Set1_9 heatmap coloring)
-            topoMap_ext = ones(size(topoMap_raw,1),size(topoMap_raw,2)+1) # We ensure 1.0 in data by using ones() function. Add one extra column
-            topoMap_ext[1:size(topoMap_raw,1),1:size(topoMap_raw,2)] .= topoMap_raw # put in the true topoMap to be plotted
-            topoMap_ext[end,end] = 9.0 # Get the 9.0. This is such an ugly solution (to acquire correct orbit type coloring)...
-            p_array_ext = vcat(p_array,2*p_array[end]-p_array[end-1]) # Extend p_array by one dummy element
-            plt_topo = Plots.heatmap(E_array,p_array_ext,topoMap_ext',color=:Set1_9,legend=false,xlabel="E [keV]", ylabel="p [-]", title="(E,p) orbit topology at (R,z)", ylims=(minimum(p_array),maximum(p_array)))
+            if space==:EP
+                topoMap_ext = ones(size(topoMap_raw,1),size(topoMap_raw,2)+1) # We ensure 1.0 in data by using ones() function. Add one extra column
+                topoMap_ext[1:size(topoMap_raw,1),1:size(topoMap_raw,2)] .= topoMap_raw # put in the true topoMap to be plotted
+                topoMap_ext[end,end] = 9.0 # Get the 9.0. This is such an ugly solution (to acquire correct orbit type coloring)...
+                p_array_ext = vcat(p_array,2*p_array[end]-p_array[end-1]) # Extend p_array by one dummy element
+                plt_topo = Plots.heatmap(E_array,p_array_ext,topoMap_ext',color=:Set1_9,legend=false,xlabel="E [keV]", ylabel="p [-]", title="(E,p) orbit topology at (R,z)", ylims=(minimum(p_array),maximum(p_array)))
+            else
+                vpara_array, vperp_array, topoMap_raw_VEL = Ep2VparaVperp(E_array, p_array, topoMap_raw; my_gcp=my_gcp, isTopoMap=true)
+                topoMap_ext_VEL = ones(size(topoMap_raw_VEL,1),size(topoMap_raw_VEL,2)+1) # We ensure 1.0 in data by using ones() function. Add one extra column
+                topoMap_ext_VEL[1:size(topoMap_raw_VEL,1),1:size(topoMap_raw_VEL,2)] .= topoMap_raw_VEL # put in the true topoMap to be plotted
+                topoMap_ext_VEL[end,end] = 9.0 # Get the 9.0. This is such an ugly solution (to acquire correct orbit type coloring)...
+                vperp_array_ext = vcat(vperp_array,2*vperp_array[end]-vperp_array[end-1]) # Extend vperp_array by one dummy element
+                plt_topo = Plots.heatmap(vpara_array,vperp_array_ext,topoMap_ext_VEL',color=:Set1_9,legend=false,xlabel="vpara [m/s]", ylabel="vperp [m/s]", title="(vpara,vperp) orbit topology at (R,z)", ylims=(minimum(vperp_array),maximum(vperp_array)), xlims=(minimum(vpara_array),maximum(vpara_array)))
+            end
         end
         if !(study==:OS && topobo)
-            plt_topo = Plots.vline!([E],linestyle=:dot,color=:gray,linewidth=1.0)
-            plt_topo = Plots.hline!([p],linestyle=:dot,color=:gray,linewidth=1.0)
-            plt_topo = Plots.scatter!([E],[p],markershape=:circle,mc=orb_color,legend=false,markersize=6, grid=false)
+            if space==:EP
+                plt_topo = Plots.vline!([E],linestyle=:dot,color=:gray,linewidth=1.0)
+                plt_topo = Plots.hline!([p],linestyle=:dot,color=:gray,linewidth=1.0)
+                plt_topo = Plots.scatter!([E],[p],markershape=:circle,mc=orb_color,legend=false,markersize=6, grid=false)
+            else
+                plt_topo = Plots.vline!([p*sqrt(2*keV*E/my_gcp.m)],linestyle=:dot,color=:gray,linewidth=1.0)
+                plt_topo = Plots.hline!([sqrt(1-p^2)*sqrt(2*keV*E/my_gcp.m)],linestyle=:dot,color=:gray,linewidth=1.0)
+                plt_topo = Plots.scatter!([p*sqrt(2*keV*E/my_gcp.m)],[sqrt(1-p^2)*sqrt(2*keV*E/my_gcp.m)],markershape=:circle,mc=orb_color,legend=false,markersize=6, grid=false)
+            end
         else
             if !(o.class == :lost)
                 plt_topo = Plots.vline!([o.coordinate.r],linestyle=:dot,color=:gray,linewidth=1.0)
