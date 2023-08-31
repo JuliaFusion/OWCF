@@ -10,7 +10,6 @@
 # folderpath_OWCF - The path to the OWCF folder - String
 # numOcores - The number of CPU cores that will be used if distributed is set to true. - Int64
 #
-# saveXYZJacobian - If true, the Jacobian from (x,y,z,vx,vy,vz) to (E,p,R,z) will be computed - Bool
 # distinguishIncomplete - If true, then incomplete orbits will be given integer 6 instead of 9 - Bool
 # distinguishLost - If true, then lost orbits will be given integer 7 instead of 9 - Bool
 # distrFileJLD2 - If true, it is assumed that the weights file is in JLD2 format - Bool
@@ -19,6 +18,7 @@
 # filepath_equil - The path to the .eqdsk-file (or .geqdsk/.jld2-file) with the tokamak magnetic equilibrium and geometry - String
 # folderpath_o - The path to the folder where the results will be saved - String
 # saveTransitTimeMaps - If set to true, the poloidal and toroidal transit times will be saved for every valid orbit - Bool
+# saveXYZJacobian - If true, the Jacobian from (x,y,z,vx,vy,vz) to (E,p,R,z) will be computed - Bool
 # timepoint - The timepoint of the tokamak shot for the magnetic equilibrium. Format XX,YYYY where XX are seconds and YYYY are decimals - String
 # tokamak - The tokamak for which the topological map is created - String
 # TRANSP_id - The TRANSP id to extract tokamak/equilibrium data from - String
@@ -102,7 +102,6 @@ end
 
 ## -----------------------------------------------------------------------------
 @everywhere begin
-    saveXYZJacobian = false # Set to true, if Jacobian from (x,y,z,vx,vy,vz) to (E,p,R,z) should be computed and saved
     distinguishIncomplete = false
     distinguishLost = false
     distrFileJLD2 = false # Set to true, if useDistrFile is set to true, and filepath_distr is .jld2 in file format
@@ -112,6 +111,7 @@ end
     folderpath_o = "../OWCF_results/template/" # Output folder path. Finish with '/'
     folderpath_OWCF = $folderpath_OWCF # Set path to OWCF folder to same as main process (hence the '$')
     saveTransitTimeMaps = false # If true, then calcEpRzTopoMap.jl will save 4D data of the poloidal and toroidal transit times for the valid orbits
+    saveXYZJacobian = false # Set to true, if Jacobian from (x,y,z,vx,vy,vz) to (E,p,R,z) should be computed and saved
     timepoint = nothing # If unknown, just leave as nothing. The algorithm will try to figure it out automatically.
     tokamak = "" # If unknown, just set ""
     TRANSP_id = "" # If unknown, just set ""
