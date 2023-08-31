@@ -1,7 +1,7 @@
 #########################################  ps2os.jl ##############################################################################
 
 #### Description:
-# This script transforms a fast-ion distribution function from particle-space coordinates
+# This script transforms a quantity (current a distribution or Jacobian) from particle-space coordinates
 # (E,p,R,z) to orbit-space coordinates (E,pm,Rm). As of this version of the OWCF, it can only
 # employ Monte-Carlo sampling to do so.
 # 
@@ -19,6 +19,9 @@
 # 'pitch ' - The 1D array containing the pitch grid points
 # 'R' - The 1D array containing the R grid points
 # 'z' - The 1D array containing the z grid points
+#
+# If the Jacobian is provided as a .jld2 file, it must be the output from calcEpRzTopoMap.jl, or
+# with equivalent structure and saved keys.
 
 #### Inputs (Units given when defined in script)
 # Given via input file start_ps2os_template.jl, for example. 'template' should be replaced by whatever.
@@ -29,24 +32,33 @@
 #### Saved files
 # ps2os_results_[tokamak]_[TRANSP_id]_at[timepoint]s_[FI species]_[length(E_array)]x[length(pm_array)]x[length(Rm_array)].jld2
 # It will have the keys
-#   F_os_raw - The 1D vectorized form of the fast-ion distribution. However, 'raw' means you have to multiply with (nfast/sum(F_os_raw)) to acquire the correctly scaled vectorized distribution - Array{Int64,1}
-#   nfast - The total number of fast ions in the distribution - Union{Float64, Int64}
-#   numOsamples - The total number of samples of your Monte-Carlo sampling transform - Int64
-#   E_array - The energy grid points of the (E,pm,Rm) grid onto which the distribution has been transformed. In keV - Array{Float64,1}
-#   pm_array - The pm grid points of the (E,pm,Rm) grid onto which the distribution has been transformed - Array{Float64,1}
-#   Rm_array - The Rm grid points of the (E,pm,Rm) grid onto which the distribution has been transformed. In meters - Array{Float64,1}
-#   E_array_ps - The energy grid points of the original (E,p,R,z) grid of the fast-ion distribution. In keV. - Array{Float64,1}
-#   p_array - The pitch grid points of the original (E,p,R,z) grid of the fast-ion distribution - Array{Float64,1}
-#   R_array - The major radius grid points of the original (E,p,R,z) grid of the fast-ion distribtion. In centimeters or meters - Array{Float64,1}
-#   z_array - The vertcal grid points of the original (E,p,R,z) grid of the fast-ion distribtion. In centimeters or meters - Array{Float64,1}
+#   If input was a fast-ion distribution:
+#       F_os_raw - The 1D vectorized form of the fast-ion distribution. However, 'raw' means you have to multiply with (nfast/sum(F_os_raw)) to acquire the correctly scaled vectorized distribution - Array{Int64,1}
+#       nfast - The total number of fast ions in the distribution - Union{Float64, Int64}
+#       numOsamples - The total number of samples of your Monte-Carlo sampling transform - Int64
+#   If input was a Jacobian:
+#       J_os - The 1D vectorized form of the xyzToEpmRm Jacobian. - Array{Float64,1}
+#   E_array - The energy grid points of the (E,pm,Rm) grid onto which the quantity has been transformed. In keV - Array{Float64,1}
+#   pm_array - The pm grid points of the (E,pm,Rm) grid onto which the quantity has been transformed - Array{Float64,1}
+#   Rm_array - The Rm grid points of the (E,pm,Rm) grid onto which the quantity has been transformed. In meters - Array{Float64,1}
+#   E_array_ps - The energy grid points of the original (E,p,R,z) grid of the quantity. In keV. - Array{Float64,1}
+#   p_array - The pitch grid points of the original (E,p,R,z) grid of the quantity - Array{Float64,1}
+#   R_array - The major radius grid points of the original (E,p,R,z) grid of the quantity. In centimeters or meters - Array{Float64,1}
+#   z_array - The vertcal grid points of the original (E,p,R,z) grid of the quantity. In centimeters or meters - Array{Float64,1}
 #   extra_kw_args - The extra keyword arguments provided by the user for the orbit integration algorithm - Dictionary
-# If include1Dto3D is set to true in the input variables, there will also be a saved file called
-# F_os_3D_results_[tokamak]_[TRANSP_id]_at[timepoint]s_[FI species]_[length(E_array)]x[length(pm_array)]x[length(Rm_array)].jld2
-# It will have the keys
+# If include1Dto3D is set to true in the input variables, there will also be a saved file called:
+# If input was a fast-ion distribution:
+#       F_os_3D_results_[tokamak]_[TRANSP_id]_at[timepoint]s_[FI species]_[length(E_array)]x[length(pm_array)]x[length(Rm_array)].jld2
+# It will have the key
 #   F_os_3D - The (E,pm,Rm) fast-ion distribution as a three-dimensional data matrix - Array{Float64,3}
-#   E_array - The energy grid points of the (E,pm,Rm) grid onto which the distribution has been transformed. In keV - Array{Float64,1}
-#   pm_array - The pm grid points of the (E,pm,Rm) grid onto which the distribution has been transformed - Array{Float64,1}
-#   Rm_array - The Rm grid points of the (E,pm,Rm) grid onto which the distribution has been transformed. In meters - Array{Float64,1}
+# If input was a Jacobian:
+#       J_os_3D_results_[tokamak]_[TRANSP_id]_at[timepoint]s_[FI species]_[length(E_array)]x[length(pm_array)]x[length(Rm_array)].jld2
+# It will have the key
+#   J_os_3D - The (E,pm,Rm) Jacobian as a three-dimensional data matrix - Array{Float64,3}
+# Regardless of input, output keys include:
+#   E_array - The energy grid points of the (E,pm,Rm) grid onto which the quantity has been transformed. In keV - Array{Float64,1}
+#   pm_array - The pm grid points of the (E,pm,Rm) grid onto which the quantity has been transformed - Array{Float64,1}
+#   Rm_array - The Rm grid points of the (E,pm,Rm) grid onto which the quantity has been transformed. In meters - Array{Float64,1}
 #   extra_kw_args - The extra keyword arguments provided by the user for the orbit integration algorithm - Dictionary
 #
 #### Other
@@ -68,6 +80,7 @@ verbose && println("Loading Julia packages... ")
     using Equilibrium # For magnetic equilibrium loading (read_geqdsk)
     using GuidingCenterOrbits # For orbit and Jacobian calculations
     using OrbitTomography # That's what this all is 'bout!
+    using ProgressMeter
     using HDF5
     include("misc/species_func.jl") # To convert species labels to particle mass
     include("misc/availReacts.jl") # To examine fusion reaction and extract thermal and fast-ion species
@@ -76,15 +89,15 @@ verbose && println("Loading Julia packages... ")
 end
 
 ## --------------------------------------------------------------------------------------
-# Determining fast-ion distribution file extension (.h5 or .jld2)
+# Determining quantity file extension (.h5 or .jld2)
 ## --------------------------------------------------------------------------------------
-verbose && println("Determining distribution file extensions... ")
-fileext_FI = (split(filepath_distr,"."))[end] # Assume last part after final '.' is the file extension
+verbose && println("Determining input file extensions... ")
+fileext_FI = (split(filepath_EpRz,"."))[end] # Assume last part after final '.' is the file extension
 fileext_FI = lowercase(fileext_FI)
 
 if !(fileext_FI=="h5" || fileext_FI=="jld2" || fileext_FI=="hdf5")
-    println("Fast-ion distribution file format: ."*fileext_FI)
-    error("Unknown fast-ion distribution file format. Please re-specify file and re-try.")
+    println("Input file format: ."*fileext_FI)
+    error("Unknown input file format. Please re-specify file and re-try.")
 end
 
 ## --------------------------------------------------------------------------------------
@@ -176,8 +189,8 @@ print("Tokamak specified: "*tokamak*"        ")
 print("TRANSP_id specified: "*TRANSP_id*"       ")
 println("Fast-ion species: "*FI_species)
 println("")
-println("Fast-ion distribution file specified: ")
-println(filepath_distr)
+println("Input file specified: ")
+println(filepath_EpRz)
 println("Timepoint: "*timepoint)
 println("")
 println("Number of monte-carlo samples: $(numOsamples)")
@@ -188,24 +201,24 @@ println("--- "*filepath_equil)
 if useWeightsFile
     println("Weights file specified: ")
     println("--- "*filepath_W)
-    println("Fast-ion distribution will be transformed onto same orbit-space grid as orbit weights ($(length(E_array))x$(length(pm_array))x$(length(Rm_array))).")
+    println("Input quantity will be transformed onto same orbit-space grid as orbit weights ($(length(E_array))x$(length(pm_array))x$(length(Rm_array))).")
 elseif useOrbGridFile
     println("Orbit-grid file specified: ")
     println("--- "*filepath_OG)
-    println("Fast-ion distribution will be transformed onto same orbit-space grid ($(length(E_array))x$(length(pm_array))x$(length(Rm_array))) as in file.")
+    println("Input quantity will be transformed onto same orbit-space grid ($(length(E_array))x$(length(pm_array))x$(length(Rm_array))) as in file.")
 else
-    println("Fast-ion distribution will be transformed onto a $(length(E_array))x$(length(pm_array))x$(length(Rm_array)) orbit-space grid with")
+    println("Input quantity will be transformed onto a $(length(E_array))x$(length(pm_array))x$(length(Rm_array)) orbit-space grid with")
     println("--- Energy: [$(minimum(E_array)),$(maximum(E_array))] keV")
     println("--- Pitch maximum: [$(minimum(pm_array)),$(maximum(pm_array))]")
     println("--- Radius maximum: [$(minimum(Rm_array)),$(maximum(Rm_array))] meters")
 end
 println("")
 if flip_F_EpRz_pitch
-    println("Fast-ion distribution will be mirrored in pitch before being sampled from.")
+    println("Input quantity will be mirrored in pitch before being sampled from.")
     println("")
 end
 if interp
-    println("Fast-ion distribution will be interpolated onto a $(nE_ps)x$(np_ps)x$(nR_ps)x$(nz_ps) (E,p,R,z) grid")
+    println("Input quantity will be interpolated onto a $(nE_ps)x$(np_ps)x$(nR_ps)x$(nz_ps) (E,p,R,z) grid")
     println("before being samples from.")
     println("")
 end
@@ -217,7 +230,7 @@ else
     println("")
 end
 if include1Dto3D
-    println("Fast-ion (E,pm,Rm) distribution will be inflated and saved in its full 3D format.")
+    println("Resulting quantity in (E,pm,Rm) will be inflated and saved in its full 3D format.")
     println("")
 end
 println("If you would like to change any settings, please edit the start_ps2os_template.jl file (or equivalent)")
@@ -231,43 +244,79 @@ if !useOrbGridFile
     og_orbs = nothing # Minimize memory
 end
 ## --------------------------------------------------------------------------------------
-verbose && println("Loading fast-ion distribution data from file... ")
-if fileext_FI=="h5" || fileext_FI=="hdf5"
-    F_EpRz, E_array_ps, p_array, R_array, z_array = h5to4D(filepath_distr, verbose = verbose) # Load fast-ion distribution
+trans_distr = true # By default, assume that we would like to transform a distribution from (E,p,R,z) to (E,pm,Rm)
+verbose && println("Loading input data from file... ")
+if fileext_FI=="h5" || fileext_FI=="hdf5" # Must be a distribution (old format)
+    F_EpRz, E_array_ps, p_array, R_array, z_array = h5to4D(filepath_EpRz, verbose = verbose) # Load fast-ion distribution
 else # Else, assume .jld2 file format
-    myfile = jldopen(filepath_distr,false,false,false,IOStream)
+    myfile = jldopen(filepath_EpRz,false,false,false,IOStream)
     if haskey(myfile,"F_ps")
         F_EpRz = myfile["F_ps"]
     elseif haskey(myfile,"f")
         F_EpRz = myfile["f"]
     elseif haskey(myfile,"F_EpRz")
         F_EpRz = myfile["F_EpRz"]
+    elseif haskey(myfile,"jacobian")
+        trans_distr = false
+        jacobian = myfile["jacobian"]
     else
-        error("Unrecognized .jld2 key for fast-ion distribution in filepath_distr. Please correct and re-try.")
+        error("Unrecognized .jld2 key for (E,p,R,z) quantity in filepath_EpRz. Please correct and re-try.")
     end
-    E_array_ps = myfile["energy"]
-    p_array = myfile["pitch"]
-    R_array = myfile["R"]
+    if haskey(myfile,"energy")
+        E_array_ps = myfile["energy"]
+    else # Otherwise, assume energy key to be "E_array"
+        E_array_ps = myfile["E_array"]
+    end
+    if haskey(myfile,"pitch")
+        p_array = myfile["pitch"]
+    else # Otherwise, assume pitch key to be "p_array"
+        p_array = myfile["p_array"]
+    end
+    if haskey(myfile,"R")
+        R_array = myfile["R"]
+    else # Otherwise, assume R key to be "R_array"
+        R_array = myfile["R_array"]
+    end
     if haskey(myfile,"z")
         z_array = myfile["z"]
-    else
+    elseif haskey(myfile,"Z")
         z_array = myfile["Z"]
+    else # Otherwise, assume z key to be "z_array"
+        z_array = myfile["z_array"]
     end
     close(myfile)
 end
 
 ## --------------------------------------------------------------------------------------
 if interp
-    verbose && println("Fast-ion distribution will be interpolated onto requested (E,p,R,z) grid.")
+    verbose && println("Input quantity will be interpolated onto requested (E,p,R,z) grid.")
     distr_dim = [nE_ps,np_ps,nR_ps,nz_ps]
 else
     distr_dim = []
 end
 
 ## --------------------------------------------------------------------------------------
-verbose && println("Going into ps2os_streamlined (performance=true manually set)... ")
-F_os_raw, nfast = ps2os_streamlined(F_EpRz, E_array_ps, p_array, R_array, z_array, filepath_equil, og; numOsamples=numOsamples, verbose=verbose, distr_dim=distr_dim, visualizeProgress=visualizeProgress, nbatch=nbatch, distributed=distributed, flip_F_EpRz_pitch=flip_F_EpRz_pitch, performance=true, GCP=getGCP(FI_species), extra_kw_args... )
+if trans_distr
+    verbose && println("Going into ps2os_streamlined (performance=true manually set)... ")
+    F_os_raw, nfast = ps2os_streamlined(F_EpRz, E_array_ps, p_array, R_array, z_array, filepath_equil, og; numOsamples=numOsamples, verbose=verbose, distr_dim=distr_dim, visualizeProgress=visualizeProgress, nbatch=nbatch, distributed=distributed, flip_F_EpRz_pitch=flip_F_EpRz_pitch, performance=true, GCP=getGCP(FI_species), extra_kw_args... )
+else
+    if (@isdefined jacobian)
+        verbose && println("Transforming a non-distribution quantity from (E,p,R,z) to (E,pm,Rm)... ")
+        subs = CartesianIndices(jacobian)
+        result = @distributed (+) for sub in subs
+            GCP = getGCP(FI_species)
+            o = get_orbit(M, GCP(E_array_ps[sub[1]],p_array[sub[2]],R_array[sub[3]],z_array[sub[4]]); wall=wall, store_path=false, extra_kw_args...)
+            N_i = bin_orbits(og,vec([o.coordinate]),weights=vec([1.0]))
+            jac_i = bin_orbits(og,vec([o.coordinate]),weights=vec([jacobian[sub]]))
+            res_i = hcat(jac_i, N_i)
+            res_i # Declare for reduction
+        end
+    else
+        error("This is not supposed to happen, and is not supported by the OWCF, yet.")
+    end
+end
 
+jacobian_OS = result[:,1] ./ result[:,2] # Some (E,p,R,z) jacobian values will have been binned to the same valid orbit bin. We need to average to obtain the actual value
 ## --------------------------------------------------------------------------------------
 verbose && println("Saving results... ")
 global filepath_tm_orig = folderpath_o*"ps2os_results_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*FI_species*"_$(length(E_array))x$(length(pm_array))x$(length(Rm_array))"
@@ -279,8 +328,15 @@ while isfile(filepath_tm*".jld2") # To take care of not overwriting files. Add _
 end
 global filepath_tm = filepath_tm*".jld2"
 myfile = jldopen(filepath_tm,true,true,false,IOStream)
-write(myfile,"F_os_raw",F_os_raw)
-write(myfile,"nfast",nfast)
+if (@isdefined F_os_raw)
+    write(myfile,"F_os_raw",F_os_raw)
+end
+if (@isdefined nfast)
+    write(myfile,"nfast",nfast)
+end
+if (@isdefined jacobian_OS)
+    write(myfile,"J_os",jacobian_OS)
+end
 write(myfile,"numOsamples",numOsamples)
 write(myfile,"E_array",E_array)
 write(myfile,"pm_array",pm_array)
@@ -293,10 +349,18 @@ write(myfile,"extra_kw_args",extra_kw_args)
 close(myfile)
 
 if include1Dto3D
-    F_os = (nfast/sum(F_os_raw)) .*F_os_raw
-    F_os_3D = map_orbits(og, F_os)
-
-    global filepath_output_orig = folderpath_o*"F_os_3D_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*FI_species*"_$(length(E_array))x$(length(pm_array))x$(length(Rm_array))"
+    if trans_distr
+        F_os = (nfast/sum(F_os_raw)) .*F_os_raw
+        F_os_3D = map_orbits(og, F_os)
+        global filepath_output_orig = folderpath_o*"F_os_3D_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*FI_species*"_$(length(E_array))x$(length(pm_array))x$(length(Rm_array))"
+    else
+        if (@isdefined jacobian_OS)
+            J_os_3D = map_orbits(og, jacobian_OS)
+            global filepath_output_orig = folderpath_o*"J_os_3D_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*FI_species*"_$(length(E_array))x$(length(pm_array))x$(length(Rm_array))"
+        else
+            error("This is not supposed to happen, as of the current OWCF version.")
+        end
+    end
     global filepath_output = deepcopy(filepath_output_orig)
     global count = 1
     while isfile(filepath_output*".jld2") # To take care of not overwriting files. Add _(1), _(2) etc
@@ -305,7 +369,12 @@ if include1Dto3D
     end
     global filepath_output = filepath_output*".jld2"
     myfile = jldopen(filepath_output,true,true,false,IOStream)
-    write(myfile, "F_os_3D", F_os_3D)
+    if (@isdefined F_os_3D)
+        write(myfile, "F_os_3D", F_os_3D)
+    end
+    if (@isdefined J_os_3D)
+        write(myfile, "J_os_3D", J_os_3D)
+    end
     write(myfile, "E_array", E_array)
     write(myfile, "pm_array", pm_array)
     write(myfile, "Rm_array", Rm_array)

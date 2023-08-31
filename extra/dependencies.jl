@@ -53,7 +53,7 @@ A function that adds noise to a signal in a consistent way. The function adds bo
 noise to the signal itself. The level of the background noise and the signal noise is determined by the b
 and k variables respectively. The levels are input as a fraction of the mean of the original signal S strength.
 """
-function add_noise(s, b; k=0.1)
+function add_noise(s::AbstractVector, b::Union{Float64, AbstractVector}; k::Float64=0.1)
     sn = max.(s,0.0) .+ k.*(mean(sqrt.(abs.(s)))).*rand.(Normal.(0.0, max.(sqrt.(max.(s,0)), sqrt.(b))))
     err = k.*mean(sqrt.(abs.(s))).*max.(sqrt.(max.(s,0)), sqrt.(b))
     return sn, err
@@ -66,7 +66,7 @@ A function that estimates the noise of a signal S. With the 'bad_inds' keyword a
 estimate the noise of the S_tot-elements with the specific array indices in 'bad_inds'. 
 Assume that the true signal 'S_tot' is a smooth function without the noise.
 """
-function estimate_noise(S_tot; bad_inds=nothing)
+function estimate_noise(S_tot::AbstractVector; bad_inds::Union{Nothing,AbstractVector}=nothing)
     noise_tot = zeros(length(S_tot))
     if bad_inds==nothing
         bad_inds = 1:length(S_tot)
@@ -103,27 +103,164 @@ function estimate_noise(S_tot; bad_inds=nothing)
 end
 
 """
-    instrumental_response!()
-    instrumental_response!()
+    apply_instrumental_response(S, Ed_array, instrumental_response_input, instrumental_response_output, instrumental_response_matrix)
+    apply_instrumental_response(-||-; lo=nothing, hi=nothing, instrumental_response=true)
 
-Bla bla bla. Explain input variables and function
+Apply instrumental response to the signal S via the matrix instrumental_response matrix. The input and output axes of the instrumental response
+matrix are specified as vector instrumental_response_input and instrumental_response_output. The index of the element closest to minimum(Ed_array)
+in instrumental_response_input can be specified via the lo keyword argument. The index of the element closest to maximum(Ed_array) in instrumental_response_input
+can be specified via the hi keyword argument.
 """
-function instrumental_response!(W::Union{Array{Float64,4},Array{Float64,5}}, Ed_W::AbstractVector, R::Array{Float64,2}, Ed_in::AbstractVector, Ed_out::AbstractVector; verbose::Bool=false)
-    lo = findfirst(x-> x>minimum(Ed_W),Ed_in)
-    hi = findlast(x-> x<maximum(Ed_W),Ed_in)
-    coords = CartesianIndices(size(W)[2:end])
-    transf_mat_transp_trim = (transf_matrix[lo:hi,:])'
-    i = 1
-    for coord in coords
-        verbose && println("$(i)/$(length(coords))")
-        W_c = W[:,Tuple(coord)...]
-        itp = LinearInterpolation(Ed_W,W_c)
-        W_c_itp = itp.(Ed_in[lo:hi])
-        W_c_out = transf_mat_transp_trim * W_c_itp
-        W[:,Tuple(coord)...] = W_c_out
-        i += 1
+function apply_instrumental_response(S::AbstractVector, Ed_array::AbstractVector, instrumental_response_input::AbstractVector, instrumental_response_output::AbstractVector, instrumental_response_matrix::AbstractMatrix; lo::Union{Int64,Nothing}=nothing, hi::Union{Int64,Nothing}=nothing)
+    if isnothing(lo) # If no lower bound for the instrumental response input has been provided...
+        lo = findfirst(x-> x>minimum(Ed_array),instrumental_response_input) # Find it
     end
-    W
+    if isnothing(hi) # Similar as lo, but hi
+        hi = findlast(x-> x<maximum(Ed_array),instrumental_response_input)
+    end
+    
+    if isnothing(lo) || isnothing(hi) # If extrema(Ed_array) are (partially) outside of extrema(instrumental_response_input)...
+        @warn "Instrumental response matrix input completely outside weight function measurement bin range. No diagnostic response will be applied."
+        return S
+    else
+        if lo==1
+            @warn "Lower bound of instrumental response matrix input might not be low enough to cover weight function measurement bin range. Diagnostic response representation might be inaccurate."
+        end
+        if hi==length(instrumental_response_input)
+            @warn "Upper bound of instrumental response matrix input might not be high enough to cover weight function measurement bin range. Diagnostic response representation might be inaccurate."
+        end
+        instrumental_response_matrix = (instrumental_response_matrix[lo:hi,:])' # Take the transpose, to go from (input, output) shape to (output, input) shape
+        itp = LinearInterpolation(Ed_array,S) # Create interpolation object for S
+        S_itp = itp.(instrumental_response_input[lo:hi]) # Find interpolation values for S and instrumental_response_input points
+        S_out = instrumental_response_matrix * S_itp # The instrumental response is applied
+        return S_out
+    end
+end
+
+"""
+    apply_instrumental_response(Q, Ed_array, instrumental_response_input, instrumental_response_output, instrumental_response_matrix)
+    apply_instrumental_response(-||-; lo=nothing, hi=nothing, instrumental_response=true)
+
+Apply the instrumental response given by instrumental_response_matrix to each column of Q.
+"""
+function apply_instrumental_response(Q::Array{Float64,2}, Ed_array::AbstractVector, instrumental_response_input::AbstractVector, instrumental_response_output::AbstractVector, instrumental_response_matrix::AbstractMatrix; lo::Union{Int64,Nothing}=nothing, hi::Union{Int64,Nothing}=nothing)
+    if isnothing(lo)
+        lo = findfirst(x-> x>minimum(Ed_array),instrumental_response_input)
+    end
+    if isnothing(hi)
+        hi = findlast(x-> x<maximum(Ed_array),instrumental_response_input)
+    end
+    
+    if isnothing(lo) || isnothing(hi)
+        @warn "Instrumental response matrix input completely outside weight function measurement bin range. No diagnostic response will be applied."
+        return Q
+    else
+        Q_out = zeros(length(instrumental_response_output), size(Q,2))
+        if lo==1
+            @warn "Lower bound of instrumental response matrix input might not be low enough to cover weight function measurement bin range. Diagnostic response representation might be inaccurate."
+        end
+        if hi==length(instrumental_response_input)
+            @warn "Upper bound of instrumental response matrix input might not be high enough to cover weight function measurement bin range. Diagnostic response representation might be inaccurate."
+        end
+        for i=1:size(Q,2) # Apply instrumental response to each column
+            Q_out[:,i] = apply_instrumental_response(Q[:,i], Ed_array, instrumental_response_input, instrumental_response_output, instrumental_response_matrix; lo=lo, hi=hi)
+        end
+        return Q_out
+    end
+end
+"""
+    apply_instrumental_response(Q, Ed_array, instrumental_response_input, instrumental_response_output, instrumental_response_matrix)
+    apply_instrumental_response(-||-; lo=nothing, hi=nothing, instrumental_response=true)
+
+Apply the instrumental response given by instrumental_response_matrix to each matrix of Q.
+"""
+function apply_instrumental_response(Q::Array{Float64,3}, Ed_array::AbstractVector, instrumental_response_input::AbstractVector, instrumental_response_output::AbstractVector, instrumental_response_matrix::AbstractMatrix; lo::Union{Int64,Nothing}=nothing, hi::Union{Int64,Nothing}=nothing)
+    if isnothing(lo)
+        lo = findfirst(x-> x>minimum(Ed_array),instrumental_response_input)
+    end
+    if isnothing(hi)
+        hi = findlast(x-> x<maximum(Ed_array),instrumental_response_input)
+    end
+    
+    if isnothing(lo) || isnothing(hi)
+        @warn "Instrumental response matrix input completely outside weight function measurement bin range. No diagnostic response will be applied."
+        return Q
+    else
+        Q_out = zeros(length(instrumental_response_output), size(Q,2), size(Q,3))
+        if lo==1
+            @warn "Lower bound of instrumental response matrix input might not be low enough to cover weight function measurement bin range. Diagnostic response representation might be inaccurate."
+        end
+        if hi==length(instrumental_response_input)
+            @warn "Upper bound of instrumental response matrix input might not be high enough to cover weight function measurement bin range. Diagnostic response representation might be inaccurate."
+        end
+        for i=1:size(Q,3) # Apply instrumental response to each matrix
+            Q_out[:,:,i] = apply_instrumental_response(Q[:,:,i], Ed_array, instrumental_response_input, instrumental_response_output, instrumental_response_matrix; lo=lo, hi=hi)
+        end
+        return Q_out
+    end
+end
+"""
+    apply_instrumental_response(Q, Ed_array, instrumental_response_input, instrumental_response_output, instrumental_response_matrix)
+    apply_instrumental_response(-||-; lo=nothing, hi=nothing, instrumental_response=true)
+
+Apply the instrumental response given by instrumental_response_matrix to each 3D array of Q.
+"""
+function apply_instrumental_response(Q::Array{Float64,4}, Ed_array::AbstractVector, instrumental_response_input::AbstractVector, instrumental_response_output::AbstractVector, instrumental_response_matrix::AbstractMatrix; lo::Union{Int64,Nothing}=nothing, hi::Union{Int64,Nothing}=nothing)
+    if isnothing(lo)
+        lo = findfirst(x-> x>minimum(Ed_array),instrumental_response_input)
+    end
+    if isnothing(hi)
+        hi = findlast(x-> x<maximum(Ed_array),instrumental_response_input)
+    end
+    
+    if isnothing(lo) || isnothing(hi)
+        @warn "Instrumental response matrix input completely outside weight function measurement bin range. No diagnostic response will be applied."
+        return Q
+    else
+        Q_out = zeros(length(instrumental_response_output), size(Q,2), size(Q,3), size(Q,4))
+        if lo==1
+            @warn "Lower bound of instrumental response matrix input might not be low enough to cover weight function measurement bin range. Diagnostic response representation might be inaccurate."
+        end
+        if hi==length(instrumental_response_input)
+            @warn "Upper bound of instrumental response matrix input might not be high enough to cover weight function measurement bin range. Diagnostic response representation might be inaccurate."
+        end
+        for i=1:size(Q,4) # Apply instrumental response to each 3D array
+            Q_out[:,:,:,i] = apply_instrumental_response(Q[:,:,:,i], Ed_array, instrumental_response_input, instrumental_response_output, instrumental_response_matrix; lo=lo, hi=hi)
+        end
+        return Q_out
+    end
+end
+
+"""
+    apply_instrumental_response(Q, Ed_array, instrumental_response_input, instrumental_response_output, instrumental_response_matrix)
+    apply_instrumental_response(-||-; lo=nothing, hi=nothing)
+
+Apply the instrumental response given by instrumental_response_matrix to each 4D array of Q.
+"""
+function apply_instrumental_response(Q::Array{Float64,5}, Ed_array::AbstractVector, instrumental_response_input::AbstractVector, instrumental_response_output::AbstractVector, instrumental_response_matrix::AbstractMatrix; lo::Union{Int64,Nothing}=nothing, hi::Union{Int64,Nothing}=nothing)
+    if isnothing(lo)
+        lo = findfirst(x-> x>minimum(Ed_array),instrumental_response_input)
+    end
+    if isnothing(hi)
+        hi = findlast(x-> x<maximum(Ed_array),instrumental_response_input)
+    end
+    
+    if isnothing(lo) || isnothing(hi)
+        @warn "Instrumental response matrix input completely outside weight function measurement bin range. No diagnostic response will be applied."
+        return Q
+    else
+        Q_out = zeros(length(instrumental_response_output), size(Q,2), size(Q,3), size(Q,4), size(Q,5))
+        if lo==1
+            @warn "Lower bound of instrumental response matrix input might not be low enough to cover weight function measurement bin range. Diagnostic response representation might be inaccurate."
+        end
+        if hi==length(instrumental_response_input)
+            @warn "Upper bound of instrumental response matrix input might not be high enough to cover weight function measurement bin range. Diagnostic response representation might be inaccurate."
+        end
+        for i=1:size(Q,5) # Apply instrumental response to each 4D array
+            Q_out[:,:,:,:,i] = apply_instrumental_response(Q[:,:,:,:,i], Ed_array, instrumental_response_input, instrumental_response_output, instrumental_response_matrix; lo=lo, hi=hi)
+        end
+        return Q_out
+    end
 end
 
 """
@@ -134,7 +271,7 @@ This function is just like OrbitTomography.orbit_grid, but allows execution with
 Good for HPC batch job submission, to not overrun log files.
 """
 function orbit_grid(M::AbstractEquilibrium, visualizeProgress::Bool, eo::AbstractVector, po::AbstractVector, ro::AbstractVector;
-                    q = 1, amu = OrbitTomography.H2_amu, kwargs...)
+                    q::Int64 = 1, amu = OrbitTomography.H2_amu, kwargs...)
 
     nenergy = length(eo)
     npitch = length(po)
@@ -269,7 +406,7 @@ end
 
 Finds (the index of) the closest value to val in myArray. Just a function found on the internet as open source. It works.
 """
-function closest_index(x, val)
+function closest_index(x::AbstractArray, val::Number)
     ibest = first(eachindex(x))
     dxbest = abs(x[ibest]-val)
     for I in eachindex(x)
@@ -290,7 +427,7 @@ grid vectors in energy E, pitch p, radius R and vertical position z, are supplie
 fast-ion distribution at the query points (Eq, pq, Rq and zq) using linear interpolation in 4D.
 Return the resulting 4D fast-ion distribution.
 """
-function interpFps(f::AbstractArray, E::AbstractArray, p::AbstractArray, R::AbstractArray, z::AbstractArray, Eq::AbstractArray, pq::AbstractArray, Rq::AbstractArray, zq::AbstractArray; debug=false)
+function interpFps(f::AbstractArray, E::AbstractArray, p::AbstractArray, R::AbstractArray, z::AbstractArray, Eq::AbstractArray, pq::AbstractArray, Rq::AbstractArray, zq::AbstractArray; debug::Bool=false)
 
     # Assume equidistant elements
     nodes = (E, p, R, z)
@@ -336,7 +473,7 @@ If returnComplement, then a 1D array with all the weight values
 that should be zero is returned (C), with the corresponding coordinates (Ccoords) and indices (Cindices) as arrays of triplets.
 The sum of the C array should be zero. If it is not, then invalid orbits have been given a non-zero weight. Good for debugging.
 """
-function do4Dto2D(og::OrbitGrid, W4D::AbstractArray; returnComplement=false)
+function do4Dto2D(og::OrbitGrid, W4D::AbstractArray; returnComplement::Bool=false)
 
     W = zeros(size(W4D,1),length(og.counts)) # Pre-allocate the 2D (channel,orbits) matrix
     if returnComplement
@@ -378,7 +515,7 @@ Flip the elements of an orbit-space function along the pm axis. If with_channels
 then a 4D orbit-space function on the form (channel,E,pm,Rm) or (channel,Rm,pm,E) is assumed.
 Otherwise a form of (E,pm,Rm) is assumed.
 """
-function flip_along_pm(W::AbstractArray; with_channels=false)
+function flip_along_pm(W::AbstractArray; with_channels::Bool=false)
 
     Wres = zeros(size(W))
     if with_channels
@@ -417,7 +554,7 @@ Load and read an h5 file containing the data necessary to construct a 4D fast-io
 Automatically assume that the data will be loaded backwards, because that seems to be the case when exporting 4D
 data from Python. Returns f, E, p, R, z
 """
-function h5to4D(filepath_distr::AbstractString; backwards = true, verbose = false)
+function h5to4D(filepath_distr::AbstractString; backwards::Bool = true, verbose::Bool = false)
 
     if verbose
         println("Loading the 4D distribution from .h5 file... ")
@@ -457,12 +594,34 @@ function h5to4D(filepath_distr::AbstractString; backwards = true, verbose = fals
 end
 
 """
+    jld2toh5(filepath_jld2)
+    jld2toh5(filepath_jld2; verbose=false)
+
+Convert a .jld2 file to a .hdf5 file.
+"""
+function jld2tohdf5(filepath_jld2::String; verbose::Bool=false)
+    filepath_hdf5 = reduce(*, split(filepath_jld2,".")[1:end-1])*".hdf5"
+    myfile_jld2 = jldopen(filepath_jld2,false,false,false,IOStream)
+    myfile_hdf5 = h5open(filepath_hdf5,"w")
+
+    for key in keys(myfile_jld2)
+        verbose && println("Writing data: "*key)
+        data = myfile_jld2[key]
+        write(myfile_hdf5,key,data)
+    end
+    close(myfile_jld2)
+    close(myfile_hdf5)
+    verbose && println("All .jld2 file data written to "*filepath_hdf5)
+    return filepath_hdf5
+end
+
+"""
     JLD2to4D(filepath_distr)
     JLD2to4D(filepath_distr; verbose=false) # default
 
 Load the fast-ion distribution from a .jld2 file. Assume certain keys to access data. Print information if 'verbose'.
 """
-function JLD2to4D(filepath_distr; verbose=false)
+function JLD2to4D(filepath_distr::String; verbose::Bool=false)
     myfile = jldopen(filepath_distr,false,false,false,IOStream)
     if haskey(myfile,"F_ps")
         verbose && println("Found F_ps key in .jld2 file.")
@@ -507,7 +666,7 @@ nz_ps - z grid dimension to be interpolated onto, if interp - Int64
 backwards - If saved with Python, the .h5 file will have (z,R,p,E) orientation instead of (E,p,R,z). Set to false, if that is not that case - Bool
 verbose - If set to true, you will get a talkative function indeed - Bool
 """
-function h5toSampleReady(filepath_distr::AbstractString; interp=false, nE_ps=100, np_ps=51, nR_ps=60, nz_ps=61, backwards = true, verbose = false)
+function h5toSampleReady(filepath_distr::AbstractString; interp::Bool=false, nE_ps::Int64=100, np_ps::Int64=51, nR_ps::Int64=60, nz_ps::Int64=61, backwards::Bool = true, verbose::Bool = false)
     verbose && println("Loading fast-ion distribution from .h5 file... ")
     F_EpRz, E_array, p_array, R_array, z_array = h5to4D(filepath_distr, backwards=backwards, verbose=verbose)
 
@@ -524,7 +683,7 @@ Load the fast-ion distribution from a .jld2 file and forward to function toSampl
 filepath_distr - The fast-ion distribution in .jld2 file format - String
 verbose - If set to true, you will get a talkative function indeed - Bool
 """
-function jld2toSampleReady(filepath_distr::AbstractString; verbose = false, kwargs...)
+function jld2toSampleReady(filepath_distr::AbstractString; verbose::Bool = false, kwargs...)
     verbose && println("Loading fast-ion distribution from .jld2 file... ")
     F_EpRz, E_array, p_array, R_array, z_array = JLD2to4D(filepath_distr; verbose=verbose)
     
@@ -552,7 +711,7 @@ nR_ps - R grid dimension to be interpolated onto, if interp - Int64
 nz_ps - z grid dimension to be interpolated onto, if interp - Int64
 verbose - If set to true, you will get a talkative function indeed - Bool
 """
-function toSampleReady(F_EpRz::Array{Float64,4}, E_array::Array{Float64,1}, p_array::Array{Float64,1}, R_array::Array{Float64,1}, z_array::Array{Float64,1}; interp=false, nE_ps=100, np_ps=51, nR_ps=60, nz_ps=61, verbose = false)
+function toSampleReady(F_EpRz::Array{Float64,4}, E_array::Array{Float64,1}, p_array::Array{Float64,1}, R_array::Array{Float64,1}, z_array::Array{Float64,1}; interp=false, nE_ps::Int64=100, np_ps::Int64=51, nR_ps::Int64=60, nz_ps::Int64=61, verbose::Bool = false)
     if interp
         energyq = range(E_array[1], E_array[end], length=nE_ps) # Set the energy query points
         pitchq = range(p_array[1], p_array[end], length=np_ps) # Etc
@@ -621,7 +780,7 @@ end
 
 Calculate and return 3D-array of the diffs of orbit-space coordinates. Assume edge diff to be same as next-to-edge diff.
 """
-function get3DDiffs(E, pm, Rm)
+function get3DDiffs(E::AbstractVector, pm::AbstractVector, Rm::AbstractVector)
     dE = vcat(abs.(diff(E)),abs(E[end]-E[end-1]))
     dE = reshape(dE,length(dE),1,1)
     dE3D = repeat(dE,1,length(pm),length(Rm))
@@ -643,7 +802,7 @@ This function will calculate the volume of all the hyper-voxels pertaining to th
 upper-end (edge) grid-points have the same volumes as the hyper-voxels just inside of them. It return a 3D array, containing all the hyper-voxel
 volumes. The 3D array will have size()=(length(E), length(pm), length(Rm)). The function assumes a rectangular 3D grid.
 """
-function get3DVols(E, pm, Rm)
+function get3DVols(E::AbstractVector, pm::AbstractVector, Rm::AbstractVector)
 
     # Safety-check to ensure vectors
     if !(1==length(size(E))==length(size(pm))==length(size(Rm)))
@@ -661,7 +820,7 @@ end
 
 Calculate and return 4D-arrays of the diffs of particle-space coordinates. Assume edge diff to be same as next-to-edge diff.
 """
-function get4DDiffs(E, p, R, z)
+function get4DDiffs(E::AbstractVector, p::AbstractVector, R::AbstractVector, z::AbstractVector)
     dR = vcat(abs.(diff(R)),abs(R[end]-R[end-1]))
     dR = reshape(dR,1,1,length(dR),1)
     dR4D = repeat(dR,length(E),length(p),1,length(z))
@@ -685,7 +844,7 @@ This function will calculate the volume of all the hyper-voxels pertaining to th
 upper-end (edge) grid-points have the same volumes as the hyper-voxels just inside of them. It return a 4D array, containing all the hyper-voxel
 volumes. The 4D array will have size()=(length(E), length(p), length(R), length(z)). The function assumes a rectangular 4D grid.
 """
-function get4DVols(E, p, R, z)
+function get4DVols(E::AbstractVector, p::AbstractVector, R::AbstractVector, z::AbstractVector)
 
     # Safety-check to ensure vectors
     if !(1==length(size(E))==length(size(p))==length(size(R))==length(size(z)))
@@ -703,7 +862,7 @@ end
 This function is the OWCF version of the original function sample_f which already exists in the OrbitTomography.jl package.
 This version has the ability to take non-equidistant 4D grid-points into consideration. w is energy, x is pitch, y is R and z is z.
 """
-function sample_f_OWCF(fr::Array{T,N}, dvols, w, x, y, z; n=100_000) where {T,N}
+function sample_f_OWCF(fr::Array{T,N}, dvols, w::AbstractVector, x::AbstractVector, y::AbstractVector, z::AbstractVector; n::Int64=100_000) where {T,N}
 
     inds = OrbitTomography.sample_array(fr.*dvols,n)
 
@@ -750,7 +909,7 @@ Keyword argument 'plot' is meant to ensure correct color map when using output f
 If 'plot' is set to false, then you can simply feed all integers into a 6 element array and 
 have the valid orbits (stagnation, trapped, co-passing, counter-passing, potato and counter-stagnation) in bins 1 to 6.
 """
-function class2int(M::AbstractEquilibrium, o::GuidingCenterOrbits.Orbit;plot=true, distinguishLost=false, distinguishIncomplete=false)
+function class2int(M::AbstractEquilibrium, o::GuidingCenterOrbits.Orbit;plot::Bool=true, distinguishLost::Bool=false, distinguishIncomplete::Bool=false)
     if (o.class == :lost) && distinguishLost
         return 7
     elseif (o.class == :incomplete) && distinguishIncomplete && plot
@@ -780,7 +939,7 @@ end
 This function is the OWCF version of the original function map_orbits which already exists in the OrbitTomography.jl package.
 It has the ability to take non-equidistant 3D grid-points into account.
 """
-function map_orbits_OWCF(grid::OrbitGrid, f::Vector, equidistant::Bool; weights=false)
+function map_orbits_OWCF(grid::OrbitGrid, f::Vector, equidistant::Bool; weights::Bool=false)
     if equidistant
         return OrbitTomography.map_orbits(grid,f) # Use the normal map_orbits function
     else
@@ -804,7 +963,7 @@ end
 This function is a streamlined version of sampling particle-space (PS) and converting those samples to orbit-space (OS).
 It allows transformation from (E,p,R,z) to (E,pm,Rm) directly from filepath_distr
 """
-function ps2os_streamlined(filepath_distr::AbstractString, filepath_equil::AbstractString, og::OrbitGrid; numOsamples::Int64, verbose=false, kwargs...)
+function ps2os_streamlined(filepath_distr::AbstractString, filepath_equil::AbstractString, og::OrbitGrid; numOsamples::Int64, verbose::Bool=false, kwargs...)
 
     if verbose
         println("")
@@ -828,7 +987,7 @@ end
 """
 Continuation of the ps2os_streamlined function above.
 """
-function ps2os_streamlined(F_EpRz::Array{Float64,4}, energy::AbstractVector, pitch::AbstractVector, R::AbstractVector, z::AbstractVector, filepath_equil::AbstractString, og::OrbitGrid; numOsamples::Int64, verbose=false, distr_dim = [], flip_F_EpRz_pitch=false, GCP = GCDeuteron, distributed=true, nbatch = 1_000_000, clockwise_phi=false, kwargs...)
+function ps2os_streamlined(F_EpRz::Array{Float64,4}, energy::AbstractVector, pitch::AbstractVector, R::AbstractVector, z::AbstractVector, filepath_equil::AbstractString, og::OrbitGrid; numOsamples::Int64, verbose::Bool=false, distr_dim = [], flip_F_EpRz_pitch::Bool=false, GCP = GCDeuteron, distributed::Bool=true, nbatch::Int64 = 1_000_000, clockwise_phi::Bool=false, kwargs...)
 
     verbose && println("Loading the magnetic equilibrium... ")
     if ((split(filepath_equil,"."))[end] == "eqdsk") || ((split(filepath_equil,"."))[end] == "geqdsk")
@@ -884,7 +1043,7 @@ Take the (E,p,R,z) fast-ion distribution and use Monte-Carlo sampling to transfo
 - if saveProgress, a progress bar will be displayed when sampling
 - If performance, then performance sampling will be used. Highly recommended! Normal sampling will be deprecated in later versions of the OWCF
 """
-function ps2os(M::AbstractEquilibrium, wall::Boundary, F_EpRz::Array{Float64,4}, energy::AbstractVector, pitch::AbstractVector, R::AbstractVector, z::AbstractVector, og::OrbitGrid; numOsamples::Int64, verbose=false, GCP = GCDeuteron, distributed=true, nbatch = 1_000_000, saveProgress=true, performance=true, kwargs...)
+function ps2os(M::AbstractEquilibrium, wall::Boundary, F_EpRz::Array{Float64,4}, energy::AbstractVector, pitch::AbstractVector, R::AbstractVector, z::AbstractVector, og::OrbitGrid; numOsamples::Int64, verbose::Bool=false, GCP = GCDeuteron, distributed::Bool=true, nbatch::Int64 = 1_000_000, saveProgress::Bool=true, performance::Bool=true, kwargs...)
 
     if verbose
         println("Acquiring fr, dvols and nfast... ")
@@ -1075,13 +1234,13 @@ function ps2os_performance(M::AbstractEquilibrium,
                             z::AbstractVector,
                             og::OrbitGrid;
                             numOsamples::Int64,
-                            numOsamples_sofar=0,
+                            numOsamples_sofar::Int64=0,
                             result_sofar=zeros(size(og.counts)),
-                            distributed=true,
+                            distributed::Bool=true,
                             GCP=GCDeuteron,
-                            saveProgress=true,
-                            nbatch = 1_000_000,
-                            verbose=false,
+                            saveProgress::Bool=true,
+                            nbatch::Int64 = 1_000_000,
+                            verbose::Bool=false,
                             kwargs...)
     verbose && println("Pre-computing difference vectors... ")
     dE_vector = vcat(abs.(diff(energy)),abs(energy[end]-energy[end-1]))
@@ -1179,7 +1338,7 @@ This is to enable the sampling process to be saved regularly when calculating a 
 If the sampling process is not saved, then progress will be lost when the super-user of the HPC terminates
 the sampling process early, due to misinterpretation of Julia's way of distributed computing.
 """
-function sample_helper(M::AbstractEquilibrium, numOsamples::Int64, fr::AbstractArray, dvols::AbstractArray, energy::AbstractVector, pitch::AbstractVector, R::AbstractVector, z::AbstractVector, og::OrbitGrid; wall, GCP=GCDeutron, visualizeProgress=false, kwargs...)
+function sample_helper(M::AbstractEquilibrium, numOsamples::Int64, fr::AbstractArray, dvols::AbstractArray, energy::AbstractVector, pitch::AbstractVector, R::AbstractVector, z::AbstractVector, og::OrbitGrid; wall::Union{Nothing,Boundary}, GCP=GCDeutron, visualizeProgress::Bool=false, kwargs...)
 
     dE_os_end = abs((og.energy)[end]-(og.energy)[end-1])
     dE_os_1 = abs((og.energy)[2]-(og.energy)[1])
@@ -1918,7 +2077,7 @@ function pmRm_2_μPϕ(M::AbstractEquilibrium, good_coords_pmRm::Vector{Cartesian
     data_COM[:,:,1] = data_COM_ctgo # Counter-going (first element, σ=-1)
     data_COM[:,:,2] = data_COM_cogo # Co-going (Second element, σ=+1)
     if debug
-        # Write your own debug code here
+        return μ_values_cogo, μ_values_ctgo, Pϕ_values_cogo, Pϕ_values_ctgo, μ_array, Pϕ_array
     end
 
     return map(x-> isnan(x) ? 0.0 : x, data_COM), E, μ_array, Pϕ_array # Make sure to remove all NaNs. Sometimes, NaNs arise. It's inevitable.
@@ -2233,4 +2392,68 @@ function com2OS(M::AbstractEquilibrium, data::Array{Float64, 5}, E_array::Abstra
     end
 
     return data_OS, E_array, pm_array, Rm_array
+end
+
+"""
+    Ep2VparaVperp(E_array, p_array, Q)
+    Ep2VparaVperp(E_array, p_array, Q; my_gcp=GCDeuteron, needJac=false, isTopoMap=false, verbose=false)
+
+Transform a 2D (E,p) quantity Q into (v_para,v_perp) space. If needJac, assume a jacobian is needed (e.g distribution).
+If isTopoMap, assume Q is a topological map, implying special care is needed for successful transform.
+"""
+function Ep2VparaVperp(E_array::Vector, p_array::Vector, Q::Matrix{Float64}; my_gcp::AbstractParticle{T}=GCDeuteron(0.0,0.0,0.0,0.0), needJac=false, isTopoMap=false, verbose=false) where {T}
+    keV = 1000*(GuidingCenterOrbits.e0)
+    min_keV_E_array = minimum(keV .*E_array)
+    max_keV_E_array = maximum(keV .*E_array)
+    min_p_array = minimum(p_array)
+    max_p_array = maximum(p_array)
+
+    vf = (GuidingCenterOrbits.c0)*sqrt(1-(1/((max_keV_E_array/((my_gcp.m)*(GuidingCenterOrbits.c0)^2))+1)^2))
+    verbose && println("vf: $(vf) m/s")
+    vpara_array = collect(range(-vf, stop=vf, length=Int64(round(sqrt(length(E_array)*length(p_array))))))
+    vperp_array = collect(range(eps(), stop=vf, length=Int64(round(sqrt(length(E_array)*length(p_array))))))
+    Q_VEL = zeros(length(vpara_array),length(vperp_array))
+    nodes = (keV .*E_array, p_array)
+    itp = interpolate(nodes, Q, Gridded(Linear()))
+    itp = Interpolations.extrapolate(itp,isTopoMap ? 9.0 : 0.0)
+    E_rep = zeros(length(E_array)*length(p_array))
+    p_rep = zeros(length(E_array)*length(p_array))
+    coords = CartesianIndices(Q)
+    ind = 1
+    for coord in coords
+        E_rep[ind] = keV .*E_array[coord[1]]
+        p_rep[ind] = p_array[coord[2]]
+        ind += 1
+    end
+
+    brutetree = BruteTree(hcat(E_rep,p_rep)')
+    for (ivpara, vpara) in enumerate(vpara_array), (ivperp, vperp) in enumerate(vperp_array)
+        v = sqrt(vpara^2 + vperp^2)
+        Eq = ((my_gcp.m)*(GuidingCenterOrbits.c0)^2)*(sqrt(1/(1-(v/(GuidingCenterOrbits.c0))^(2)))-1) # Relativistic energy
+        pq = vpara/v
+        
+        #if (Eq < min_keV_E_array) || (Eq > max_keV_E_array) || (pq < min_p_array) || (pq > max_p_array) # If outside of bounds
+            verbose && println("Point out-of-bounds found!")
+            #idx, dist = nn(brutetree, [Eq, pq])
+            #interp_value = Q[coords[idx]]
+        #else
+        interp_value = itp(Eq,pq)
+        if isTopoMap # For topological maps, we need special treatment
+            diffE = (keV .*E_array) .- Eq
+            diffp = p_array .- pq
+            sorted_diffE_inds = sortperm(abs.(diffE))
+            sorted_diffp_inds = sortperm(abs.(diffp))
+            ibest_E = sorted_diffE_inds[1]
+            isecondbest_E = sorted_diffE_inds[2]
+            ibest_p = sorted_diffp_inds[1]
+            isecondbest_p = sorted_diffp_inds[2]
+            closest_values = [Q[ibest_E,ibest_p], Q[ibest_E,isecondbest_p], Q[isecondbest_E,ibest_p], Q[isecondbest_E,isecondbest_p]]
+            interp_value = closest_values[closest_index(closest_values,interp_value)]
+        end
+        #end
+        jac = (needJac ? ((my_gcp.m) * vperp/v) : 1.0)
+        Q_VEL[ivpara,ivperp] = jac * interp_value # Including Jacobian
+    end
+
+    return vpara_array, vperp_array, Q_VEL
 end

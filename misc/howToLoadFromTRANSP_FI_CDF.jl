@@ -39,7 +39,7 @@ filepath_FI_cdf = ""
 ncinfo(filepath_FI_cdf)
 ## ------
 ND = ncread(filepath_FI_cdf,"ND")
-ND = ncread(filepath_FI_cdf,"NT")
+NT = ncread(filepath_FI_cdf,"NT")
 ## ------
 NTOT_T_NBI = ncread(filepath_FI_cdf,"NTOT_T_NBI")
 println("NTOT: $(NTOT_T_NBI[1])")
@@ -51,11 +51,6 @@ println("NTOT: $(NTOT_T_NBI[1])")
 #TOKAMAK = (split((NetCDF.nc_char2string(ncread(filepath_FI_cdf,"TOKAMAK")))[1]))[1] # This is just annoying...
 #println("TOKAMAK: "*TOKAMAK)
 ## ------
-
-
-
-
-
 
 # Investigate the ratio of beam-target neutrons to thermonuclear neutrons in a TRANSP shot
 folderpath_OWCF = ""
@@ -84,5 +79,5 @@ for it=1:length(TIME)
     myplt = Plots.plot(X[:,it],TE[:,it],xlabel="r/a [-]",title="t= $(round(TIME[it],digits=3)) s", ylabel="E temp [eV]", label="T(rho_pol)")
     display(myplt)
 end
-## ------
+
 ## ------

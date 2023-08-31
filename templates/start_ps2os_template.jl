@@ -11,12 +11,12 @@
 # folderpath_OWCF - The path to the OWCF folder - String
 # numOcores - The number of CPU cores that will be used if distributed is set to true. - Int64
 #
-# include1Dto3D - If true, then the 3D OS FI distribution will be saved as well - Boolean
-# filepath_distr - The path to the fast-ion distribution file to extract tokamak/fast-ion data from. Must be .h5 or .jld2 file format - String
+# include1Dto3D - If true, then the 3D (E,pm,Rm) quantity will be saved as well - Boolean
+# filepath_EpRz - The path to the (E,p,R,z) quantity to be transformed to (E,pm,Rm). Must be .h5 or .jld2 file format - String
 # filepath_equil - The path to the .eqdsk-file (or .geqdsk/.jld2-file) with the tokamak magnetic equilibrium and geometry - String
 # filepath_W - The path to the weights file to use as blueprint for the orbit grid. If desired. - String
 # filepath_OG - The path to the output file from calcOrbGrid.jl. If specified, ps2os.jl will use that as the (E,pm,Rm) grid points - String
-# flip_F_EpRz_pitch - If true, then the FI PS distribution will be mirrored in pitch - Boolean
+# flip_F_EpRz_pitch - If true, then the (E,p,R,z) quantity will be mirrored in pitch - Boolean
 # folderpath_o - Path to folder where you want your results. End with '/' (or '\' if Windows...) - String'
 # numOsamples - The number of orbit samples you want. The more, the better the transform. But takes longer to compute! - Int64
 # nbatch - The algorithm will save the progress every nbatch sample. Useful if the sampling gets cancelled unexpectedly - Int64
@@ -32,7 +32,7 @@
 ## Then there are input variables that you only need to specify is you set useWeightsFile/useOrbGridFile to false:
 # Emin - The lower bound for the fast-ion energy in orbit space - Float64
 # Emax - The upper bound for the fast-ion energy in orbit space - Float64
-# FI_species - The particle species of the fast-ion distribution. E.g. "D", "T", "3he" etc - String
+# FI_species - The particle species of the (E,p,R,z) quantity. E.g. "D", "T", "3he" etc - String
 # inclPrideRockOrbs - If true, then pride rock (counter-stagnation) orbits will be included
 # nE - The number of fast-ion energy grid points in orbit space - Int64
 # npm - The number of fast-ion pm grid points in orbit space - Int64
@@ -45,7 +45,7 @@
 ## Then, finally, you could specify to have the fast-ion interpolated onto a coarser/finer
 # (E,p,R,z) grid before transforming it (via sampling) to orbit space. This is useful to 
 # test robustness and the effect of grid resolution etc. The inputs are as follows
-# interp - If set to true, the algorithm will interpolate the loaded fast-ion distribution - Bool
+# interp - If set to true, the algorithm will interpolate the loaded (E,p,R,z) quantity - Bool
 # nE_ps - The number of fast-ion energy grid points in particle space to interpolate onto - Int64
 # np_ps - The number of fast-ion pitch grid points in particle space to interpolate onto - Int64
 # nR_ps - The number of fast-ion R grid points in particle space to interpolate onto - Int64
@@ -94,14 +94,14 @@ end
 ## -----------------------------------------------------------------------------
 @everywhere begin
     include1Dto3D = false
-    filepath_distr = "" # for example "c12_2_FI_distribution_800x50x43x49(+1).h5" or "c15_3_FI_distribution_101x52x45x47.jld2"
+    filepath_EpRz = "" # for example "c12_2_FI_distribution_800x50x43x49(+1).h5" or "c15_3_FI_distribution_101x52x45x47.jld2" or "EpRzTopoMap_JET_99965K73_at48,4058s_D_100x50x51x54_wLost_wJac.jld2"
     filepath_equil = "" #JET/g94701/g94701_0-50.7932.eqdsk  #JET/g96100/g96100_0-53.0012.eqdsk
     filepath_W = ""
     filepath_OG = ""
     flip_F_EpRz_pitch = false
     folderpath_o = "../OWCF_results/template/" # Output folder path. Finish with '/'
     folderpath_OWCF = $folderpath_OWCF # Set path to OWCF folder to same as main process (hence the '$')
-    numOsamples = 12_000_000 # The total number of monte-carlo samples for the fast-ion distribution
+    numOsamples = 12_000_000 # The total number of monte-carlo samples for the fast-ion distribution, if that is the (E,p,R,z) quantity
     nbatch = 100_000 # The algorithm will save the sampling progress every nbatch sample
     os_equidistant = true # False is not possible yet.
     timepoint = nothing # If unknown, just leave as nothing. The algorithm will try to figure it out automatically.
