@@ -29,7 +29,7 @@
 #
 # J = 4*(pi^2)*R*v/m
 #
-# where R is the major radius position, v is the speed of the ion and m is the mass. 
+# where R is the major radius position, v is the speed of the ion and m is the mass.
 
 #### Inputs (units given when defined in the script)
 # Given in start_calcEpRzTopoMap_template.jl
@@ -433,7 +433,7 @@ end
 global topoMap_tottot[iE,:,:,:] = dataMap_tot[1,:,:,:] # One energy slice of topological map
 global polTimeMap_tottot[iE,:,:,:] = dataMap_tot[2,:,:,:] # One energy slice of poloidal transit times
 global torTimeMap_tottot[iE,:,:,:] = dataMap_tot[3,:,:,:] # One energy slice of toroidal transit times
-global jacobian_tottot[iE,:,:,:] = dataMap_tot[4,:,:,:] # One energy slice of toroidal transit times
+global jacobian_tottot[iE,:,:,:] = dataMap_tot[4,:,:,:] # One energy slice of jacobians
 end ###########################################
 
 ## ------
