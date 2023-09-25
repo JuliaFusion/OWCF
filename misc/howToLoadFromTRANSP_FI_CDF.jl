@@ -53,7 +53,7 @@ println("NTOT: $(NTOT_T_NBI[1])")
 ## ------
 
 # Investigate the ratio of beam-target neutrons to thermonuclear neutrons in a TRANSP shot
-folderpath_OWCF = "/home/henrikj/Codes/OWCF/"
+folderpath_OWCF = ""
 cd(folderpath_OWCF)
 using Pkg
 Pkg.activate(".")
