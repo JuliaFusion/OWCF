@@ -528,13 +528,13 @@ if lowercase(fileext_thermal)=="cdf" && isfile(filepath_FI_cdf)
     thermal_dens = nothing
 end
 
-# If there is a specified timepoint,
+# If there is a specified valid timepoint,
 # and if a TRANSP .cdf file has been specified, but NOT a TRANSP FI .cdf file, 
 # and we are NOT computing analytical orbit weight functions
-if typeof(timepoint)==String && length(split(timepoint,","))==2 && lowercase(fileext_thermal)=="cdf" && !isfile(filepath_FI_cdf) && !analyticalOWs && false # Remove when fully developed
+if typeof(timepoint)==String && length(split(timepoint,","))==2 && lowercase(fileext_thermal)=="cdf" && !isfile(filepath_FI_cdf) && !analyticalOWs # Remove when fully developed
     time_array = split(timepoint,",")
-    seconds = Parse(Float64,time_array[1])
-    subseconds = Parse(Float64,time_array[2])
+    seconds = parse(Float64,time_array[1])
+    subseconds = parse(Float64,time_array[2])
     if subseconds<10
         subseconds = 0.1*subseconds
     elseif subseconds>=10 && subseconds<100
@@ -555,14 +555,14 @@ if typeof(timepoint)==String && length(split(timepoint,","))==2 && lowercase(fil
     thermal_species_TRANSP = thermalSpecies_OWCFtoTRANSP(thermal_species) # Convert from OWCF convention (e.g. 3he for Helium-3) to TRANSP convention (e.g. HE3 for Helium-3)
     # LOAD CORRESPONDING TRANSP DATA
     thermal_dens_TRANSP = ncread(filepath_thermal_distr,"N"*thermal_species_TRANSP)[:,idx_min]
-    thermal_temp_TRANSP = ncread(filepath_thermal_distr,"T"*thermal_species_TRANSP)[:,idx_min]
+    thermal_temp_TRANSP = ncread(filepath_thermal_distr,"TI")[:,idx_min]
 
     PLFLX_axis = PLFLX_array[1]
     PLFLX_bdry = PLFLX_array[end]
     rho_array = sqrt.((PLFLX_array .- PLFLX_axis) ./ (PLFLX_bdry - PLFLX_axis)) # Compute the normalized poloidal flux points, rho
     
-    thermal_dens_TRANSP_itp = Interpolations.interpolate((rho_array,), thermal_dens_TRANSP, Gridded(Linear())) # MAYBE THIS WON'T WORK???
-    thermal_temp_TRANSP_itp = Interpolations.interpolate((rho_array,), thermal_temp_TRANSP, Gridded(Linear())) # MAYBE THIS WON'T WORK???
+    thermal_dens_TRANSP_itp = Interpolations.interpolate((rho_array,),(1.0e6) .*thermal_dens_TRANSP, Gridded(Linear())) # cm^-3
+    thermal_temp_TRANSP_itp = Interpolations.interpolate((rho_array,),(1.0e-3) .*thermal_temp_TRANSP, Gridded(Linear())) # eV to keV
     thermal_dens_TRANSP_etp = Interpolations.extrapolate(thermal_dens_TRANSP_itp,0) # Add what happens in extrapolation scenario. 0 means we assume vacuum scrape-off layer (SOL)
     thermal_temp_TRANSP_etp = Interpolations.extrapolate(thermal_temp_TRANSP_itp,0) # Add what happens in extrapolation scenario. 0 means we assume vacuum scrape-off layer (SOL)
     thermal_temp = thermal_temp_TRANSP_etp
