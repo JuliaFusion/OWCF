@@ -354,7 +354,65 @@ end
 ################################################################################################
 
 """
-    plotSignalOrbSplits(S_WF, Ed_WF, WFO_E, WFO_pm, WFO_Rm,E_aray,pm_array,Rm_array)
+
+"""
+function plotMeasurementOrbSplits(S_WF::Vector{Float64}, Ed_WF::Union{Vector{Float64},Vector{Int64}}, measurement_bin_of_interest::Union{Float64,Int64}, WFO_E::Array{Float64,3}, E_array::AbstractVector; verbose::Bool=false, save_plot::Bool=false, normalize::Bool=false, ylabel = (normalize ? "Normalized signal [a.u.]" : "Counts [(keV*s)^-1]"), title = (normalize ? "Orbit-split of diagnostic measurement \n (normalized)" : "Orbit-split of diagnostic measurement"), debug=false)
+    verbose && println("Finding measurement bin closest to requested bin... ")
+    iEd = closest_index(Ed_WF, measurement_bin_of_interest)
+    dE = abs(diff(E_array)[1]) # Assume equidistant
+    verbose && println("Computing orbit contributions to measurement... ")
+    stagnation_contribution = sum(dE .*WFO_E[iEd,:,1])
+    trapped_contribution = sum(dE .*WFO_E[iEd,:,2])
+    copassing_contribution = sum(dE .*WFO_E[iEd,:,3])
+    counterpassing_contribution = sum(dE .*WFO_E[iEd,:,4])
+    potato_contribution = sum(dE .*WFO_E[iEd,:,5])
+    counterstagnation_contribution = sum(dE .*WFO_E[iEd,:,6])
+
+    verbose && println("Determining plot axis data... ")
+    contributions = [stagnation_contribution, trapped_contribution, copassing_contribution, counterpassing_contribution, potato_contribution, counterstagnation_contribution]
+    if normalize
+        contributions = contributions ./norm(contributions)
+    end
+    min_y, max_y = extrema(contributions)
+    if min_y==0.0
+        p = sortperm(contributions) # Return an array p with indices that puts the elements of contributions in ascending order
+        min_y = (contributions[p])[findfirst(x-> x>0.0, contributions[p])] # Only ok coding because contributions is so short. And efficiency is not an issue here
+    end
+    min_OOM, max_OOM = (floor(log10(min_y)),ceil(log10(max_y))) # The orders of magnitude of the minimum and maximum values
+    if !((max_OOM-min_OOM)==0.0) && ((max_y/min_y) > 10)
+        verbose && println("Log-plotting activated... ")
+        yaxis_scale = :log10
+        ylims = (min_OOM, max_OOM)
+        yticks = collect(min_OOM:1:max_OOM)
+    else
+        verbose && println("Linear plotting... ")
+        yaxis_scale = :identity
+        ylims = (min_y, max_y)
+        yticks = round.(collect(range(min_y,stop=max_y,length=5)),sigdigits=3)
+    end
+
+    verbose && println("Plotting... ")
+    dx = 0.2
+    my_plt = Plots.plot(Shape([1.0-2*dx,1.0,1.0,1.0-2*dx],[1.0e-4,1.0e-4,contributions[1],contributions[1]]),color=:red,label="Stagnation")
+    Plots.plot!(my_plt, Shape([2.0-2*dx,2.0,2.0,2.0-2*dx],[1.0e-4,1.0e-4,contributions[2],contributions[2]]),color=:blue,label="Trapped")
+    Plots.plot!(my_plt, Shape([3.0-2*dx,3.0,3.0,3.0-2*dx],[1.0e-4,1.0e-4,contributions[3],contributions[3]]),color=:green,label="Co-passing")
+    Plots.plot!(my_plt, Shape([4.0-2*dx,4.0,4.0,4.0-2*dx],[1.0e-4,1.0e-4,contributions[4],contributions[4]]),color=:purple,label="Counter-passing")
+    Plots.plot!(my_plt, Shape([5.0-2*dx,5.0,5.0,5.0-2*dx],[1.0e-4,1.0e-4,contributions[5],contributions[5]]),color=:orange,label="Potato")
+    Plots.plot!(my_plt, Shape([6.0-2*dx,6.0,6.0,6.0-2*dx],[1.0e-4,1.0e-4,contributions[6],contributions[6]]),color=:pink,label="Counter-stagnation")
+    Plots.plot!(my_plt, yaxis=yaxis_scale, ylims=(10 .^ylims),yticks=(10 .^yticks), xticks=false, title=title,ylabel=ylabel,xlabel="Orbit types", top_margin=3Plots.mm, xlims=(0.4,7.0))
+
+    Plots.display(my_plt)
+
+    if save_plot
+        verbose && println("Saving plot... ")
+        my_plt = Plots.plot!(my_plt, dpi=600)
+        sadd = (normalize ? "norm" : "abs")
+        png(my_plt, "plotMeasurementOrbSplits_"*sadd)
+    end
+end
+
+"""
+    plotSignalOrbSplits(S_WF, Ed_WF, WFO_E, WFO_pm, WFO_Rm, E_array, pm_array, Rm_array)
     plotSignalOrbSplits(-||-; normalize=false, verbose=false, save_plot=false, i0=1, iend=0, xlabel="Deposited energy [keV]", ylabel = (normalize ? "Normalized signal [a.u.]" : "Counts [(keV*s)^-1]"), legend_margin = 39, title = (normalize ? "Orbit-split of diagnostic signal" : "Orbit-split of diagnostic signal (normalized)"), WF_marker_color = :green3)
 
 Take the ps2WF.jl results data and plot an orbit split of the synthetic diagnostic signal. 
@@ -452,8 +510,11 @@ plot either the absolute or normalized orbit splits of the WF signal, or the saf
 By default, assume:
 - scenario = :all
 - Do NOT print verbose print statements
+
+If 'specific_measurement_bin_of_interest' is specified (a Float64 or Int64), then a bar plot showing the orbit-type constituents for that specific measurement bin of
+interest will be plotted. 
 """
-function plotSignalOrbSplits(ps2WFoutputFilepath::String; verbose::Bool = false, scenario = :all, save_plot::Bool = false, kwargs...)
+function plotSignalOrbSplits(ps2WFoutputFilepath::String; verbose::Bool = false, scenario = :all, save_plot::Bool = false, specific_measurement_bin_of_interest::Union{Nothing,Float64,Int64} = nothing, kwargs...)
     myfile = jldopen(ps2WFoutputFilepath,false,false,false,IOStream)
     if !(haskey(myfile,"WFO_E"))
         error("Specified ps2WF output file did not have the data necessary for splitting signal into orbit types. Please try re-running ps2WF.jl with 'calcWFOs' set to true and use that output file as input instead.")
@@ -471,18 +532,34 @@ function plotSignalOrbSplits(ps2WFoutputFilepath::String; verbose::Bool = false,
     nfast = myfile["nfast_orig"]
     close(myfile)
 
-    if scenario == :all
-        plotSafetyPlot(S_WF, Ed_WF, WFO_E, WFO_pm, WFO_Rm, E_array, pm_array, Rm_array; verbose = verbose, save_plot=save_plot)
-        plotSignalOrbSplits(S_WF, Ed_WF, WFO_E, WFO_pm, WFO_Rm, E_array, pm_array, Rm_array; verbose=verbose, save_plot=save_plot, kwargs... ) # Absolute values. Corresponding to Figure 10 in H. Järleblad et al, NF, 2022
-        plotSignalOrbSplits(S_WF, Ed_WF, WFO_E, WFO_pm, WFO_Rm, E_array, pm_array, Rm_array; verbose=verbose, save_plot=save_plot, normalize=true, kwargs... ) # Normalized values. Corresponding to Figure 11 in H. Järleblad et al, NF, 2022
-    elseif scenario == :abs
-        plotSignalOrbSplits(S_WF, Ed_WF, WFO_E, WFO_pm, WFO_Rm, E_array, pm_array, Rm_array; verbose=verbose, save_plot=save_plot, kwargs... ) # Absolute values. Corresponding to Figure 10 in H. Järleblad et al, NF, 2022
-    elseif scenario == :norm
-        plotSignalOrbSplits(S_WF, Ed_WF, WFO_E, WFO_pm, WFO_Rm, E_array, pm_array, Rm_array; verbose=verbose, save_plot=save_plot, normalize=true, kwargs... ) # Normalized values. Corresponding to Figure 11 in H. Järleblad et al, NF, 2022
-    elseif scenario == :safety
-        plotSafetyPlot(S_WF, Ed_WF, WFO_E, WFO_pm, WFO_Rm, E_array, pm_array, Rm_array; verbose = verbose, save_plot=save_plot)
+    if typeof(specific_measurement_bin_of_interest)==Nothing
+        if scenario == :all
+            plotSafetyPlot(S_WF, Ed_WF, WFO_E, WFO_pm, WFO_Rm, E_array, pm_array, Rm_array; verbose = verbose, save_plot=save_plot)
+            plotSignalOrbSplits(S_WF, Ed_WF, WFO_E, WFO_pm, WFO_Rm, E_array, pm_array, Rm_array; verbose=verbose, save_plot=save_plot, kwargs... ) # Absolute values. Corresponding to Figure 10 in H. Järleblad et al, NF, 2022
+            plotSignalOrbSplits(S_WF, Ed_WF, WFO_E, WFO_pm, WFO_Rm, E_array, pm_array, Rm_array; verbose=verbose, save_plot=save_plot, normalize=true, kwargs... ) # Normalized values. Corresponding to Figure 11 in H. Järleblad et al, NF, 2022
+        elseif scenario == :abs
+            plotSignalOrbSplits(S_WF, Ed_WF, WFO_E, WFO_pm, WFO_Rm, E_array, pm_array, Rm_array; verbose=verbose, save_plot=save_plot, kwargs... ) # Absolute values. Corresponding to Figure 10 in H. Järleblad et al, NF, 2022
+        elseif scenario == :norm
+            plotSignalOrbSplits(S_WF, Ed_WF, WFO_E, WFO_pm, WFO_Rm, E_array, pm_array, Rm_array; verbose=verbose, save_plot=save_plot, normalize=true, kwargs... ) # Normalized values. Corresponding to Figure 11 in H. Järleblad et al, NF, 2022
+        elseif scenario == :safety
+            plotSafetyPlot(S_WF, Ed_WF, WFO_E, WFO_pm, WFO_Rm, E_array, pm_array, Rm_array; verbose = verbose, save_plot=save_plot)
+        else
+            error("Unknown scenario. Accepted values are :all, :abs, :norm and :safety.")
+        end
     else
-        error("Unknown scenario. Accepted values are :all, :abs, :norm and :safety.")
+        if scenario == :all
+            plotSafetyPlot(S_WF, Ed_WF, WFO_E, WFO_pm, WFO_Rm, E_array, pm_array, Rm_array; verbose = verbose, save_plot=save_plot)
+            plotMeasurementOrbSplits(S_WF, Ed_WF, specific_measurement_bin_of_interest, WFO_E, E_array; verbose=verbose, save_plot=save_plot, kwargs...)
+            plotMeasurementOrbSplits(S_WF, Ed_WF, specific_measurement_bin_of_interest, WFO_E, E_array; verbose=verbose, save_plot=save_plot, normalize=true, kwargs...)
+        elseif scenario == :abs
+            plotMeasurementOrbSplits(S_WF, Ed_WF, specific_measurement_bin_of_interest, WFO_E, E_array; verbose=verbose, save_plot=save_plot, kwargs...)
+        elseif scenario == :norm
+            plotMeasurementOrbSplits(S_WF, Ed_WF, specific_measurement_bin_of_interest, WFO_E, E_array; verbose=verbose, save_plot=save_plot, normalize=true, kwargs...)
+        elseif scenario == :safety
+            plotSafetyPlot(S_WF, Ed_WF, WFO_E, WFO_pm, WFO_Rm, E_array, pm_array, Rm_array; verbose = verbose, save_plot=save_plot)
+        else
+            error("Unknown scenario. Accepted values are :all, :abs, :norm and :safety.")
+        end
     end
 end
 

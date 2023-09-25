@@ -62,7 +62,7 @@ Pkg.activate(".")
 filepath_ps2WF_output = ""
 energy_ticks = [] # Example energy ticks between 0 and 175 keV: [0,10,20,30,40,50,60,80,100,125,150,175]
 pm_ticks = [] # Example pitch maximum ticks between -1.0 and 1.0: [-1.0,-0.5,0.0,0.5,1.0]
-Rm_ticks = []# Example radius maximum ticks between 2.75 and 3.75 meters (good for JET): [2.75, 3.00, 3.25, 3.50, 3.75]
+Rm_ticks = [] # Example radius maximum ticks between 2.75 and 3.75 meters (good for JET): [2.75, 3.00, 3.25, 3.50, 3.75]
 verbose = true
 # Add more custom plot labels etc here
 port = 4545
