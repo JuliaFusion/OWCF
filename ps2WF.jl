@@ -757,19 +757,21 @@ dE4D, dp4D, dR4D, dz4D = get4DDiffs(energy, pitch, R, z)
 fr = F_ps .* reshape(R,(1,1,length(R),1))
 nfast_orig = sum((2*pi) .* fr .* dE4D .*dp4D .*dR4D .*dz4D)
 
-# Normalize the WOs to account for orbit-space measure
-verbose && println("Normalizing orbit weight function splits by orbit type... ")
-WNO_E = zeros(size(WO_E))
-WNO_pm = zeros(size(WO_pm))
-WNO_Rm = zeros(size(WO_Rm))
-for iEd=1:nEd
-    WNO_E[iEd,:,:] = WO_E[iEd,:,:] ./ NO_E
-    WNO_pm[iEd,:,:] = WO_pm[iEd,:,:] ./ NO_pm
-    WNO_Rm[iEd,:,:] = WO_Rm[iEd,:,:] ./ NO_Rm
+if calcWFO
+    # Normalize the WOs to account for orbit-space measure
+    verbose && println("Normalizing orbit weight function splits by orbit type... ")
+    WNO_E = zeros(size(WO_E))
+    WNO_pm = zeros(size(WO_pm))
+    WNO_Rm = zeros(size(WO_Rm))
+    for iEd=1:nEd
+        WNO_E[iEd,:,:] = WO_E[iEd,:,:] ./ NO_E
+        WNO_pm[iEd,:,:] = WO_pm[iEd,:,:] ./ NO_pm
+        WNO_Rm[iEd,:,:] = WO_Rm[iEd,:,:] ./ NO_Rm
+    end
+    WNO_E = map(x-> isnan(x) ? 0.0 : x, WNO_E) # We know that NaNs would correspond to zero weight anyway (e.g. w(stagnation) / N(stagnation) can be NaN only if both w(stagnation) and N(stagnation) were 0.0)
+    WNO_pm = map(x-> isnan(x) ? 0.0 : x, WNO_pm) # We know that NaNs would correspond to zero weight anyway (e.g. w(stagnation) / N(stagnation) can be NaN only if both w(stagnation) and N(stagnation) were 0.0)
+    WNO_Rm = map(x-> isnan(x) ? 0.0 : x, WNO_Rm) # We know that NaNs would correspond to zero weight anyway (e.g. w(stagnation) / N(stagnation) can be NaN only if both w(stagnation) and N(stagnation) were 0.0)
 end
-WNO_E = map(x-> isnan(x) ? 0.0 : x, WNO_E) # We know that NaNs would correspond to zero weight anyway (e.g. w(stagnation) / N(stagnation) can be NaN only if both w(stagnation) and N(stagnation) were 0.0)
-WNO_pm = map(x-> isnan(x) ? 0.0 : x, WNO_pm) # We know that NaNs would correspond to zero weight anyway (e.g. w(stagnation) / N(stagnation) can be NaN only if both w(stagnation) and N(stagnation) were 0.0)
-WNO_Rm = map(x-> isnan(x) ? 0.0 : x, WNO_Rm) # We know that NaNs would correspond to zero weight anyway (e.g. w(stagnation) / N(stagnation) can be NaN only if both w(stagnation) and N(stagnation) were 0.0)
 
 # Removing progress files and saving results... 
 verbose && println("Force-removing ps2WF_progress_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_$(nE)x$(npm)x$(nRm).jld2 file... ")

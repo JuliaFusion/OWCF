@@ -38,7 +38,7 @@ Basically, that the file can be identified via a terminal/Powershell interface
 without any problems. If projVel, then there is no fusion reaction and we simply 
 return the 'reaction_full' string instead (which should be on the 'proj-X' format).
 """
-function pretty2scpok(reaction_full::String; projVel=false)
+function pretty2scpok(reaction_full::String; projVel::Bool=false)
 
     projVel && (return reaction_full)
 

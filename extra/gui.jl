@@ -37,7 +37,7 @@ include("dependencies.jl")
 Plot the signal S and the WF signal in the same plot. The corresponding measurement bins are Ed_S and Ed_WF, respectively. By default, use green color for the WF and
 don't normalize the signals.
 """
-function plotSigComp(Ed_S::AbstractVector, S::AbstractVector, Ed_WF::AbstractVector, WF::AbstractVector; lc_S = :black, lc_WF = :green3, lw = 2.5, xlabel = "Diagnostic energy [keV]", ylabel = "Counts [s^-1]", normalize = false)
+function plotSigComp(Ed_S::AbstractVector, S::AbstractVector, Ed_WF::AbstractVector, WF::AbstractVector; lc_S = :black, lc_WF = :green3, lw::Float64 = 2.5, xlabel::String = "Diagnostic energy [keV]", ylabel::String = "Counts [s^-1]", normalize::Bool = false)
     if normalize 
         S = S ./ maximum(S)
         WF = WF ./ maximum(WF)
@@ -60,7 +60,7 @@ By default, assume
 - log-y plot wanted
 - that the grid in orbit-space is equidistant
 """
-function plot_fE_comp(F_os_3D::Array{Float64,3}, E_array::AbstractArray, pm_array::AbstractArray, Rm_array::AbstractArray, filepath_distr::String; verbose=false, logplot=true, os_equidistant=true)
+function plot_fE_comp(F_os_3D::Array{Float64,3}, E_array::AbstractArray, pm_array::AbstractArray, Rm_array::AbstractArray, filepath_distr::String; verbose::Bool=false, logplot::Bool=true, os_equidistant::Bool=true)
 
     # Determine filepath_distr file extension
     fileext_distr = (split(filepath_distr,"."))[end] # Assume last part after final '.' is the file extension
@@ -114,7 +114,7 @@ By default, assume
 - no verbose printing
 - that the orbit-space grid is equidistant
 """
-function plot_fE_comp(F_os::AbstractArray, og::OrbitGrid, filepath_distr::String; verbose=false, os_equidistant=true, kwargs... )
+function plot_fE_comp(F_os::AbstractArray, og::OrbitGrid, filepath_distr::String; verbose::Bool=false, os_equidistant::Bool=true, kwargs... )
 
     verbose && println("Mapping orbits to grid... ")
     F_os_3D = map_orbits_OWCF(og, F_os, os_equidistant) # Map the 1D orbit-space distribution vector to the full 3D grid
@@ -138,7 +138,7 @@ By default, assume
 - log-y plot not wanted
 - that the figure legend should be in the top-right corner of the plot
 """
-function plot_fpm(F_os_3D::Array{Float64,3}, E_array::AbstractArray, pm_array::AbstractArray, Rm_array::AbstractArray; verbose=false, os_equidistant=true, logplot=false,lgd=:topright)
+function plot_fpm(F_os_3D::Array{Float64,3}, E_array::AbstractArray, pm_array::AbstractArray, Rm_array::AbstractArray; verbose::Bool=false, os_equidistant::Bool=true, logplot::Bool=false,lgd=:topright)
     if os_equidistant
         dE = abs(E_array[2]-E_array[1])
         dRm = abs(Rm_array[2]-Rm_array[1])
@@ -168,7 +168,7 @@ By default, assume
 - no verbose printing
 - that the orbit-space grid is equidistant
 """
-function plot_fpm(F_os::AbstractArray, og::OrbitGrid; verbose=false, os_equidistant=true, kwargs... )
+function plot_fpm(F_os::AbstractArray, og::OrbitGrid; verbose::Bool=false, os_equidistant::Bool=true, kwargs... )
     verbose && println("Mapping orbits to grid... ")
     F_os_3D = map_orbits_OWCF(og, F_os, os_equidistant) # Map the 1D orbit-space distribution vector to the full 3D grid
     plot_fpm(F_os_3D, og.energy, og.pitch, og.r; verbose=verbose, os_equidistant=os_equidistant, kwargs... )
@@ -188,7 +188,7 @@ By default, assume
 - that the figure legend should be in the top-right corner of the plot
 - that the f(Rm) curve should not be normalized
 """
-function plot_fRm(F_os_3D::Array{Float64,3}, E_array::AbstractArray, pm_array::AbstractArray, Rm_array::AbstractArray; verbose=false, os_equidistant=true, logplot=false,lgd=:topright, normalize=false)
+function plot_fRm(F_os_3D::Array{Float64,3}, E_array::AbstractArray, pm_array::AbstractArray, Rm_array::AbstractArray; verbose::Bool=false, os_equidistant::Bool=true, logplot::Bool=false,lgd=:topright, normalize::Bool=false)
     if os_equidistant
         dE = abs(E_array[2]-E_array[1])
         dpm = abs(pm_array[2]-pm_array[1])
@@ -225,7 +225,7 @@ By default, assume
 - no verbose printing
 - that the orbit-space grid is equidistant
 """
-function plot_fRm(F_os::AbstractArray, og::OrbitGrid; verbose=false, os_equidistant=true, kwargs...)
+function plot_fRm(F_os::AbstractArray, og::OrbitGrid; verbose::Bool=false, os_equidistant::Bool=true, kwargs...)
     verbose && println("Mapping orbits to grid... ")
     F_os_3D = map_orbits_OWCF(og, F_os, os_equidistant) # Map the 1D orbit-space distribution vector to the full 3D grid
 
@@ -238,7 +238,7 @@ end
 
 Take the F_EpRz (E,p,R,z) fast-ion distribution, integrate over (R,z) and plot the E,p-dependance, i.e. f(E,p).
 """
-function plot_F_Ep(F_EpRz::Array{Float64,4}, energy::Array{Float64,1}, pitch::Array{Float64,1}, R::Array{Float64,1}, z::Array{Float64,1}; verbose=false, xaxis=extrema(energy), kwargs...)
+function plot_F_Ep(F_EpRz::Array{Float64,4}, energy::Array{Float64,1}, pitch::Array{Float64,1}, R::Array{Float64,1}, z::Array{Float64,1}; verbose::Bool=false, xaxis=extrema(energy), kwargs...)
 
     verbose && println("Calculating the 4D differences... ")
     dE4D, dp4D, dR4D, dZ4D = get4DDiffs(energy, pitch, R, z)
@@ -255,7 +255,7 @@ end
 
 Load the F_EpRz (E,p,R,z) fast-ion distribution from file (.h5/.hdf5/.jld2), integrate over (R,z) and plot the E,p-dependance, i.e. f(E,p).
 """
-function plot_F_Ep(filepath_distr::String;verbose=false, kwargs...)
+function plot_F_Ep(filepath_distr::String; verbose::Bool=false, kwargs...)
     # Determine filepath_distr file extension
     fileext_distr = (split(filepath_distr,"."))[end] # Assume last part after final '.' is the file extension
     if (lowercase(fileext_distr) == "h5") || (lowercase(fileext_distr) == "hdf5")
@@ -277,7 +277,7 @@ end
 
 Take the (E,p,R,z) fast-ion distribution F_EpRz, integrate over (E,p) and plot the R,z-dependance, i.e. f(R,z). Include the tokamak wall, if available.
 """
-function plot_F_Rz(F_EpRz::Array{Float64,4}, energy::Array{Float64,1}, pitch::Array{Float64,1}, R::Array{Float64,1}, z::Array{Float64,1}; wall=nothing, verbose=false, kwargs...)
+function plot_F_Rz(F_EpRz::Array{Float64,4}, energy::Array{Float64,1}, pitch::Array{Float64,1}, R::Array{Float64,1}, z::Array{Float64,1}; wall::Union{Nothing,Boundary{T}}=nothing, verbose::Bool=false, kwargs...) where {T}
 
     verbose && println("Calculating the 4D differences... ")
     dE4D, dp4D, dR4D, dZ4D = get4DDiffs(energy, pitch, R, z)
@@ -304,7 +304,7 @@ end
 Load the (E,p,R,z) fast-ion distribution F_EpRz from file (.h5/.hdf5/.jld2), integrate over (E,p) and plot the R,z-dependance, i.e. f(R,z). 
 Also load and include the tokamak wall, if available.
 """
-function plot_F_Rz(filepath_distr::String; verbose=false, filepath_equil=nothing, clockwise_phi=false, kwargs...)
+function plot_F_Rz(filepath_distr::String; verbose::Bool=false, filepath_equil::Bool=nothing, clockwise_phi::Bool=false, kwargs...)
     # Determine filepath_distr file extension
     fileext_distr = (split(filepath_distr,"."))[end] # Assume last part after final '.' is the file extension
     if (lowercase(fileext_distr) == "h5") || (lowercase(fileext_distr) == "hdf5")
@@ -370,7 +370,7 @@ By default, assume
 - The title to be *please see the title keyword alternatives*
 - The marker color of the WF scatter plot should be bright green (:green3)
 """
-function plotSignalOrbSplits(S_WF::AbstractVector, Ed_WF::AbstractVector, WFO_E::Array{Float64,3}, WFO_pm::Array{Float64,3}, WFO_Rm::Array{Float64,3}, E_array::AbstractVector, pm_array::AbstractVector, Rm_array::AbstractVector; normalize=false, verbose=false, save_plot=false, i0=1, iend=0, xlabel="Deposited energy [keV]", ylabel = (normalize ? "Normalized signal [a.u.]" : "Counts [(keV*s)^-1]"), legend_margin = 39, title = (normalize ? "Orbit-split of diagnostic signal (normalized)" : "Orbit-split of diagnostic signal"), WF_marker_color = :green3)
+function plotSignalOrbSplits(S_WF::AbstractVector, Ed_WF::AbstractVector, WFO_E::Array{Float64,3}, WFO_pm::Array{Float64,3}, WFO_Rm::Array{Float64,3}, E_array::AbstractVector, pm_array::AbstractVector, Rm_array::AbstractVector; normalize::Bool=false, verbose::Bool=false, save_plot::Bool=false, i0=1, iend=0, xlabel="Deposited energy [keV]", ylabel = (normalize ? "Normalized signal [a.u.]" : "Counts [(keV*s)^-1]"), legend_margin = 39, title = (normalize ? "Orbit-split of diagnostic signal (normalized)" : "Orbit-split of diagnostic signal"), WF_marker_color = :green3)
     dE = abs(diff(E_array)[1]) # Assume equidistant
     dpm = abs(diff(pm_array)[1]) # Assume equidistant
     dRm = abs(diff(Rm_array)[1]) # Assume equidistant
@@ -417,7 +417,7 @@ By default, assume
 - That the plot should NOT be saved
 - That the function should NOT be talkative
 """
-function plotSafetyPlot(S_WF::AbstractVector, Ed_WF::AbstractVector, WFO_E::Array{Float64,3}, WFO_pm::Array{Float64,3}, WFO_Rm::Array{Float64,3}, E_array::AbstractVector, pm_array::AbstractVector, Rm_array::AbstractVector; save_plot = false, verbose=false)
+function plotSafetyPlot(S_WF::AbstractVector, Ed_WF::AbstractVector, WFO_E::Array{Float64,3}, WFO_pm::Array{Float64,3}, WFO_Rm::Array{Float64,3}, E_array::AbstractVector, pm_array::AbstractVector, Rm_array::AbstractVector; save_plot::Bool = false, verbose::Bool=false)
     dE = abs(diff(E_array)[1]) # Assume equidistant
     dpm = abs(diff(pm_array)[1]) # Assume equidistant
     dRm = abs(diff(Rm_array)[1]) # Assume equidistant
@@ -453,7 +453,7 @@ By default, assume:
 - scenario = :all
 - Do NOT print verbose print statements
 """
-function plotSignalOrbSplits(ps2WFoutputFilepath::String; verbose = false, scenario = :all, save_plot = false, kwargs...)
+function plotSignalOrbSplits(ps2WFoutputFilepath::String; verbose::Bool = false, scenario = :all, save_plot::Bool = false, kwargs...)
     myfile = jldopen(ps2WFoutputFilepath,false,false,false,IOStream)
     if !(haskey(myfile,"WFO_E"))
         error("Specified ps2WF output file did not have the data necessary for splitting signal into orbit types. Please try re-running ps2WF.jl with 'calcWFOs' set to true and use that output file as input instead.")
@@ -494,7 +494,7 @@ Plot an animation of the motion of the guiding-center orbit 'o'. If 'wall' is sp
 from a top view of the tokamak, otherwise show the animation from a poloidal cross-sectional view. Let the animation last for 'anim_numOtau_p' number of poloidal transit times.
 If 'save_anim' is set to true, save the animation after plotting.
 """
-function plot_orbit_movie(M::AbstractEquilibrium, o::Orbit; wall=nothing, top_view=true, verbose=false, anim_numOtau_p = 3, save_anim=false)
+function plot_orbit_movie(M::AbstractEquilibrium, o::Orbit; wall::Union{Nothing,Boundary{T}}=nothing, top_view::Bool=true, verbose::Bool=false, anim_numOtau_p = 3, save_anim::Bool=false) where {T}
     if !(wall==nothing)
         verbose && println("Creating tokamak wall data for topview plot... ")
         R_hfs = minimum(wall.r) # R-coord of high-field side wall
@@ -636,7 +636,7 @@ end
 
 Please see documentation for other versions of plot_orbit_movie().
 """
-function plot_orbit_movie(M::AbstractEquilibrium, myEPRc::EPRCoordinate; wall=nothing, extra_kw_args=Dict(:toa => true, :limit_phi => true, :maxiter => 0), verbose=false, kwargs...)
+function plot_orbit_movie(M::AbstractEquilibrium, myEPRc::EPRCoordinate; wall::Union{Boundary{T},Nothing}=nothing, extra_kw_args=Dict(:toa => true, :limit_phi => true, :maxiter => 0), verbose=false, kwargs...) where {T}
     verbose && println("Computing orbit from (E,pm,Rm) coordinate... ")
     o = get_orbit(M,myEPRc; wall=wall, interp_dt=1.0e-10, max_length=500, extra_kw_args...) # interp_dt is set to ridiculously small value, to ensure orbit path length of 500
     plot_orbit_movie(M, o; wall=wall, verbose=verbose, kwargs... )
@@ -649,7 +649,7 @@ Given the magnetic equilibrium and (E,pm,Rm) triplet, compute the resulting orbi
 'extra_kw_args' specifies extra keyword arguments for the equations-of-motion integration, 'verbose' specifies extra function print output activity, 'anim_numOtau_p' specifies length of animation and 'save_anim' specifies
 whether to save the animation to .gif file.
 """
-function plot_orbit_movie(M::AbstractEquilibrium, E::Number, pm::Number, Rm::Number; FI_species="D", verbose=false, kwargs...)
+function plot_orbit_movie(M::AbstractEquilibrium, E::Number, pm::Number, Rm::Number; FI_species::String="D", verbose::Bool=false, kwargs...)
     verbose && println("Computing EPRCoordinate from (E,pm,Rm) input... ")
     myEPRc = EPRCoordinate(M, E, pm, Rm; amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species))
     plot_orbit_movie(M, myEPRc; verbose=verbose, kwargs...)
