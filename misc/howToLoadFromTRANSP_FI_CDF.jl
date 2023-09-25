@@ -53,7 +53,7 @@ println("NTOT: $(NTOT_T_NBI[1])")
 ## ------
 
 # Investigate the ratio of beam-target neutrons to thermonuclear neutrons in a TRANSP shot
-folderpath_OWCF = ""
+folderpath_OWCF = "/home/henrikj/Codes/OWCF/"
 cd(folderpath_OWCF)
 using Pkg
 Pkg.activate(".")
@@ -67,17 +67,49 @@ THERMONUCLEAR_NEUTRONS = ncread(filepath_TRANSP,"THNTX")
 ###########################################################################
 BEAMTARGET_NEUTRONS = ncread(filepath_TRANSP,"BTNTX")
 ###########################################################################
-TE = ncread(filepath_TRANSP,"TE")
+TE = ncread(filepath_TRANSP,"TI")
+ND = ncread(filepath_TRANSP,"ND")
 ###########################################################################
 TIME = ncread(filepath_TRANSP,"TIME")
 X = ncread(filepath_TRANSP,"X")
 ###########################################################################
-
 for it=1:length(TIME)
     #myplt = Plots.plot(X[:,it],THERMONUCLEAR_NEUTRONS[:,it],xlabel="r/a [-]",title="t= $(round(TIME[it],digits=3)) s", ylabel="Neutron yield [(cm3*s)^-1]", label="Thermonuclear")
     #myplt = Plots.plot!(myplt, X[:,it],BEAMTARGET_NEUTRONS[:,it],label="BEAMTARGET")
     myplt = Plots.plot(X[:,it],TE[:,it],xlabel="r/a [-]",title="t= $(round(TIME[it],digits=3)) s", ylabel="E temp [eV]", label="T(rho_pol)")
     display(myplt)
 end
+###########################################################################
+TIME = ncread(filepath_TRANSP,"TIME")
+X = ncread(filepath_TRANSP,"XB")
+TRFLX = ncread(filepath_TRANSP,"TRFLX")
+PLFLX = ncread(filepath_TRANSP,"PLFLX")
+###########################################################################
+t = 9.0
+it = argmin(abs.(TIME .- t))
+###########################################################################
+Xt = X[:,it]
+TRFLXt = TRFLX[:,it]
+PLFLXt = PLFLX[:,it]
+###########################################################################
+diff_TRFLX = TRFLXt[end] - TRFLXt[1]
+X2 = Xt .^2
+X_TRFLX_test = ((diff_TRFLX) .*X2)
+X_TRFLX_test = X_TRFLX_test .+ TRFLXt[1]  
+###########################################################################
+Plots.plot(TRFLXt,label="TRFLX",linewidth=2.5)
+Plots.plot!(X_TRFLX_test,label="Modified XB",linewidth=2.5)
 
-## ------
+Plots.scatter(TRFLXt .- X_TRFLX_test,label="Diff")
+Plots.plot!(1:20,(0.8/20).*(1:20) .-0.05,label="Linear fit")
+png("XB_versus_TRFLX")
+###########################################################################
+diff_PLFLX = PLFLXt[end] - PLFLXt[1]
+X_PLFLX_test = ((diff_PLFLX) .*X2)
+X_PLFLX_test = X_PLFLX_test .+ PLFLXt[1]  
+###########################################################################
+rho = sqrt.((PLFLXt .- PLFLXt[1]) ./(PLFLXt[end] - PLFLXt[1]))
+###########################################################################
+Plots.plot(Xt, PLFLXt,label="PLFLX",linewidth=2.5)
+Plots.plot!(Xt, X_PLFLX_test,label="Modified X",linewidth=2.5)
+Plots.plot!(Xt, rho, label="Norm. pol. flux coord.", linewidth=2.5)
