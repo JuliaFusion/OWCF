@@ -112,9 +112,9 @@ end
 @everywhere begin
     analyticalOWs = false # If true, then no thermal species data is needed. The weight functions will be computed solely from the projected velocity of the ion as it crosses the diagnostic sightline.
     debug = false
-    diagnostic_filepath = "" # Currently supported: "TOFOR", "AB" and ""
+    diagnostic_filepath = "" # The filepath to the LINE21 file containing viewing cone data. Or, automatic sightlines include "TOFOR", "AB" and "". If diagnostic_angles wish to be used, set as "" or nothing
     diagnostic_name = ""
-    instrumental_response_filepath = "" # Should be the filepath to three .txt-files or one .jld2-file. Otherwise, leave as ""
+    instrumental_response_filepath = "" # Should be the filepaths to three .txt-files or one .jld2-file. Otherwise, leave as ""
     Ed_min = 0000.0 # keV (or m/s if analyticalOWs===true)
     Ed_max = 0000.0 # keV (or m/s if analyticalOWs===true)
     Ed_diff = 00.0 # keV (or m/s if analyticalOWs===true)

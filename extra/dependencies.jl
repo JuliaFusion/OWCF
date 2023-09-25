@@ -1408,7 +1408,7 @@ This is to enable the sampling process to be saved regularly when calculating a 
 If the sampling process is not saved, then progress will be lost when the super-user of the HPC terminates
 the sampling process early, due to misinterpretation of Julia's way of distributed computing.
 """
-function performance_helper(M::AbstractEquilibrium, numOsamples::Int64, frdvols_cumsum_vector::AbstractVector, subs::CartesianIndices{4,NTuple{4,Base.OneTo{Int64}}}, dE_vector::AbstractVector, dp_vector::AbstractVector, dR_vector::AbstractVector, dz_vector::AbstractVector, energy::AbstractVector, pitch::AbstractVector, R::AbstractVector, z::AbstractVector, og::OrbitGrid; wall, GCP=GCDeuteron, visualizeProgress=false, kwargs...)
+function performance_helper(M::AbstractEquilibrium, numOsamples::Int64, frdvols_cumsum_vector::AbstractVector, subs::CartesianIndices{4,NTuple{4,Base.OneTo{Int64}}}, dE_vector::AbstractVector, dp_vector::AbstractVector, dR_vector::AbstractVector, dz_vector::AbstractVector, energy::AbstractVector, pitch::AbstractVector, R::AbstractVector, z::AbstractVector, og::OrbitGrid; wall::Union{Nothing,Boundary{Float64}}, GCP=GCDeuteron, visualizeProgress::Bool=false, kwargs...)
 
     dE_os_end = abs((og.energy)[end]-(og.energy)[end-1])
     dE_os_1 = abs((og.energy)[2]-(og.energy)[1])
@@ -1518,7 +1518,7 @@ It is essentially the inverse of the OrbitTomography.map_orbits() function. The 
 where each element corresponds to a valid orbit in orbit-space, with the indexing from og.orbit_index.
 NOTE! The edges of the fast-ion distribution has to correspond to the edges of the orbit-space.
 """
-function unmap_orbits(og::OrbitGrid, F_os_3D::AbstractArray; verbose=false)
+function unmap_orbits(og::OrbitGrid, F_os_3D::AbstractArray; verbose::Bool=false)
 
     if !(length(og.energy)==size(F_os_3D,1) && length(og.pitch)==size(F_os_3D,2) && length(og.r)==size(F_os_3D,3))
         throw(ArgumentError("Dimensions of fast-ion distribution does not correspond to orbit-grid dimensions!"))
@@ -1562,7 +1562,7 @@ verbose: Do you want continuous print-out updates on how the computation is goin
 
 Don't bother with the other keyword arguments. I don't.
 """
-function os2ps(M::AbstractEquilibrium, Σ_ff_inv::AbstractArray, F_os::Vector, og_orbs, corr_lengths, Js::AbstractVector, energy::Array{Float64,1}, pitch::Array{Float64,1}, r::Array{Float64,1}, z::Array{Float64,1};
+function os2ps(M::AbstractEquilibrium, Σ_ff_inv::AbstractArray, F_os::Vector, og_orbs, corr_lengths::AbstractVector, Js::AbstractVector, energy::Array{Float64,1}, pitch::Array{Float64,1}, r::Array{Float64,1}, z::Array{Float64,1};
     distributed=false, atol=1e-3, domain_check= (xx,yy) -> true,
     covariance=:local, norms=OrbitTomography.S3(1.0,1.0,1.0),
     checkpoint=true, warmstart=false,file="eprz_progress.jld2",
@@ -1644,16 +1644,16 @@ function os2ps(M::AbstractEquilibrium, Σ_ff_inv::AbstractArray, F_os::Vector, o
     return EPRZDensity(f_eprz,energy,pitch,r,z) # Return as EPRZDensity object
 end
 
-"""
-Just a simple object to hold the fast-ion distribution in orbit-space, together with the corresponding energy, pitch-maximum
-and radius-maximum arrays, defining the orbit grid.
-"""
-struct EpmRmDensity{T<:AbstractArray,S<:AbstractVector}
-    d::T
-    energy::S
-    pm::S
-    Rm::S
-end
+#"""
+#Just a simple object to hold the fast-ion distribution in orbit-space, together with the corresponding energy, pitch-maximum
+#and radius-maximum arrays, defining the orbit grid.
+#"""
+#struct EpmRmDensity{T::AbstractArray,S::AbstractVector}
+#    d::T
+#    energy::S
+#    pm::S
+#    Rm::S
+#end
 
 """
     wahba_estimator(OS; kwargs...)
@@ -1801,12 +1801,12 @@ function getSpeciesCharge(species_identifier::AbstractString)
 end
 
 """
-    getOSTopoMap()
-    getOSTopoMap()
+    getOSTopoMap(M, E, pmRm_inds, pm_array, Rm_array)
+    getOSTopoMap(-||-; FI_species="D", wall=nothing, distinguishLost=false, distinguishIncomplete=false, extra_kw_args=Dict(:toa => true))
 
-Bla bla bla bla
+Compute the orbit-sapce topological map for the energy slice specified by E (keV). Use pmRm_inds to iterate through the pm and Rm coordinates. 
 """
-function getOSTopoMap(M::AbstractEquilibrium, E::Float64, pmRm_inds_array::Vector{Tuple{CartesianIndex{1}, CartesianIndex{1}}}, pm_array::AbstractVector, Rm_array::AbstractVector; FI_species::String="D", wall=nothing, distinguishLost=false, distinguishIncomplete=false, extra_kw_args=Dict(:toa => true))
+function getOSTopoMap(M::AbstractEquilibrium, E::Float64, pmRm_inds_array::Vector{Tuple{CartesianIndex{1}, CartesianIndex{1}}}, pm_array::AbstractVector, Rm_array::AbstractVector; FI_species::String="D", wall::Union{Nothing,Boundary{Float64}}=nothing, distinguishLost::Bool=false, distinguishIncomplete::Bool=false, extra_kw_args=Dict(:toa => true))
     topoMap = @showprogress 1 "Computing topoMap for E=$(E) keV... " @distributed (+) for i=1:length(pmRm_inds_array)
         pmRm_inds = pmRm_inds_array[i]
         ipm = pmRm_inds[1]
@@ -1824,10 +1824,10 @@ function getOSTopoMap(M::AbstractEquilibrium, E::Float64, pmRm_inds_array::Vecto
 end
 
 """
-    getOSTopoMap()
-    getOSTopoMap()
+    getOSTopoMap(M, E_array, pm_array, Rm_array)
+    getOSTopoMap(; kwargs... )
 
-Bla bla bla
+Compute the orbit-space topological map, given a grid spanned by the inputs E_array, pm_array and Rm_array.
 """
 function getOSTopoMap(M::AbstractEquilibrium, E_array::AbstractVector, pm_array::AbstractVector, Rm_array::AbstractVector; kwargs... )
     pm_inds_rep = repeat(CartesianIndices(pm_array),inner=length(Rm_array)) # To get all points
@@ -1848,7 +1848,7 @@ Takes the points in 'x_array' and 'y_array', and find the Barycentrically interp
 'data'. Use the dictionary 'vertices_hash' to enable the Barycentric interpolation; relate the vertices of a triangle with the (x,y) point inside of it,
 to the data value at the vertices. The 'vertices_hash' is an output of the getDelaunayTessVerticesHash() function, defined below.
 """
-function interpDelaunayTess(tess::DelaunayTessellation2D{Point2D}, data::AbstractVector, x_array::AbstractVector, y_array::AbstractVector, vertices_hash::Dict; outside_value=0.0, nearest=false, verbose=false, vverbose=false)
+function interpDelaunayTess(tess::DelaunayTessellation2D{Point2D}, data::AbstractVector, x_array::AbstractVector, y_array::AbstractVector, vertices_hash::Dict; outside_value::Number=0.0, nearest::Bool=false, verbose::Bool=false, vverbose::Bool=false)
     data_interp = Array{Float64}(undef,length(x_array),length(y_array))
     verbose && println("Interpolating data onto all (x,y) query points... ")
     count = 1
@@ -1893,7 +1893,7 @@ Delaunay triangles making up the tesselation. The triangle ID should be unique f
 tesselation. Thus, if we know the triangle, we can find the original indices in 'iterator' of the tree
 vertices of the triangle, by using the output hashmap 'vertices'. 
 """
-function getDelaunayTessVerticesHash(tess::DelaunayTessellation2D{Point2D}, iterator; verbose=false)
+function getDelaunayTessVerticesHash(tess::DelaunayTessellation2D{Point2D}, iterator; verbose::Bool=false)
     vertices = Dict{String,Tuple{Int64,Int64,Int64}}() # A hashmap. The hashes are triangle IDs and the values are tuples with vertices indices in the same order as the a,b and c fields of the DelaunayTriangle object returned by locate(tess, point). The DelaunayTesselation struct provided no way to keep track of what indices of the (x,y) inputs that make up the vertices of the triangles in the tessellation... So I had to do it myself!
     count = 1
     for t in tess # For triangles in the tessellation
@@ -1923,7 +1923,7 @@ counter-going orbits. Co-going orbits (co-passing, trapped, potato and stagnatio
 and counter-stagnation) will have σ=-1. The good_coords_pmRm vector contains coordinate indices for the mappable (pm,Rm) coordinates 
 (to avoid mapping invalid orbits).
 """
-function pmRm_2_μPϕ(M::AbstractEquilibrium, good_coords_pmRm::Vector{CartesianIndex{2}}, data::Array{Float64,2}, E::Union{Float64,Int64}, pm_array::AbstractVector, Rm_array::AbstractVector, FI_species::AbstractString; nμ=length(pm_array), nPϕ=length(Rm_array), isTopoMap=false, needJac=false, transform = x -> x, verbose=false, vverbose=false, debug=false)
+function pmRm_2_μPϕ(M::AbstractEquilibrium, good_coords_pmRm::Vector{CartesianIndex{2}}, data::Array{Float64,2}, E::Union{Float64,Int64}, pm_array::AbstractVector, Rm_array::AbstractVector, FI_species::AbstractString; nμ::Int64=length(pm_array), nPϕ::Int64=length(Rm_array), isTopoMap::Bool=false, needJac::Bool=false, transform = x -> x, verbose::Bool=false, vverbose::Bool=false, debug::Bool=false)
 
     verbose && println("Transforming (pm,Rm) coordinates into (μ,Pϕ) coordinates... ")
     μ_values = Array{Float64}(undef, length(good_coords_pmRm))
@@ -2095,7 +2095,7 @@ end
     PLEASE NOTE! Every 3D quantity corresponding to each index in the energy dimension of the 4D output (i.e. data_COM[1,:,:,:], data_COM[2,:,:,:] etc) has its own pair of μ- and 
     Pϕ-arrays (i.e. μ_matrix[1,:]/Pϕ_matrix[1,:], μ_matrix[2,:]/Pϕ_matrix[2,:] etc). This is because the minimum and maximum of μ and Pϕ scales with the energy.
 """
-function os2COM(M::AbstractEquilibrium, good_coords::Vector{CartesianIndex{3}}, data::Array{Float64, 3}, E_array::AbstractVector, pm_array::AbstractVector, Rm_array::AbstractVector, FI_species::AbstractString; nμ=length(pm_array), nPϕ=length(Rm_array), verbose=false, kwargs...)
+function os2COM(M::AbstractEquilibrium, good_coords::Vector{CartesianIndex{3}}, data::Array{Float64, 3}, E_array::AbstractVector, pm_array::AbstractVector, Rm_array::AbstractVector, FI_species::AbstractString; nμ::Int64=length(pm_array), nPϕ::Int64=length(Rm_array), verbose::Bool=false, kwargs...)
     
     data_COM = zeros(length(E_array),nμ, nPϕ, 2)
     μ_matrix = zeros(length(E_array),nμ) # Create matrix, because we need to save all possible μ-values for all possible energies (the min/max values of μ scale with the energy)
@@ -2130,7 +2130,7 @@ by a factor of 100 when you go from a 10 keV energy slice to a 1 MeV energy slic
 But I thought that maybe you, dear user, would like to do that yourself post-computation. I am giving you the freedom of choice here. That's why the (μ,Pϕ) output is given in matrix form, NOT
 in vector form.
 """
-function os2COM(M::AbstractEquilibrium, data::Union{Array{Float64, 3},Array{Float64, 4}}, E_array::AbstractVector, pm_array::AbstractVector, Rm_array::AbstractVector, FI_species::AbstractString; nμ=length(pm_array), nPϕ=length(Rm_array), isTopoMap=false, needJac=false, verbose=false, vverbose=false, good_coords=nothing, wall=nothing, extra_kw_args=Dict(:toa => true, :limit_phi => true, :maxiter => 0))
+function os2COM(M::AbstractEquilibrium, data::Union{Array{Float64, 3},Array{Float64, 4}}, E_array::AbstractVector, pm_array::AbstractVector, Rm_array::AbstractVector, FI_species::AbstractString; nμ::Int64=length(pm_array), nPϕ::Int64=length(Rm_array), isTopoMap::Bool=false, needJac::Bool=false, verbose::Bool=false, vverbose::Bool=false, good_coords=nothing, wall::Union{Nothing,Boundary{Float64}}=nothing, extra_kw_args=Dict(:toa => true, :limit_phi => true, :maxiter => 0))
     if !isTopoMap && !(typeof(good_coords)==Vector{CartesianIndex{3}})
         verbose && println("Input data is not a topological map, and keyword argument 'good_coords' has not been (correctly?) provided... ")
         verbose && println("--------> Computing orbit grid for (E,pm,Rm)-values to be able to deduce valid orbits for (E,pm,Rm)-grid... ")
@@ -2181,12 +2181,12 @@ end
 
 
 """
-    muPphi_2_pmRmNorm_funcGen()
-    muPphi_2_pmRmNorm_funcGen()
+    muPphi_2_pmRmNorm_funcGen(M, E, FI_species)
+    muPphi_2_pmRmNorm_funcGen(-||-; amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species), sigma=1, wall=nothing, nR=500, verbose=false, extra_kw_args=Dict(:max_tries => 0))
 
-Bla bla bla
+Return a function that returns sqrt(pm^2 + Rm^2) given a (mu,Pphi) coordinate as input. This function(al) is deprecated, but might be brought back in a future version of the OWCF.
 """
-function muPphi_2_pmRmNorm_funcGen(M::AbstractEquilibrium, E::Float64, FI_species::String; amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species), sigma=1, wall=nothing, nR=500, verbose=false, extra_kw_args=Dict(:max_tries => 0))
+function muPphi_2_pmRmNorm_funcGen(M::AbstractEquilibrium, E::Float64, FI_species::String; amu::Number=getSpeciesAmu(FI_species), q::Number=getSpeciesEcu(FI_species), sigma::Int64=1, wall::Union{Nothing,Boundary{Float64}}=nothing, nR::Int64=500, verbose::Bool=false, extra_kw_args=Dict(:max_tries => 0))
     f = function func(x)
         myEPRc = EPRCoordinate4(M, HamiltonianCoordinate(E, x[1], x[2]; amu=amu, q=q); sigma=sigma, wall=wall, nR=nR, verbose=verbose, extra_kw_args=extra_kw_args)
         return (myEPRc.r > 0.0) ? sqrt((myEPRc.pitch)^2 + (myEPRc.r)^2) : Inf
@@ -2195,10 +2195,10 @@ function muPphi_2_pmRmNorm_funcGen(M::AbstractEquilibrium, E::Float64, FI_specie
 end
 
 """
-    muPphiSigma_2_pmRm()
-    muPphiSigma_2_pmRm()
+    muPphiSigma_2_pmRm(...)
+    muPphiSigma_2_pmRm(...)
 
-Bla bla bla. Talk about function, inputs, keyword arguments etc
+Compute a (pm,Rm) coordinate, given a (mu,Pphi;sigma) coordinate as input. This function is deprecated, but might be brought back in a future version of the OWCF.
 """
 function muPphiSigma_2_pmRm(M::AbstractEquilibrium, data::Array{Float64,3}, E::Union{Float64, Int64}, mu_array::AbstractVector, 
     Pphi_array::AbstractVector, FI_species::AbstractString, npm::Int64, nRm::Int64, wall::Union{GuidingCenterOrbits.Boundary{Float64},Nothing}, 
@@ -2207,7 +2207,7 @@ function muPphiSigma_2_pmRm(M::AbstractEquilibrium, data::Array{Float64,3}, E::U
     ######################
 end
 
-function com2OS(M::AbstractEquilibrium, data::Array{Float64,4}, E_array::AbstractVector, mu_matrix::AbstractMatrix, Pphi_matrix::AbstractMatrix, FI_species::String; npm=length(mu_matrix[1,:]), nRm=length(Pphi_matrix[1,:]), wall=nothing, pm_array=nothing, Rm_array=nothing, dataIsTopoMap::Bool=false, needJac::Bool=false, transform = x -> x, verbose::Bool=false, debug::Bool=false, kwargs...)
+function com2OS(M::AbstractEquilibrium, data::Array{Float64,4}, E_array::AbstractVector, mu_matrix::AbstractMatrix, Pphi_matrix::AbstractMatrix, FI_species::String; npm::Int64=length(mu_matrix[1,:]), nRm::Int64=length(Pphi_matrix[1,:]), wall::Union{Nothing,Boundary{Float64}}=nothing, pm_array::Union{Nothing,AbstractArray}=nothing, Rm_array::Union{Nothing,AbstractArray}=nothing, dataIsTopoMap::Bool=false, needJac::Bool=false, transform = x -> x, verbose::Bool=false, debug::Bool=false, kwargs...)
     if !(pm_array===nothing)
         npm = length(pm_array)
     else
@@ -2365,7 +2365,7 @@ vverbose - Should be set to true if you want the algorithm to be VERY talkative!
 debug - If set to true, debug mode will be active.
 extra_kw_args - A dictionary with extra keyword arguments for the orbit integration algorithm found in GuidingCenterOrbits.jl/orbit.jl, used to finalize (E,mu,Phi;sigma) -> (E,pm,Rm) transform.
 """
-function com2OS(M::AbstractEquilibrium, data::Array{Float64, 5}, E_array::AbstractVector, mu_matrix::Array{Float64, 2}, Pphi_matrix::Array{Float64, 2}, FI_species::AbstractString; npm=length(mu_matrix[1,:]), nRm=length(Pphi_matrix[1,:]), wall=nothing, verbose=false, kwargs...)
+function com2OS(M::AbstractEquilibrium, data::Array{Float64, 5}, E_array::AbstractVector, mu_matrix::Array{Float64, 2}, Pphi_matrix::Array{Float64, 2}, FI_species::AbstractString; npm::Int64=length(mu_matrix[1,:]), nRm::Int64=length(Pphi_matrix[1,:]), wall::Union{Nothing,Boundary{Float64}}=nothing, verbose::Bool=false, kwargs...)
 
     if pm_array===nothing
         pm_array = range(-1.0,stop=1.0,length=npm)
@@ -2400,8 +2400,9 @@ end
 
 Transform a 2D (E,p) quantity Q into (v_para,v_perp) space. If needJac, assume a jacobian is needed (e.g distribution).
 If isTopoMap, assume Q is a topological map, implying special care is needed for successful transform.
+PLEASE NOTE! E_array MUST be given in keV.
 """
-function Ep2VparaVperp(E_array::Vector, p_array::Vector, Q::Matrix{Float64}; my_gcp::AbstractParticle{T}=GCDeuteron(0.0,0.0,0.0,0.0), needJac=false, isTopoMap=false, verbose=false) where {T}
+function Ep2VparaVperp(E_array::Vector, p_array::Vector, Q::Matrix{Float64}; my_gcp::AbstractParticle{T}=GCDeuteron(0.0,0.0,0.0,0.0), needJac::Bool=false, isTopoMap::Bool=false, verbose::Bool=false) where {T}
     keV = 1000*(GuidingCenterOrbits.e0)
     min_keV_E_array = minimum(keV .*E_array)
     max_keV_E_array = maximum(keV .*E_array)
@@ -2413,7 +2414,7 @@ function Ep2VparaVperp(E_array::Vector, p_array::Vector, Q::Matrix{Float64}; my_
     vpara_array = collect(range(-vf, stop=vf, length=Int64(round(sqrt(length(E_array)*length(p_array))))))
     vperp_array = collect(range(eps(), stop=vf, length=Int64(round(sqrt(length(E_array)*length(p_array))))))
     Q_VEL = zeros(length(vpara_array),length(vperp_array))
-    nodes = (keV .*E_array, p_array)
+    nodes = (keV .*E_array, p_array) # Assume E_array in keV
     itp = interpolate(nodes, Q, Gridded(Linear()))
     itp = Interpolations.extrapolate(itp,isTopoMap ? 9.0 : 0.0)
     E_rep = zeros(length(E_array)*length(p_array))
@@ -2451,7 +2452,7 @@ function Ep2VparaVperp(E_array::Vector, p_array::Vector, Q::Matrix{Float64}; my_
             interp_value = closest_values[closest_index(closest_values,interp_value)]
         end
         #end
-        jac = (needJac ? ((my_gcp.m) * vperp/v) : 1.0)
+        jac = (needJac ? ((my_gcp.m) * vperp/v)/keV : 1.0)
         Q_VEL[ivpara,ivperp] = jac * interp_value # Including Jacobian
     end
 

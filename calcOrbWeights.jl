@@ -550,24 +550,23 @@ if typeof(timepoint)==String && length(split(timepoint,","))==2 && lowercase(fil
 
     time_array_TRANSP = ncread(filepath_thermal_distr,"TIME")
     idx_min = argmin(abs.(time_array_TRANSP .- timepoint_float)) # Closest TRANSP timepoint to timepoint specified in start file
-    X_array = ncread(filepath_thermal_distr,"X")[:,idx_min]
+    PLFLX_array = ncread(filepath_thermal_distr,"PLFLX")[:,idx_min] # Load poloidal flux data
     
     thermal_species_TRANSP = thermalSpecies_OWCFtoTRANSP(thermal_species) # Convert from OWCF convention (e.g. 3he for Helium-3) to TRANSP convention (e.g. HE3 for Helium-3)
     # LOAD CORRESPONDING TRANSP DATA
-    thermal_dens_TRANSP = ncread(filepath_thermal_distr,"N"*thermal_species_TRANSP)
-    thermal_temp_TRANSP = ncread(filepath_thermal_distr,"T"*thermal_species_TRANSP)
-    thermal_dens_TRANSP = thermal_dens_TRANSP[:,idx_min]
-    thermal_temp_TRANSP = thermal_temp_TRANSP[:,idx_min]
+    thermal_dens_TRANSP = ncread(filepath_thermal_distr,"N"*thermal_species_TRANSP)[:,idx_min]
+    thermal_temp_TRANSP = ncread(filepath_thermal_distr,"T"*thermal_species_TRANSP)[:,idx_min]
+
+    PLFLX_axis = PLFLX_array[1]
+    PLFLX_bdry = PLFLX_array[end]
+    rho_array = sqrt.((PLFLX_array .- PLFLX_axis) ./ (PLFLX_bdry - PLFLX_axis)) # Compute the normalized poloidal flux points, rho
     
-    thermal_dens_TRANSP_itp = Interpolations.interpolate((X_array,), thermal_dens_TRANSP, Gridded(Linear()))
-    thermal_temp_TRANSP_itp = Interpolations.interpolate((X_array,), thermal_temp_TRANSP, Gridded(Linear()))
+    thermal_dens_TRANSP_itp = Interpolations.interpolate((rho_array,), thermal_dens_TRANSP, Gridded(Linear())) # MAYBE THIS WON'T WORK???
+    thermal_temp_TRANSP_itp = Interpolations.interpolate((rho_array,), thermal_temp_TRANSP, Gridded(Linear())) # MAYBE THIS WON'T WORK???
     thermal_dens_TRANSP_etp = Interpolations.extrapolate(thermal_dens_TRANSP_itp,0) # Add what happens in extrapolation scenario. 0 means we assume vacuum scrape-off layer (SOL)
     thermal_temp_TRANSP_etp = Interpolations.extrapolate(thermal_temp_TRANSP_itp,0) # Add what happens in extrapolation scenario. 0 means we assume vacuum scrape-off layer (SOL)
-    
-    
-    # INTERPOLATE ONTO RHO INSTEAD OF X
-    # CREATE INTERPOLATION OBJECT WITH RHO TEMP AND DENS DATA
-
+    thermal_temp = thermal_temp_TRANSP_etp
+    thermal_dens = thermal_dens_TRANSP_etp
 end
 
 # Transfer the thermal_temp and thermal_dens variables to external processes
