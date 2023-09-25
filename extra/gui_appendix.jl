@@ -20,7 +20,7 @@ Take the 3D fast-ion orbit-space distribution F_os_3D and plot f(E,pm), f(pm,Rm)
 vert defines plot orientation. cmax defines color-scale maximums. fig defines an already existing figure, for adding to already existing plot.
 ax defines the axes of that plot, if already existing.
 """
-function plot_orbit_distribution(E_array, pm_array, Rm_array, F_os_3D; save_fig_name="", plot_font_size = "medium", vert=false, cmax=[], fig=nothing, ax=nothing, normalize=false)
+function plot_orbit_distribution(E_array::AbstractVector, pm_array::AbstractVector, Rm_array::AbstractVector, F_os_3D::Array{T,3}; save_fig_name::String="", plot_font_size::String = "medium", vert::Bool=false, cmax=[], fig=nothing, ax=nothing, normalize::Bool=false) where {T<:Number}
 
     if length(size(F_os_3D)) != 3
         error("Quantity to be plotted is not 3D. Please input 3D quantity.")

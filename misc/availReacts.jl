@@ -28,7 +28,7 @@ function getEmittedParticle(reaction_full::String)
     return products[1] # Return 'c' in the fusion reaction a(b,c)d
 end
 
-function checkReaction(reaction_full::String; verbose=false, projVelocity=false)
+function checkReaction(reaction_full::String; verbose::Bool=false, projVelocity::Bool=false)
     if projVelocity
         thermal_species = split(reaction_full,"-")[1]
         FI_species = split(reaction_full,"-")[2]

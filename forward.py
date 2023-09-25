@@ -32,7 +32,7 @@ class Forward(object):
 
 
     def calc(self, E, p, R, Z, weights, bulk_dist, Ed_bins, B_vec,
-            n_repeat=1, reaction='d-d', bulk_temp='', bulk_dens=''):
+            n_repeat=1, reaction='d-d', bulk_temp='', bulk_dens='', prompt_gamma_energy=None):
         """
         Calculate spectrum for fast ions (specified by E, p, R, Z)
         reacting with the given bulk distribution, for a given viewing cone
