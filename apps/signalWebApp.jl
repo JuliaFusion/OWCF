@@ -113,10 +113,12 @@ close(myfile)
 # Determining diagnostic from file
 verbose && println("Determining diagnostic... ")
 diagnostic = lowercase((split(split(filepath_ps2WF_output,"/")[end],"_"))[6]) # Know that the sixth element will be the diagnostic
-if diagnostic=="tofor"
+if (diagnostic=="tofor") || (diagnostic=="km14")
     sig_color = :green3
-elseif diagnostic=="ab"
+elseif (diagnostic=="ab") || (diagnostic=="ne213") || (diagnostic=="km15")
     sig_color = :red1
+elseif (diagnostic=="mpru")
+    sig_color = :purple
 else
     println("Diagnostic: "*diagnostic)
     @warn "Unknown diagnostic for loaded data. Signal color will be gray."
