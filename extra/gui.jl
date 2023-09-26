@@ -23,7 +23,7 @@
 # 
 # This is performed in e.g. every OWCF start template file.
 #
-# Written by H. Järleblad. Last updated 2023-02-21.
+# Written by H. Järleblad. Last updated 2023-09-26.
 ###################################################################################################
 
 println("Loading the Julia packages for the grahpical user interfaces (GUI) of the OWCF... ")
@@ -354,9 +354,21 @@ end
 ################################################################################################
 
 """
+    plotMeasurementOrbSplits(Ed_WF, measurement_bin_of_interest, WFO_E, E_array)
+    plotMeasurementOrbSplits(-||-; verbose=false, save_plot=false, normalize=false, ylabel = (normalize ? "Normalized signal [a.u.]" : "Counts [(keV*s)^-1]"), title = (normalize ? "Orbit-split of diagnostic measurement \n (normalized)" : "Orbit-split of diagnostic measurement"), debug=false)
 
+Plot bar plot showing the orbit constituents of the diagnostic measurement at the measurement bin of interest.
+Ed_WF are the measurement bins. measurement_bin_of_interest if the measurement bin of interest. WFO_E is the WFO_E quantity from the ps2WF.jl output file, run with calcWFOs set to true.
+E_array are the fast-ion energy grid points. 
+
+If verbose, then the function will talk a lot!
+If save_plot, then the plot will be saved in .png format.
+If normalize, then the bars will be plotted as fractions of the total measurement.
+ylabel sets the label of the y-axis.
+title sets the title of the bar plot.
+debug turns on debug mode.
 """
-function plotMeasurementOrbSplits(S_WF::Vector{Float64}, Ed_WF::Union{Vector{Float64},Vector{Int64}}, measurement_bin_of_interest::Union{Float64,Int64}, WFO_E::Array{Float64,3}, E_array::AbstractVector; verbose::Bool=false, save_plot::Bool=false, normalize::Bool=false, ylabel = (normalize ? "Normalized signal [a.u.]" : "Counts [(keV*s)^-1]"), title = (normalize ? "Orbit-split of diagnostic measurement \n (normalized)" : "Orbit-split of diagnostic measurement"), debug=false)
+function plotMeasurementOrbSplits(Ed_WF::Union{Vector{Float64},Vector{Int64}}, measurement_bin_of_interest::Union{Float64,Int64}, WFO_E::Array{Float64,3}, E_array::AbstractVector; verbose::Bool=false, save_plot::Bool=false, normalize::Bool=false, ylabel = (normalize ? "Normalized signal [a.u.]" : "Counts [(keV*s)^-1]"), title = (normalize ? "Orbit-split of diagnostic measurement \n (normalized)" : "Orbit-split of diagnostic measurement"), debug=false)
     verbose && println("Finding measurement bin closest to requested bin... ")
     iEd = closest_index(Ed_WF, measurement_bin_of_interest)
     dE = abs(diff(E_array)[1]) # Assume equidistant
@@ -549,12 +561,12 @@ function plotSignalOrbSplits(ps2WFoutputFilepath::String; verbose::Bool = false,
     else
         if scenario == :all
             plotSafetyPlot(S_WF, Ed_WF, WFO_E, WFO_pm, WFO_Rm, E_array, pm_array, Rm_array; verbose = verbose, save_plot=save_plot)
-            plotMeasurementOrbSplits(S_WF, Ed_WF, specific_measurement_bin_of_interest, WFO_E, E_array; verbose=verbose, save_plot=save_plot, kwargs...)
-            plotMeasurementOrbSplits(S_WF, Ed_WF, specific_measurement_bin_of_interest, WFO_E, E_array; verbose=verbose, save_plot=save_plot, normalize=true, kwargs...)
+            plotMeasurementOrbSplits(Ed_WF, specific_measurement_bin_of_interest, WFO_E, E_array; verbose=verbose, save_plot=save_plot, kwargs...)
+            plotMeasurementOrbSplits(Ed_WF, specific_measurement_bin_of_interest, WFO_E, E_array; verbose=verbose, save_plot=save_plot, normalize=true, kwargs...)
         elseif scenario == :abs
-            plotMeasurementOrbSplits(S_WF, Ed_WF, specific_measurement_bin_of_interest, WFO_E, E_array; verbose=verbose, save_plot=save_plot, kwargs...)
+            plotMeasurementOrbSplits(Ed_WF, specific_measurement_bin_of_interest, WFO_E, E_array; verbose=verbose, save_plot=save_plot, kwargs...)
         elseif scenario == :norm
-            plotMeasurementOrbSplits(S_WF, Ed_WF, specific_measurement_bin_of_interest, WFO_E, E_array; verbose=verbose, save_plot=save_plot, normalize=true, kwargs...)
+            plotMeasurementOrbSplits(Ed_WF, specific_measurement_bin_of_interest, WFO_E, E_array; verbose=verbose, save_plot=save_plot, normalize=true, kwargs...)
         elseif scenario == :safety
             plotSafetyPlot(S_WF, Ed_WF, WFO_E, WFO_pm, WFO_Rm, E_array, pm_array, Rm_array; verbose = verbose, save_plot=save_plot)
         else
