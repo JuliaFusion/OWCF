@@ -354,6 +354,111 @@ end
 ################################################################################################
 
 """
+    plotDistrOrbSplit(ps2WFoutputFilepath)
+    plotDistrOrbSplit(ps2WFoutputFilepath; verbose=false, save_plot=false, normalize=false, log_plotting=false)
+
+Plot the orbit constituents of the fast-ion distribution using an output file from ps2WF.jl when 'calcWFOs' was set to true.
+The orbit constituents will be plotted as a bar plot. To visualize the energy, pm or Rm dependency of the orbit constituents, 
+please use the apps/signalWebApp.jl.
+
+verbose - If true, the function will talk a lot!
+save_plot - If true, a .png file will be saved of the plot.
+normalize - If true, the orbit-type constitutents will be normalized so that their sum is 1.
+log_plotting - If true, manual override to use log-scale for y-axis. If false, manual override to user linear-scale for y-axis.
+"""
+function plotDistrOrbSplit(ps2WFoutputFilepath::String; verbose::Bool = false, save_plot::Bool = false, normalize::Bool=false, log_plotting::Union{Nothing,Bool}=nothing)
+    myfile = jldopen(ps2WFoutputFilepath,false,false,false,IOStream)
+    if !(haskey(myfile,"WFO_E"))
+        error("Specified ps2WF output file did not have the data necessary for splitting signal into orbit types. Please try re-running ps2WF.jl with 'calcWFOs' set to true and use that output file as input to this function.")
+    end
+
+    verbose && println("Loading data from ps2WF output file... ")
+    E_array = myfile["E_array"]
+    FO_E = myfile["FO_E"]
+    nfast = myfile["nfast_orig"]
+    close(myfile)
+
+    verbose && println("(a) Total number of fast ions (originally): $(nfast)")
+
+    dE = abs(E_array[2]-E_array[1]) # Assume equidistant energy grid points
+    if length(size(FO_E))==3
+        FO_E = FO_E[1,:,:]
+    end
+
+    stagnation_part = sum(dE .*FO_E[:,1])
+    trapped_part = sum(dE .*FO_E[:,2])
+    copassing_part = sum(dE .*FO_E[:,3])
+    counterpassing_part = sum(dE .*FO_E[:,4])
+    potato_part = sum(dE .*FO_E[:,5])
+    counterstagnation_part = sum(dE .*FO_E[:,6])
+    constituents = [stagnation_part, trapped_part, copassing_part, counterpassing_part, potato_part, counterstagnation_part]
+    verbose && println("(b) Sum of constituents: $(sum(constituents))")
+    verbose && println("Any discrepancy between (a) and (b) is due to numerical inaccuracies.")
+
+    title_F = "Orbit-type constituents of \n the fast-ion distribution"
+    if !normalize
+        ylabel_F = "Fast ions"
+    else
+        ylabel_F = "Fractions"
+        constituents = constituents ./ norm(constituents)
+    end
+
+    min_y, max_y = extrema(constituents)
+    if min_y==0.0
+        p = sortperm(constituents) # Return an array p with indices that puts the elements of constituents in ascending order
+        min_y = (constituents[p])[findfirst(x-> x>0.0, constituents[p])] # Only ok coding because constituents is so short. And efficiency is not an issue here
+    end
+    min_OOM, max_OOM = (floor(log10(min_y)),ceil(log10(max_y))) # The orders of magnitude of the minimum and maximum values
+    if !((max_OOM-min_OOM)==0.0) && ((max_y/min_y) > 10)
+        verbose && println("Log-plotting activated (between 10^$(min_OOM) and 10^$(max_OOM))... ")
+        yaxis_scale_F = :log10
+        ylims_F = 10 .^(min_OOM, max_OOM)
+        yticks_F = 10 .^collect(min_OOM:1:max_OOM)
+    else
+        verbose && println("Linear plotting... ")
+        yaxis_scale_F = :identity
+        ylims_F = (min_y, max_y)
+        yticks_F = round.(collect(range(min_y,stop=max_y,length=5)),sigdigits=3)
+    end
+
+    if typeof(log_plotting)==Bool
+        if !log_plotting && yaxis_scale_F==:log10
+            verbose && println("Log-plotting deactivated due to user input.")
+            yaxis_scale_F = :identity
+            ylims_F = (min_y, max_y)
+            yticks_F = round.(collect(range(min_y,stop=max_y,length=5)),sigdigits=3)
+        end
+        if log_plotting && yaxis_scale_F==:identity
+            verbose && println("Log-plotting activated due to user input.")
+            yaxis_scale_F = :log10
+            ylims_F = 10 .^(min_OOM, max_OOM)
+            yticks_F = 10 .^collect(min_OOM:1:max_OOM)
+        end
+    end
+
+
+    verbose && println("Plotting... ")
+    dx = 0.2
+    my_plt = Plots.plot(Shape([1.0-2*dx,1.0,1.0,1.0-2*dx],[1.0e-9,1.0e-9,constituents[1],constituents[1]]),color=:red,label="Stagnation")
+    Plots.plot!(my_plt, Shape([2.0-2*dx,2.0,2.0,2.0-2*dx],[1.0e-9,1.0e-9,constituents[2],constituents[2]]),color=:blue,label="Trapped")
+    Plots.plot!(my_plt, Shape([3.0-2*dx,3.0,3.0,3.0-2*dx],[1.0e-9,1.0e-9,constituents[3],constituents[3]]),color=:green,label="Co-passing")
+    Plots.plot!(my_plt, Shape([4.0-2*dx,4.0,4.0,4.0-2*dx],[1.0e-9,1.0e-9,constituents[4],constituents[4]]),color=:purple,label="Counter-passing")
+    Plots.plot!(my_plt, Shape([5.0-2*dx,5.0,5.0,5.0-2*dx],[1.0e-9,1.0e-9,constituents[5],constituents[5]]),color=:orange,label="Potato")
+    Plots.plot!(my_plt, Shape([6.0-2*dx,6.0,6.0,6.0-2*dx],[1.0e-9,1.0e-9,constituents[6],constituents[6]]),color=:pink,label="Counter-stagnation")
+    Plots.plot!(my_plt, yaxis=yaxis_scale_F, ylims=ylims_F, yticks=yticks_F, xticks=false, title=title_F,ylabel=ylabel_F,xlabel="Orbit types")
+
+    Plots.display(my_plt)
+
+    if save_plot
+        verbose && println("Saving plot... ")
+        my_plt = Plots.plot!(my_plt, dpi=600)
+        sadd = (normalize ? "norm" : "abs")
+        saddd = (yaxis_scale_F==:log10 ? "_log10" : "")
+        png(my_plt, "plotDistrOrbSplits_"*sadd*saddd)
+    end
+end
+
+"""
     plotMeasurementOrbSplits(Ed_WF, measurement_bin_of_interest, WFO_E, E_array)
     plotMeasurementOrbSplits(-||-; verbose=false, save_plot=false, normalize=false, ylabel = (normalize ? "Normalized signal [a.u.]" : "Counts [(keV*s)^-1]"), title = (normalize ? "Orbit-split of diagnostic measurement \n (normalized)" : "Orbit-split of diagnostic measurement"), debug=false)
 
