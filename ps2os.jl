@@ -298,7 +298,7 @@ end
 ## --------------------------------------------------------------------------------------
 if trans_distr
     verbose && println("Going into ps2os_streamlined (performance=true manually set)... ")
-    F_os_raw, nfast = ps2os_streamlined(F_EpRz, E_array_ps, p_array, R_array, z_array, filepath_equil, og; numOsamples=numOsamples, verbose=verbose, distr_dim=distr_dim, visualizeProgress=visualizeProgress, nbatch=nbatch, distributed=distributed, flip_F_EpRz_pitch=flip_F_EpRz_pitch, performance=true, GCP=getGCP(FI_species), extra_kw_args... )
+    F_os_raw, class_distr, nfast = ps2os_streamlined(F_EpRz, E_array_ps, p_array, R_array, z_array, filepath_equil, og; numOsamples=numOsamples, verbose=verbose, distr_dim=distr_dim, visualizeProgress=visualizeProgress, nbatch=nbatch, distributed=distributed, flip_F_EpRz_pitch=flip_F_EpRz_pitch, performance=true, GCP=getGCP(FI_species), extra_kw_args... )
 else
     if (@isdefined jacobian)
         verbose && println("Transforming a non-distribution quantity from (E,p,R,z) to (E,pm,Rm)... ")
@@ -311,12 +311,12 @@ else
             res_i = hcat(jac_i, N_i)
             res_i # Declare for reduction
         end
+
+        jacobian_OS = result[:,1] ./ result[:,2] # Some (E,p,R,z) jacobian values will have been binned to the same valid orbit bin. We need to average to obtain the actual value
     else
         error("This is not supposed to happen, and is not supported by the OWCF, yet.")
     end
 end
-
-jacobian_OS = result[:,1] ./ result[:,2] # Some (E,p,R,z) jacobian values will have been binned to the same valid orbit bin. We need to average to obtain the actual value
 ## --------------------------------------------------------------------------------------
 verbose && println("Saving results... ")
 global filepath_tm_orig = folderpath_o*"ps2os_results_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*FI_species*"_$(length(E_array))x$(length(pm_array))x$(length(Rm_array))"
@@ -330,6 +330,9 @@ global filepath_tm = filepath_tm*".jld2"
 myfile = jldopen(filepath_tm,true,true,false,IOStream)
 if (@isdefined F_os_raw)
     write(myfile,"F_os_raw",F_os_raw)
+end
+if (@isdefined class_distr)
+    write(myfile,"class_distr",class_distr)
 end
 if (@isdefined nfast)
     write(myfile,"nfast",nfast)
@@ -371,6 +374,9 @@ if include1Dto3D
     myfile = jldopen(filepath_output,true,true,false,IOStream)
     if (@isdefined F_os_3D)
         write(myfile, "F_os_3D", F_os_3D)
+    end
+    if (@isdefined class_distr)
+        write(myfile,"class_distr",class_distr)
     end
     if (@isdefined J_os_3D)
         write(myfile, "J_os_3D", J_os_3D)
