@@ -888,8 +888,8 @@ function sample_f_OWCF(fr::Array{T,N}, dvols, w::AbstractVector, x::AbstractVect
 end
 
 """
-    class2int(o)
-    class2int(o; plot=false, distinguishLost=true, distinguishIncomplete=true)
+    class2int(M,o)
+    class2int(M,o; plot=false, distinguishLost=true, distinguishIncomplete=true)
 
 Take an orbit, examine its class (stagnation, trapped, co-passing etc) and return 
 the appropriate integer. The integers are as follows
@@ -1087,6 +1087,7 @@ function ps2os(M::AbstractEquilibrium, wall::Boundary, F_EpRz::Array{Float64,4},
         myfile = jldopen("ps2os_progress.jld2",false,false,false,IOStream)
         numOsamples_sofar = deepcopy(myfile["numOsamples"])
         result_sofar = deepcopy(myfile["F_os"])
+        class_distr_sofar = deepcopy(myfile["class_distr"])
         numOsamples = numOsamples - numOsamples_sofar
 
         if length(og.counts) != length(result_sofar)
@@ -1096,6 +1097,7 @@ function ps2os(M::AbstractEquilibrium, wall::Boundary, F_EpRz::Array{Float64,4},
     else
         numOsamples_sofar = 0
         result_sofar = zeros(size(og.counts))
+        class_distr_sofar = zeros(9)
     end
     #################################################################################
 
@@ -1108,7 +1110,7 @@ function ps2os(M::AbstractEquilibrium, wall::Boundary, F_EpRz::Array{Float64,4},
         subs = CartesianIndices(dims) # 4D matrix
         fr = nothing # Memory efficiency
         dvols = nothing # Memory efficiency
-        return ps2os_performance(M, wall, frdvols_cumsum_vector, subs, nfast, energy, pitch, R, z, og; numOsamples=numOsamples, numOsamples_sofar=numOsamples_sofar, result_sofar=result_sofar, distributed=distributed, GCP=GCP, saveProgress=saveProgress, verbose=verbose, kwargs...)
+        return ps2os_performance(M, wall, frdvols_cumsum_vector, subs, nfast, energy, pitch, R, z, og; numOsamples=numOsamples, numOsamples_sofar=numOsamples_sofar, result_sofar=result_sofar, class_distr_sofar=class_distr_sofar, distributed=distributed, GCP=GCP, saveProgress=saveProgress, verbose=verbose, kwargs...)
     end
     verbose && println("Computing samples the old way... ")
     #################################################################################
@@ -1128,13 +1130,15 @@ function ps2os(M::AbstractEquilibrium, wall::Boundary, F_EpRz::Array{Float64,4},
                 println("Samples left: $(numOsamples)")
             end
 
-            result_p = sample_helper(M, nbatch, fr, dvols, energy, pitch, R, z, og; wall=wall, GCP=GCP, kwargs...)
+            result_p, class_distr_p = sample_helper(M, nbatch, fr, dvols, energy, pitch, R, z, og; wall=wall, GCP=GCP, kwargs...)
             result_sofar .+= result_p
+            class_distr_sofar .+= class_distr_p
             numOsamples_sofar += nbatch
             if saveProgress
                 rm("ps2os_progress.jld2", force=true) #clear the previous file
                 myfile = jldopen("ps2os_progress.jld2",true,true,false,IOStream)
                 write(myfile,"F_os",result_sofar)
+                write(myfile,"class_distr",class_distr_sofar)
                 write(myfile,"numOsamples",numOsamples_sofar)
                 close(myfile)
             end
@@ -1142,14 +1146,16 @@ function ps2os(M::AbstractEquilibrium, wall::Boundary, F_EpRz::Array{Float64,4},
         if verbose
             println("(Rest) Samples left: $(numOsamples)")
         end
-        result_rest = sample_helper(M, numOsamples, fr, dvols, energy, pitch, R, z, og; wall=wall, GCP=GCP, kwargs...)
+        result_rest, class_distr_rest = sample_helper(M, numOsamples, fr, dvols, energy, pitch, R, z, og; wall=wall, GCP=GCP, kwargs...)
         numOsamples_rest = numOsamples
 
         if subdivide
             result = result_sofar + result_rest
+            class_distr = class_distr_sofar + class_distr_rest
             numOsamples = numOsamples_sofar + numOsamples_rest
         else
             result = result_rest
+            class_distr = class_distr_rest
             numOsamples = numOsamples_rest
         end
     else # ...if not parallel computing... I wish you good luck.
@@ -1169,24 +1175,31 @@ function ps2os(M::AbstractEquilibrium, wall::Boundary, F_EpRz::Array{Float64,4},
                 o = get_orbit(M,GCP(E_sample[1],p_sample[1],R_sample[1],z_sample[1]); store_path=false, wall=wall, kwargs...)
                 if (o.coordinate.energy <= (og.energy[end]+dE_os_end/2) && o.coordinate.energy >= (og.energy[1]-dE_os_1/2)) # Make sure it's within the energy bounds (+one half grid cell)
                     F_os_i = bin_orbits(og,vec([o.coordinate]),weights=vec([1.0]))
+                    class_distr_i = zeros(9)
+                    class_distr_i[class2int(M,o; plot=true, distinguishLost=true, distinguishIncomplete=true)] = 1
                 else
                     F_os_i = zeros(length(og.counts))
+                    class_distr_i = zeros(9)
                 end
             else
                 F_os_i = zeros(length(og.counts))
+                class_distr_i = zeros(9)
             end
 
             result_sofar .+= F_os_i
+            class_distr_sofar .+= class_distr_i
 
             if (i%nbatch)==0 && saveProgress # Every nbatch sample, save
                 rm("ps2os_progress.jld2", force=true) #clear the previous file
                 myfile = jldopen("ps2os_progress.jld2",true,true,false,IOStream)
                 write(myfile,"F_os",result_sofar)
+                write(myfile,"class_distr",class_distr_sofar)
                 write(myfile,"numOsamples",i)
                 close(myfile)
             end
         end
         result = result_sofar
+        class_distr = class_distr_sofar
     end
     if verbose
         println("Number of good samples/All samples: $(sum(result)/numOsamples)")
@@ -1194,7 +1207,7 @@ function ps2os(M::AbstractEquilibrium, wall::Boundary, F_EpRz::Array{Float64,4},
 
     rm("ps2os_progress.jld2", force=true) # Finally, remove the file that is no longer needed
 
-    return result, nfast
+    return result, class_distr, nfast
 end
 
 """
@@ -1236,6 +1249,7 @@ function ps2os_performance(M::AbstractEquilibrium,
                             numOsamples::Int64,
                             numOsamples_sofar::Int64=0,
                             result_sofar=zeros(size(og.counts)),
+                            class_distr_sofar=zeros(9),
                             distributed::Bool=true,
                             GCP=GCDeuteron,
                             saveProgress::Bool=true,
@@ -1255,26 +1269,30 @@ function ps2os_performance(M::AbstractEquilibrium,
             subdivide = true
             verbose && println("Samples left: $(numOsamples)")
             numOsamples = numOsamples - nbatch
-            result_p = performance_helper(M, nbatch, frdvols_cumsum_vector, subs, dE_vector, dp_vector, dR_vector, dz_vector, energy, pitch, R, z, og; wall=wall, GCP=GCP, kwargs...)
+            result_p, class_distr_p = performance_helper(M, nbatch, frdvols_cumsum_vector, subs, dE_vector, dp_vector, dR_vector, dz_vector, energy, pitch, R, z, og; wall=wall, GCP=GCP, kwargs...)
             result_sofar .+= result_p
+            class_distr_sofar .+= class_distr_p
             numOsamples_sofar += nbatch
             if saveProgress
                 rm("ps2os_progress.jld2", force=true) #clear the previous file
                 myfile = jldopen("ps2os_progress.jld2",true,true,false,IOStream)
                 write(myfile,"F_os",result_sofar)
+                write(myfile,"class_distr", class_distr_sofar)
                 write(myfile,"numOsamples",numOsamples_sofar)
                 close(myfile)
             end
         end
         verbose && println("(Rest) Samples left: $(numOsamples)")
-        result_rest = performance_helper(M, numOsamples, frdvols_cumsum_vector, subs, dE_vector, dp_vector, dR_vector, dz_vector, energy, pitch, R, z, og; wall=wall, GCP=GCP, kwargs...)
+        result_rest, class_distr_rest = performance_helper(M, numOsamples, frdvols_cumsum_vector, subs, dE_vector, dp_vector, dR_vector, dz_vector, energy, pitch, R, z, og; wall=wall, GCP=GCP, kwargs...)
         numOsamples_rest = numOsamples
 
         if subdivide
             result = result_sofar + result_rest
+            class_distr = class_distr_sofar + class_distr_rest
             numOsamples = numOsamples_sofar + numOsamples_rest
         else
             result = result_rest
+            class_distr = class_distr_rest
             numOsamples = numOsamples_rest
         end
     else # ...if not parallel computing... I wish you good luck.
@@ -1302,24 +1320,31 @@ function ps2os_performance(M::AbstractEquilibrium,
                 o = get_orbit(M,GCP(E_sample,p_sample,R_sample,z_sample); store_path=false, wall=wall, kwargs...)
                 if (o.coordinate.energy <= (maximum(og.energy)+dE_os_end/2) && o.coordinate.energy >= (minimum(og.energy)-dE_os_1/2)) # Make sure it's within the energy bounds (+one half grid cell)
                     F_os_i = bin_orbits(og,vec([o.coordinate]),weights=vec([1.0]))
+                    class_distr_i = zeros(9)
+                    class_distr_i[class2int(M,o; plot=true, distinguishLost=true, distinguishIncomplete=true)] = 1
                 else
                     F_os_i = zeros(length(og.counts))
+                    class_distr_i = zeros(9) # No orbit class
                 end
             else
                 F_os_i = zeros(length(og.counts))
+                class_distr_i = zeros(9) # No orbit class
             end
 
             result_sofar .+= F_os_i
+            class_distr_sofar .+= class_distr_i
 
             if (i%nbatch)==0 && saveProgress # Every nbatch sample, save
                 rm("ps2os_progress.jld2", force=true) #clear the previous file
                 myfile = jldopen("ps2os_progress.jld2",true,true,false,IOStream)
                 write(myfile,"F_os",result_sofar)
+                write(myfile,"class_distr", class_distr_sofar)
                 write(myfile,"numOsamples",i)
                 close(myfile)
             end
         end
         result = result_sofar
+        class_distr = class_distr_sofar
     end
 
     if verbose
@@ -1327,7 +1352,7 @@ function ps2os_performance(M::AbstractEquilibrium,
     end
     rm("ps2os_progress.jld2", force=true) # As in ps2os(), remove the progress file that is no longer needed
 
-    return result, nfast
+    return result, class_distr, nfast
 end
 
 """
@@ -1353,7 +1378,7 @@ function sample_helper(M::AbstractEquilibrium, numOsamples::Int64, fr::AbstractA
                 end
 
                 @async begin # No internal syncronization needed here either, only external sync needed
-                    F_os = @distributed (+) for i=1:numOsamples # Compute one result, and reduce (add) it to a resulting vector F_os
+                    result_async = @distributed (+) for i=1:numOsamples # Compute one result, and reduce (add) it to a resulting vector F_os
 
                         # Sample
                         E_sample, p_sample, R_sample, z_sample = sample_f_OWCF(fr, dvols, energy, pitch, R, z, n=1) # Returns 4 1-element arrays
@@ -1363,17 +1388,22 @@ function sample_helper(M::AbstractEquilibrium, numOsamples::Int64, fr::AbstractA
                             o = get_orbit(M,GCP(E_sample[1],p_sample[1],R_sample[1],z_sample[1]); store_path=false, wall=wall, kwargs...) # Calculate the orbit
                             if (o.coordinate.energy <= (maximum(og.energy)+dE_os_end/2) && o.coordinate.energy >= (minimum(og.energy)-dE_os_1/2)) # Make sure it's within the energy bounds (+one half grid cell)
                                 F_os_i = bin_orbits(og,vec([o.coordinate]),weights=vec([1.0])) # Bin to the orbit grid
+                                class_distr_i = zeros(9)
+                                class_distr_i[class2int(M,o; plot=true, distinguishLost=true, distinguishIncomplete=true)] = 1
                             else
                                 F_os_i = zeros(length(og.counts)) # Otherwise, zero
+                                class_distr_i = zeros(9) # No orbit class
                             end
                         else
                             F_os_i = zeros(length(og.counts)) # Otherwise, zero
+                            class_distr_i = zeros(9) # No orbit class
                         end
                         put!(channel,true) # Update the progress bar
-                        F_os_i # Declare F_os_i as result to add to F_os
+                        result_i = [F_os_i, class_distr_i]
+                        result_i # Declare result_i as a result to add to result_async
                     end
                     put!(channel,false) # Update progress bar
-                    F_os # Delcare F_os as done/result, so it can be fetched
+                    result_async # Delcare result_async_os as done/result, so it can be fetched
                 end
             end)
         else
@@ -1384,19 +1414,26 @@ function sample_helper(M::AbstractEquilibrium, numOsamples::Int64, fr::AbstractA
                     o = get_orbit(M,GCP(E_sample[1],p_sample[1],R_sample[1],z_sample[1]); store_path=false, wall=wall, kwargs...) # Calculate the orbit
                     if (o.coordinate.energy <= (maximum(og.energy)+dE_os_end/2) && o.coordinate.energy >= (minimum(og.energy)-dE_os_1/2)) # Make sure it's within the energy bounds (+one half grid cell)
                         F_os_i = bin_orbits(og,vec([o.coordinate]),weights=vec([1.0])) # Bin to the orbit grid
+                        class_distr_i = zeros(9)
+                        class_distr_i[class2int(M,o; plot=true, distinguishLost=true, distinguishIncomplete=true)] = 1
                     else
                         F_os_i = zeros(length(og.counts)) # Otherwise, zero
+                        class_distr_i = zeros(9) # No orbit class
                     end
                 else
                     F_os_i = zeros(length(og.counts)) # Otherwise, zero
+                    class_distr_i = zeros(9) # No orbit class
                 end
-                F_os_i # Declare F_os_i as result to add to result
+                result_i = [F_os_i, class_distr_i]
+                result_i # Declare result_i as a result to add to result_async
             end
         end
 
-        return result
+        class_distr = result[2] # Extract the (non-interpolated) distribution of orbit classes (including lost, invalid and incomplete orbits)
+        result = result[1] # A vector representing the (interpolated) fast-ion distribution, binned onto a (finite) orbit grid
+        return result, class_distr
     else # ...otherwise just return a zero vector with the length of the number of valid orbits
-        return zeros(length(og.counts))
+        return zeros(length(og.counts)), zeros(9)
     end
 end
 
@@ -1423,7 +1460,7 @@ function performance_helper(M::AbstractEquilibrium, numOsamples::Int64, frdvols_
                 end
 
                 @async begin # No internal syncronization needed here either, only external sync needed
-                    F_os = @distributed (+) for i=1:numOsamples # Compute one result, and reduce (add) it to a resulting vector F_os
+                    result_async = @distributed (+) for i=1:numOsamples # Compute one result, and reduce (add) it to a resulting vector F_os
 
                         # Sample
                         p = rand()*frdvols_cumsum_vector[end]
@@ -1441,17 +1478,22 @@ function performance_helper(M::AbstractEquilibrium, numOsamples::Int64, frdvols_
                             o = get_orbit(M,GCP(E_sample,p_sample,R_sample,z_sample); store_path=false, wall=wall, kwargs...) # Calculate the orbit
                             if (o.coordinate.energy <= (maximum(og.energy)+dE_os_end/2) && o.coordinate.energy >= (minimum(og.energy)-dE_os_1/2)) # Make sure it's within the energy bounds (+one half grid cell)
                                 F_os_i = bin_orbits(og,vec([o.coordinate]),weights=vec([1.0])) # Bin to the orbit grid
+                                class_distr_i = zeros(9)
+                                class_distr_i[class2int(M,o; plot=true, distinguishLost=true, distinguishIncomplete=true)] = 1
                             else
                                 F_os_i = zeros(length(og.counts)) # Otherwise, zero
+                                class_distr_i = zeros(9) # No orbit class
                             end
                         else
                             F_os_i = zeros(length(og.counts)) # Otherwise, zero
+                            class_distr_i = zeros(9) # No orbit class
                         end
                         put!(channel,true) # Update the progress bar
-                        F_os_i # Declare F_os_i as result to add to F_os
+                        result_i = [F_os_i, class_distr_i]
+                        result_i # Declare result_i as a result to add to result_async
                     end
                     put!(channel,false) # Update progress bar
-                    F_os # Delcare F_os as done/result, so it can be fetched
+                    result_async # Delcare result as done/result, so it can be fetched
                 end
             end)
         else
@@ -1472,19 +1514,26 @@ function performance_helper(M::AbstractEquilibrium, numOsamples::Int64, frdvols_
                     o = get_orbit(M,GCP(E_sample,p_sample,R_sample,z_sample); store_path=false, wall=wall, kwargs...) # Calculate the orbit
                     if (o.coordinate.energy <= (maximum(og.energy)+dE_os_end/2) && o.coordinate.energy >= (minimum(og.energy)-dE_os_1/2)) # Make sure it's within the energy bounds (+/- one half grid cell)
                         F_os_i = bin_orbits(og,vec([o.coordinate]),weights=vec([1.0])) # Bin to the orbit grid
+                        class_distr_i = zeros(9)
+                        class_distr_i[class2int(M,o; plot=true, distinguishLost=true, distinguishIncomplete=true)] = 1
                     else
                         F_os_i = zeros(length(og.counts)) # Otherwise, zero
+                        class_distr_i = zeros(9) # No orbit class
                     end
                 else
                     F_os_i = zeros(length(og.counts)) # Otherwise, zero
+                    class_distr_i = zeros(9) # No orbit class
                 end
-                F_os_i # Declare F_os_i as result to add to result
+                result_i = [F_os_i, class_distr_i]
+                result_i # Declare result_i as a result to add to result
             end
         end
 
-        return result
+        class_distr = result[2] # Extract the (non-interpolated) distribution of orbit classes (including lost, invalid and incomplete orbits)
+        result = result[1] # A vector representing the (interpolated) fast-ion distribution, binned onto a (finite) orbit grid
+        return result, class_distr
     else # ...otherwise just return a zero vector with the length of the number of valid orbits
-        return zeros(length(og.counts))
+        return zeros(length(og.counts)), zeros(9) # USE class2int(M, o; plot=true, distinguishLost=true, distinguishIncomplete=true) to bin orbit classes to 9-element Int vector. Distributed can reduce vector of vectors of different lengths
     end
 end
 
