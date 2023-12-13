@@ -47,6 +47,8 @@
 
 using GuidingCenterOrbits
 
+VALID_OWCF_SPECIES = ["d","t","3he","p","e","alpha","4he"]
+
 function getSpeciesAmu(species_identifier::AbstractString)
     return getSpeciesMass(species_identifier) / GuidingCenterOrbits.mass_u
 end

@@ -71,7 +71,7 @@ function calcOrbSpec(M::AbstractEquilibrium, o::Orbit{Float64, EPRCoordinate{Flo
             myB = Equilibrium.Bfield(M,crs_c[1],crs_c[2]) # Calculate the B-field vector at the (R,z) point
             ψ_rz = M(crs_c[1],crs_c[2])
             psi_on_axis, psi_at_bdry = psi_limits(M)
-            ρ_pol_rz = (ψ_rz-psi_on_axis)/(psi_at_bdry-psi_on_axis) # The formula for the normalized flux coordinate ρ_pol = (ψ-ψ_axis)/(ψ_edge-ψ_axis)
+            ρ_pol_rz = sqrt(ψ_rz-psi_on_axis)/(psi_at_bdry-psi_on_axis) # The formula for the normalized flux coordinate ρ_pol = (ψ-ψ_axis)/(ψ_edge-ψ_axis)
             if debug
                 # WRITE CODE HERE FOR DEBUGGING
             end
