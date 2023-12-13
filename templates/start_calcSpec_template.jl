@@ -12,6 +12,22 @@
 # addNoise - If set to true, the script will add noise to the synthetic signal, defined by input variables noiseLevel_b and _s. - Bool
 # diagnostic_filepath - The filepath to the geometry-data for the diagnostic for which to calculate the synthetic signal. If not specified, spherical emission is assumed - String
 # diagnostic_name - The name of the diagnostic for which to compute the synthetic signal. Purely for esthetic purposes- String
+# instrumental_response_filepath - The path to three .txt-files or one .jld2-file, containing the necessary data for representing 
+#                                the instrumental response of the diagnostic. If paths to three .txt-files are specified, they should 
+#                                be specified together in a vector of three strings. That is,
+#                                
+#                                instrumental_response_filepath = ["/path/to/reponse/matrix.txt","/path/to/particle/inputs.txt","/path/to/diagnostic/outputs.txt"]
+#
+#                                The first string is the filepath to the response matrix. The size of the matrix is ni x no, where ni is the number of diagnostic input 
+#                                grid points and no is the number of output (actually being measured) grid points. The second string is the filepath to the input grid 
+#                                points (vector). The third string is the filepath to the output grid points (vector). So, for example, for a proton recoil diagnostic, 
+#                                the input could be incoming neutron energies and the output could be proton impact positions. If, instead, the path to one .jld2 file 
+#                                is specified, it should be specified as 
+#
+#                                instrumental_response_filepath = "/path/to/diagnostic/response/data.jld2"
+#
+#                                The keys of the .jld2-file should then be "response_matrix", "input" and "output". Input data should be a vector of length ni, output 
+#                                data should be a vector of length no and response_matrix should be a matrix of size ni x no.
 # Ed_min - The lower bound for the diagnostic energy grid (measurement grid) - Float64
 # Ed_max - The upper bound for the diagnostic energy grid (measurement grid) - Float64
 # Ed_diff - The width of the diagnostic energy bins (PLEASE NOTE! THIS WILL INDIRECTLY DEFINE THE NUMBER OF DIAGNOSTIC ENERGY GRID POINTS.) - Float64
@@ -25,6 +41,15 @@
 # mc_chunk - The number of Monte-Carlo samples in a single sample-partitioned chunk - Int64
 # noiseLevel_b - The level of the background noise for the synthetic signal, if addNoise is set to true - Float64
 # noiseLevel_s - The level of the signal noise for the synthetic signal, if addNoise is set to true - Float64
+# phase_space_point_of_interest - Specific E-, p-, R- and/or z-values can specified. This is done by specifying a Float64 value in place of the corresponding 'nothing' vector element (see below).
+#                                 To illustrate the function of this input variable, consider the following. If only an E value has been specified, the expected diagnostic signal for f(p,R,z) at E 
+#                                 will be computed. If only a p value has been specified, the expected diagnostic signal for f(E,R,z) at p will be computed. And so on.
+#                                 If both an E and a p value (only) have been specified, the expected diagnostic signal for f(R,z) at (E,p) will be computed.
+#                                 If both an R and a z value (only) have been specified, the expected diagnostic signal for f(E,p) at (R,z) will be computed. And so on.
+#                                 If an E-, a p- and an R-value (three coordinates) have been specified, the expected diagnstic signal for f(z) at (E,p,R) will be computed.
+#                                 And so on. PLEASE NOTE! This feature ONLY works with .h5 or .jld2 file inputs for the filepath_FI_distr input variable.
+#                                 Furthermore, PLEASE NOTE that the R and/or z grid values in the .h5 or .jld2 file might be given in centimeters or meters.
+#                                 So please specify the R- and/or z-values accordingly. E- values should always be given in keV. - Vector{Union{Nothing,Float64}}
 # reaction - The nuclear fusion reaction that you want to simulate. Please see OWCF/misc/availReacts.jl for available fusion reactions - String
 # calcProjVel - If true, then the synthetic diagnostic spectrum will be the result of projected fast-ion velocities. Remember to set 'reaction' to 'proj-X' where 'X' is the fast-ion species which projected velocity you want to compute - Bool
 # timepoint - The timepoint of the tokamak shot for the magnetic equilibrium. Format XX,YYYY where XX are seconds and YYYY are decimals - String
@@ -102,6 +127,7 @@ end
     addNoise = false # If true, then the algorithm will automatically add noiseLevel % noise to your synthetic diagnostic signal
     diagnostic_filepath = "" # Currently supported: "TOFOR", "AB" and ""
     diagnostic_name = ""
+    instrumental_response_filepath = "" # Should be the filepaths to three .txt-files or one .jld2-file. Otherwise, leave as ""
     Ed_min = 0000.0 # keV
     Ed_max = 0000.0 # keV
     Ed_diff = 00.0 # keV
@@ -116,6 +142,7 @@ end
     mc_chunk = 10_000 # Should be smaller than mc_samples. If unsure, do not alter from default value of 10_000
     noiseLevel_b = 0.05 # Background noise level. As a decimal fraction of 1.0. Could also be greater than 1.0 but why would you want that?
     noiseLevel_s = 0.05 # Signal noise level. As a decimal fraction of 1.0. Could also be greater than 1.0 but why would you want that?
+    phase_space_point_of_interest = [nothing,nothing,nothing,nothing] # To specify a specific E-, p-, R- and/or z-value, change the corresponding 'nothing' element to a Float64 value. Check the .h5 or .jld2 fast-ion file to decide on meters or cm for the R- and/or z-values [keV, -, meters or centimeters, meters or centimeters]
     reaction = "D(d,n)3He" # Specified on the form a(b,c)d where a is thermal ion, b is fast ion, c is emitted particle and d is the product nucleus.
     # PLEASE NOTE! Specify alpha particles as '4he' or '4He' (NOT 'he4' or 'He4'). Same goes for helium-3 (specify as '3he', NOT 'he3')
     calcProjVel = false # If true, the synthetic diagnostic spectrum will be computed from projected velocities. If true, remember to set the 'reaction' input variable to the format 'proj-X' where 'X' is the fast-ion species of interest. If true, remember to also leave the thermal species input variables unspecified.
@@ -126,6 +153,8 @@ end
     visualizeProgress = false # If set to true, a progress bar will be displayed during distributed computation
 
     # If you would like to have the fast-ion loaded from .h5/.jld2 file interpolated onto specific grid dimensions
+    # If any specific E-, p-, R- or z-values have been specified in the input variable phase_space_point_of_interest,
+    # the interpolation will be performed before using a specific f(p,R,z), f(E,p), f(z) etc
     interp = true
     nE_ps = 201
     np_ps = 61

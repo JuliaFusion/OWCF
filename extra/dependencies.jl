@@ -35,6 +35,7 @@ using OrbitTomography
 using Optim
 using JLD2
 using HDF5
+using NetCDF
 using FileIO
 using Interpolations
 using NearestNeighbors
@@ -261,6 +262,15 @@ function apply_instrumental_response(Q::Array{Float64,5}, Ed_array::AbstractVect
         end
         return Q_out
     end
+end
+
+"""
+    average_weight_matrices()
+    average_weight_matrices()
+
+Bla bla bla
+"""
+function average_weight_matrices(list_o_files::Vector{String}, )
 end
 
 """
@@ -635,15 +645,39 @@ function JLD2to4D(filepath_distr::String; verbose::Bool=false)
     else
         error("Fast-ion distribution .jld2 file did not have any expected keys for the distribution (F_ps, f or F_EpRz).")
     end
-    E_array = myfile["energy"]
-    p_array = myfile["pitch"]
-    R_array = myfile["R"]
+    if haskey(myfile,"energy")
+        E_array = myfile["energy"]
+    elseif haskey(myfile,"E_array")
+        E_array = myfile["E_array"]
+    else
+        error("Fast-ion distribution .jld2 file did not have any expected keys for the energy grid points (energy or E_array).")
+    end
+    if haskey(myfile,"pitch")
+        p_array = myfile["pitch"]
+    elseif haskey(myfile,"p_array")
+        p_array = myfile["p_array"]
+    else
+        error("Fast-ion distribution .jld2 file did not have any expected keys for the energy grid points (pitch or p_array).")
+    end
+    if haskey(myfile,"R")
+        R_array = myfile["R"]
+    elseif haskey(myfile,"R_array")
+        R_array = myfile["R_array"]
+    else
+        error("Fast-ion distribution .jld2 file did not have any expected keys for the R grid points (R or R_array).")
+    end
     if haskey(myfile,"z")
         verbose && println("Found z key in .jld2 file.")
         z_array = myfile["z"]
-    else
+    elseif haskey(myfile,"Z")
         verbose && println("Found Z key in .jld2 file.")
         z_array = myfile["Z"]
+    elseif haskey(myfile,"z_array")
+        z_array = myfile["z_array"]
+    elseif haskey(myfile,"Z_array")
+        z_array = myfile["Z_array"]
+    else
+        error("Fast-ion distribution .jld2 file did not have any expected keys for the z grid points (z, Z, z_array or Z_array).")
     end
     close(myfile)
 
@@ -652,25 +686,20 @@ end
 
 """
     h5toSampleReady(filepath_distr, interp)
-    h5toSampleReady(-||-,nE_ps=201, np_ps=56, nR_ps=61, nz_ps=63, backwards=false, verbose=true)
+    h5toSampleReady(-||-, backwards=true, verbose=false)
 
 Load the fast-ion distribution from a .h5 file and forward to function toSampleReady().
 
 --- Input:
 filepath_distr - The fast-ion distribution in .h5 file format - String
-interp - If true, then fast-ion distribution will be interpolated onto grid with same end-points but dimension (nE_ps, np_ps, nR_ps, nz_ps) - Bool
-nE_ps - Energy grid dimension to be interpolated onto, if interp - Int64
-np_ps - Pitch grid dimension to be interpolated onto, if interp - Int64
-nR_ps - R grid dimension to be interpolated onto, if interp - Int64
-nz_ps - z grid dimension to be interpolated onto, if interp - Int64
 backwards - If saved with Python, the .h5 file will have (z,R,p,E) orientation instead of (E,p,R,z). Set to false, if that is not that case - Bool
 verbose - If set to true, you will get a talkative function indeed - Bool
 """
-function h5toSampleReady(filepath_distr::AbstractString; interp::Bool=false, nE_ps::Int64=100, np_ps::Int64=51, nR_ps::Int64=60, nz_ps::Int64=61, backwards::Bool = true, verbose::Bool = false)
+function h5toSampleReady(filepath_distr::AbstractString; backwards::Bool = true, verbose::Bool = false, kwargs...)
     verbose && println("Loading fast-ion distribution from .h5 file... ")
     F_EpRz, E_array, p_array, R_array, z_array = h5to4D(filepath_distr, backwards=backwards, verbose=verbose)
 
-    return toSampleReady(F_EpRz, E_array, p_array, R_array, z_array; interp=interp, nE_ps=nE_ps, np_ps=np_ps, nR_ps=nR_ps, nz_ps=nz_ps, verbose=verbose)
+    return toSampleReady(F_EpRz, E_array, p_array, R_array, z_array; verbose=verbose, kwargs...)
 end
 
 """
@@ -692,10 +721,10 @@ end
 
 """
     toSampleReady(F_EpRz, E_array, p_array, R_array, z_array)
-    toSampleReady(-||-, nE_ps=202, np_ps=57, nR_ps=62, nz_ps=64, verbose=true)
+    toSampleReady(-||-, nE_ps=202, np_ps=57, nR_ps=62, nz_ps=64, slices_of_interest=[nothing,nothing,nothing,nothing], verbose=true)
 
-Interpolate the fast-ion distribution and grid arrays if specified, then compute the necessary
-quantities needed to be able to sample from the fast-ion distribution with the spaghettification
+Interpolate the fast-ion distribution and grid arrays if specified, extract the E-, p-, R- and/or z-planes of interest 
+if specified, then compute the necessary quantities needed to be able to sample from the fast-ion distribution with the spaghettification
 method (for example in calcSpec.jl). Then return those quantities.
 
 --- Input:
@@ -709,15 +738,16 @@ nE_ps - Energy grid dimension to be interpolated onto, if interp - Int64
 np_ps - Pitch grid dimension to be interpolated onto, if interp - Int64
 nR_ps - R grid dimension to be interpolated onto, if interp - Int64
 nz_ps - z grid dimension to be interpolated onto, if interp - Int64
+slices_of_interest - Specify Float64 instead of nothing to extract fast-ion distribution for specific E-, p-, R- and/or z-planes - Vector{Union{Nothing,Float64}}
 verbose - If set to true, you will get a talkative function indeed - Bool
 """
-function toSampleReady(F_EpRz::Array{Float64,4}, E_array::Array{Float64,1}, p_array::Array{Float64,1}, R_array::Array{Float64,1}, z_array::Array{Float64,1}; interp=false, nE_ps::Int64=100, np_ps::Int64=51, nR_ps::Int64=60, nz_ps::Int64=61, verbose::Bool = false)
+function toSampleReady(F_EpRz::Array{Float64,4}, E_array::Array{Float64,1}, p_array::Array{Float64,1}, R_array::Array{Float64,1}, z_array::Array{Float64,1}; interp=false, nE_ps::Int64=100, np_ps::Int64=51, nR_ps::Int64=60, nz_ps::Int64=61, slices_of_interest=[nothing,nothing,nothing,nothing], verbose::Bool = false)
     if interp
         energyq = range(E_array[1], E_array[end], length=nE_ps) # Set the energy query points
         pitchq = range(p_array[1], p_array[end], length=np_ps) # Etc
         Rq = range(R_array[1], R_array[end], length=nR_ps) # Etc
         zq = range(z_array[1], z_array[end], length=nz_ps) # Etc
-        verbose && println("Interpolating Julia fast-ion distribution... ")
+        verbose && println("toSampleReady(): Interpolating Julia fast-ion distribution... ")
         F_EpRz = interpFps(F_EpRz, E_array, p_array, R_array, z_array, energyq, pitchq, Rq, zq) # Interpolate
         E_array = energyq # The energy query points are now the energy points
         p_array = pitchq # Etc
@@ -725,8 +755,40 @@ function toSampleReady(F_EpRz::Array{Float64,4}, E_array::Array{Float64,1}, p_ar
         z_array = zq
     end
 
-    fr = F_EpRz.*reshape(R_array,(1,1,length(R_array),1))
-    verbose && println("Computing 4D vols... ")
+    verbose && println("toSampleReady(): Checking for E-, p-, R- and/or z-slices of interest... ")
+    super_array = [E_array, p_array, R_array, z_array] # Put all (E,p,R,z) vectors in a supervector
+    string_array = ["energy","pitch","R","z"]
+    inds_of_interest = findall(x-> x!==nothing,slices_of_interest) # Are there any specific E-, p-, R- and/or z-slices of interest?
+    if length(inds_of_interest)>0
+        for ind in inds_of_interest
+            verbose && println("toSampleReady(): Found "*string_array[ind]*" slice of interest. Processing... ")
+            s = slices_of_interest[ind] # One Float64 value
+            s_array = super_array[ind] # One array
+
+            if s>maximum(s_array)
+                verbose && (@warn "toSampleReady(): Requested "*string_array[ind]*" value ($(s)) is larger than maximum("*string_array[ind]*"_array) ($(maximum(s_array))). maximum("*string_array[ind]*"_array) will be used instead (extrapolation not possible)")
+                s = maximum(s_array)
+            elseif s<minimum(s_array)
+                verbose && (@warn "toSampleReady(): Requested "*string_array[ind]*" value ($(s)) is smaller than minimum("*string_array[ind]*"_array) ($(minimum(s_array))). minimum("*string_array[ind]*"_array) will be used instead (extrapolation not possible)")
+                s = minimum(s_array)
+            else
+                verbose && println("toSampleReady(): Requested "*string_array[ind]*" value ($(s)) inside of fast-ion distribution grid $(extrema(s_array)).")
+            end
+        end
+        Eq = (1 in inds_of_interest) ? [slices_of_interest[1]] : E_array
+        pq = (2 in inds_of_interest) ? [slices_of_interest[2]] : p_array
+        Rq = (3 in inds_of_interest) ? [slices_of_interest[3]] : R_array
+        zq = (4 in inds_of_interest) ? [slices_of_interest[4]] : z_array
+        F_o_interest = interpFps(F_EpRz,E_array,p_array,R_array,z_array,Eq,pq,Rq,zq)
+        E_array = Eq # The energy query points are now the energy points
+        p_array = pq # Etc
+        R_array = Rq
+        z_array = zq
+    else
+        F_o_interest = F_EpRz
+    end
+    fr = F_o_interest.*reshape(R_array,(1,1,length(R_array),1))
+    verbose && println("toSampleReady(): Computing 4D vols... ")
     dvols = get4DVols(E_array, p_array, R_array, z_array)
     nfast = sum(fr.*dvols)*(2*pi)
 
@@ -735,18 +797,18 @@ function toSampleReady(F_EpRz::Array{Float64,4}, E_array::Array{Float64,1}, p_ar
     # OTHERWISE, THE TOTAL NUMBER OF FAST IONS WILL BE WRONG, BECAUSE THE ORIGINAL F_EpRz DATA WAS
     # IN UNITS OF PER CENTIMETER
     if maximum(R_array)>100.0 # Assume no tokamak has a major radius larger than 100 meters...
-        verbose && println("Converting R- and z-arrays from centimeters to meters... ")
+        verbose && println("toSampleReady(): Converting R- and z-arrays from centimeters to meters... ")
         R_array = R_array./100.0
         z_array = z_array./100.0
     end
-    dE_array = vcat(abs.(diff(E_array)),abs(E_array[end]-E_array[end-1]))
-    dp_array = vcat(abs.(diff(p_array)),abs(p_array[end]-p_array[end-1]))
-    dR_array = vcat(abs.(diff(R_array)),abs(R_array[end]-R_array[end-1]))
-    dz_array = vcat(abs.(diff(z_array)),abs(z_array[end]-z_array[end-1]))
+    dE_array = (length(E_array)>1) ? vcat(abs.(diff(E_array)),abs(E_array[end]-E_array[end-1])) : [0.0]
+    dp_array = (length(p_array)>1) ? vcat(abs.(diff(p_array)),abs(p_array[end]-p_array[end-1])) : [0.0]
+    dR_array = (length(R_array)>1) ? vcat(abs.(diff(R_array)),abs(R_array[end]-R_array[end-1])) : [0.0]
+    dz_array = (length(z_array)>1) ? vcat(abs.(diff(z_array)),abs(z_array[end]-z_array[end-1])) : [0.0]
 
     dims = size(fr) # Tuple
-    verbose && println("Computing cumulative sum vector... ")
-    frdvols_cumsum_vector = cumsum(vec(fr .*dvols)) # Vector. Reaaally long vector.
+    verbose && println("toSampleReady(): Computing cumulative sum vector... ")
+    frdvols_cumsum_vector = cumsum(vec(fr .*dvols)) # Vector. Reaaally long vector
     subs = CartesianIndices(dims) # 4D matrix
 
     return frdvols_cumsum_vector, subs, E_array, p_array, R_array, z_array, dE_array, dp_array, dR_array, dz_array, nfast
@@ -818,20 +880,48 @@ end
 """
     get4DDiffs(E, p, R, z)
 
-Calculate and return 4D-arrays of the diffs of particle-space coordinates. Assume edge diff to be same as next-to-edge diff.
+Calculate and return 4D-arrays of the diffs of particle-space coordinates. If length>2, assume edge diff to be same as next-to-edge diff.
+If length==1, use diff=1. If length==0, throw error.
 """
 function get4DDiffs(E::AbstractVector, p::AbstractVector, R::AbstractVector, z::AbstractVector)
-    dR = vcat(abs.(diff(R)),abs(R[end]-R[end-1]))
-    dR = reshape(dR,1,1,length(dR),1)
+    if length(R)>1
+        dR = vcat(abs.(diff(R)),abs(R[end]-R[end-1]))
+        dR = reshape(dR,1,1,length(dR),1)
+    elseif length(R)==1
+        dR = reshape([0.0],(1,1,1,1))
+    else
+        error("R input was of 0 length. Please correct and re-try.")
+    end
     dR4D = repeat(dR,length(E),length(p),1,length(z))
-    dz = vcat(abs.(diff(z)),abs(z[end]-z[end-1]))
-    dz = reshape(dz,1,1,1,length(dz))
+
+    if length(z)>1
+        dz = vcat(abs.(diff(z)),abs(z[end]-z[end-1]))
+        dz = reshape(dz,1,1,1,length(dz))
+    elseif length(z)==1
+        dz = reshape([0.0],(1,1,1,1))
+    else
+        error("z input was of 0 length. Please correct and re-try.")
+    end
     dz4D = repeat(dz,length(E),length(p),length(R),1)
-    dE = vcat(abs.(diff(E)),abs(E[end]-E[end-1]))
-    dE = reshape(dE,length(dE),1,1,1)
+
+    if length(E)>1
+        dE = vcat(abs.(diff(E)),abs(E[end]-E[end-1]))
+        dE = reshape(dE,length(dE),1,1,1)
+    elseif length(E)==1
+        dE = reshape([0.0],(1,1,1,1))
+    else
+        error("E input was of 0 length. Please correct and re-try.")
+    end
     dE4D = repeat(dE,1,length(p),length(R),length(z))
-    dp = vcat(abs.(diff(p)),abs(p[end]-p[end-1]))
-    dp = reshape(dp,1,length(dp),1,1)
+
+    if length(p)>1
+        dp = vcat(abs.(diff(p)),abs(p[end]-p[end-1]))
+        dp = reshape(dp,1,length(dp),1,1)
+    elseif length(p)==1
+        dp = reshape([0.0],(1,1,1,1))
+    else
+        error("p input was of 0 length. Please correct and re-try.")
+    end
     dp4D = repeat(dp,length(E),1,length(R),length(z))
 
     return dE4D, dp4D, dR4D, dz4D
@@ -843,6 +933,7 @@ end
 This function will calculate the volume of all the hyper-voxels pertaining to the 4D grid. It assumes the hyper-voxels pertaining to the
 upper-end (edge) grid-points have the same volumes as the hyper-voxels just inside of them. It return a 4D array, containing all the hyper-voxel
 volumes. The 4D array will have size()=(length(E), length(p), length(R), length(z)). The function assumes a rectangular 4D grid.
+If any of the dimensions only has a single grid point, compute the resulting lower-dimensional voxel volume (3D: volume. 2D: area. 1D: length). 
 """
 function get4DVols(E::AbstractVector, p::AbstractVector, R::AbstractVector, z::AbstractVector)
 
@@ -852,6 +943,22 @@ function get4DVols(E::AbstractVector, p::AbstractVector, R::AbstractVector, z::A
     end
 
     dE4D, dp4D, dR4D, dz4D = get4DDiffs(E, p, R, z)
+    if sum(dE4D)==0.0
+        dE = reshape([1.0],(1,1,1,1))
+        dE4D = repeat(dE,1,length(p),length(R),length(z))
+    end
+    if sum(dp4D)==0.0
+        dp = reshape([1.0],(1,1,1,1))
+        dp4D = repeat(dp,length(E),1,length(R),length(z))
+    end
+    if sum(dR4D)==0.0
+        dR = reshape([1.0],(1,1,1,1))
+        dR4D = repeat(dR,length(E),length(p),1,length(z))
+    end
+    if sum(dz4D)==0.0
+        dz = reshape([1.0],(1,1,1,1))
+        dz4D = repeat(dz,length(E),length(p),length(R),1)
+    end
     dvols = dE4D .*dp4D .*dR4D .*dz4D
     return dvols
 end
@@ -2483,7 +2590,7 @@ function Ep2VparaVperp(E_array::Vector, p_array::Vector, Q::Matrix{Float64}; my_
         pq = vpara/v
         
         #if (Eq < min_keV_E_array) || (Eq > max_keV_E_array) || (pq < min_p_array) || (pq > max_p_array) # If outside of bounds
-            verbose && println("Point out-of-bounds found!")
+            #verbose && println("Point out-of-bounds found!")
             #idx, dist = nn(brutetree, [Eq, pq])
             #interp_value = Q[coords[idx]]
         #else
