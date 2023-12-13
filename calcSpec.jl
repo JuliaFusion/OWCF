@@ -74,7 +74,7 @@
 # Finally, this script has many 'if' statements and I would expect it to be able to be
 # optimized beyond its current state. This will be done in future version of the OWCF.
 
-# Script written by Henrik Järleblad. Last maintained 2022-09-13.
+# Script written by Henrik Järleblad. Last maintained 2023-11-07.
 ################################################################################################
 
 ## ---------------------------------------------------------------------------------------------
@@ -222,8 +222,8 @@ end
 ## ---------------------------------------------------------------------------------------------
 verbose && println("If necessary, loading dependencies... ")
 
-if fileext_FI=="h5" || fileext_FI=="jld2"
-    verbose && println("Fast-ion file is ."*fileext_FI*" format. extra/dependencies.jl needed. Loading (might take a while)... ")
+if fileext_FI=="h5" || fileext_FI=="jld2" || isfile(instrumental_response_filepath) || (typeof(instrumental_response_filepath)==Vector{String})
+    verbose && println("OWCF/extra/dependencies.jl is needed. Loading (might take a while)... ")
     @everywhere begin
         include("extra/dependencies.jl") # Need the dependencies for sampling processes
     end
@@ -327,6 +327,35 @@ if fileext_FI_TRANSP_shot=="cdf"
     YYYY = TIME_array[2]
     timepoint = XX*","*YYYY # Format XX,YYYY to avoid "." when including in filename of saved output
 end
+
+## ---------------------------------------------------------------------------------------------
+# If available, load instrumental response and process it accordingly
+instrumental_response = false
+if isfile(instrumental_response_filepath) # Returns true both for Strings and Vector{String}
+    if typeof(instrumental_response_filepath)==String # If it is a single file, it must be a .jld2 file (specified in start file)
+        myfile = jldopen(instrumental_response_filepath,false,false,false,IOStream)
+        instrumental_response_matrix = myfile["response_matrix"]
+        instrumental_response_input = myfile["input"]
+        instrumental_response_output = myfile["output"]
+        close(myfile)
+    else # Otherwise, it must be a Vector{String}
+        matrix_filepath = instrumental_response_filepath[1]
+        input_filepath = instrumental_response_filepath[2]
+        output_filepath = instrumental_response_filepath[3]
+
+        py"""
+        import numpy as np
+        instrumental_response_matrix = np.loadtxt($matrix_filepath)
+        instrumental_response_input = np.loadtxt($input_filepath)
+        instrumental_response_output = np.loadtxt($output_filepath)
+        """
+        instrumental_response_matrix = py"instrumental_response_matrix"
+        instrumental_response_input = py"instrumental_response_input"
+        instrumental_response_output = py"instrumental_response_output"
+    end
+    instrumental_response = true
+end
+
 ## ---------------------------------------------------------------------------------------------
 # Printing script info and inputs
 println("")
@@ -346,12 +375,34 @@ if !(diagnostic_filepath=="")
 else
     println("Diagnostic not specified. Spherical emission will be assumed.")
 end
+if instrumental_response
+    println("instrumental_response_filepath specified. Diagnostic response included.")
+else
+    println("instrumental_response_filepath not specified. Diagnostic response not included.")
+end
+println("")
 println("Fast-ion distribution file specified: "*filepath_FI_distr)
 println("Timepoint: "*timepoint*" seconds")
-println("")
 if interp
     println("Fast-ion distribution will be interpolated onto a ($(nE_ps),$(np_ps),$(nR_ps),$(nz_ps)) grid in (E,p,R,z) phase space.")
 end
+if !isempty(findall(x-> x!==nothing,phase_space_point_of_interest))
+    const_inds = findall(x-> x!==nothing,phase_space_point_of_interest)
+    println("It will be sampled while keeping the following dimensions and values constant: ")
+    if 1 in const_inds
+        println("--- E: $(phase_space_point_of_interest[1]) keV")
+    end
+    if 2 in const_inds
+        println("--- p: $(phase_space_point_of_interest[2])")
+    end
+    if 3 in const_inds
+        println("--- R: $(phase_space_point_of_interest[3])")
+    end
+    if 4 in const_inds
+        println("--- z: $(phase_space_point_of_interest[4])")
+    end
+end
+println("")
 if !(filepath_thermal_distr=="")
     println("Thermal species profiles file specified: "*filepath_thermal_distr)
 else
@@ -404,7 +455,7 @@ println("Please remove previously saved files with the same file name (if any) p
 println("")
 println("If you would like to change any settings, please edit the start_calcSpec_template.jl file or similar.")
 println("")
-println("Written by Henrik Järleblad. Last maintained 2022-09-13.")
+println("Written by Henrik Järleblad. Last maintained 2023-11-07.")
 println("------------------------------------------------------------------------------------------------------------------------------")
 println("")
 ## ---------------------------------------------------------------------------------------------
@@ -480,9 +531,9 @@ end
 ## ---------------------------------------------------------------------------------------------
 verbose && println("Defining the fast-ion distribution... ")
 if fileext_FI=="h5"
-    frdvols_cumsum_vector, subs, E_array, p_array, R_array, z_array, dE_vector, dp_vector, dR_vector, dz_vector, nfast = h5toSampleReady(filepath_FI_distr, interp=interp, nE_ps=nE_ps, np_ps=np_ps, nR_ps=nR_ps, nz_ps=nz_ps, verbose=verbose)
+    frdvols_cumsum_vector, subs, E_array, p_array, R_array, z_array, dE_vector, dp_vector, dR_vector, dz_vector, nfast = h5toSampleReady(filepath_FI_distr, interp=interp, nE_ps=nE_ps, np_ps=np_ps, nR_ps=nR_ps, nz_ps=nz_ps, slices_of_interest=phase_space_point_of_interest, verbose=verbose)
 elseif fileext_FI=="jld2"
-    frdvols_cumsum_vector, subs, E_array, p_array, R_array, z_array, dE_vector, dp_vector, dR_vector, dz_vector, nfast = jld2toSampleReady(filepath_FI_distr, interp=interp, nE_ps=nE_ps, np_ps=np_ps, nR_ps=nR_ps, nz_ps=nz_ps, verbose=verbose)
+    frdvols_cumsum_vector, subs, E_array, p_array, R_array, z_array, dE_vector, dp_vector, dR_vector, dz_vector, nfast = jld2toSampleReady(filepath_FI_distr, interp=interp, nE_ps=nE_ps, np_ps=np_ps, nR_ps=nR_ps, nz_ps=nz_ps, slices_of_interest=phase_space_point_of_interest, verbose=verbose)
 elseif fileext_FI=="cdf"
     py"""
     fastion_species = (reaction.split("-"))[1] # Assume second species specified in reaction to be the fast-ion species. For example, in 'p-t' the 't' will be assumed fast-ion. [1] is the second element in Python...
@@ -566,7 +617,7 @@ if distributed # If parallel computating is desired...
                         for i=1:mc_sample_chunk
                             B[:,i] = collect(reshape(Bfield(M,R[i],z[i]),3,1)) # Calculating magnetic field for R,z samples. Need to do this in Julia, not Python, because of need to include poloidal magnetic field
                             ψ_rz = M.psi_rz(R[i],z[i]) # Get the interpolated poloidal flux function at the R,z point
-                            ρ_pol_rz = (ψ_rz-M.psi[1])/(M.psi[end]-M.psi[1]) # The formula for the normalized flux coordinate ρ_pol = (ψ-ψ_axis)/(ψ_edge-ψ_axis)
+                            ρ_pol_rz = sqrt(ψ_rz-M.psi[1])/(M.psi[end]-M.psi[1]) # The formula for the normalized flux coordinate ρ_pol = (ψ-ψ_axis)/(ψ_edge-ψ_axis)
 
                             if fileext_thermal=="jld2"
                                 thermal_temp[i] = thermal_temp_etp(ρ_pol_rz) # Interpolate onto ρ_pol_rz using the data from the .jld2 file
@@ -636,7 +687,7 @@ if distributed # If parallel computating is desired...
                 for i=1:mc_sample_chunk
                     B[:,i] = collect(reshape(Bfield(M,R[i],z[i]),3,1)) # Calculating magnetic field for R,z samples. Need to do this in Julia, not Python, because of need to include poloidal magnetic field
                     ψ_rz = M.psi_rz(R[i],z[i]) # Get the interpolated poloidal flux function at the R,z point
-                    ρ_pol_rz = (ψ_rz-M.psi[1])/(M.psi[end]-M.psi[1]) # The formula for the normalized flux coordinate ρ_pol = (ψ-ψ_axis)/(ψ_edge-ψ_axis)
+                    ρ_pol_rz = sqrt(ψ_rz-M.psi[1])/(M.psi[end]-M.psi[1]) # The formula for the normalized flux coordinate ρ_pol = (ψ-ψ_axis)/(ψ_edge-ψ_axis)
 
                     if fileext_thermal=="jld2"
                         thermal_temp[i] = thermal_temp_etp(ρ_pol_rz) # Interpolate onto ρ_pol_rz using the data from the .jld2 file
@@ -703,7 +754,7 @@ else # ... if you do not use multiple cores, good luck!
             for i=1:mc_sample_chunk
                 B[:,i] = collect(reshape(Bfield(M,R[i],z[i]),3,1)) # Calculating magnetic field for R,z samples. Need to do this in Julia, not Python, because of need to include poloidal magnetic field
                 ψ_rz = M.psi_rz(R[i],z[i]) # Get the interpolated poloidal flux function at the R,z point
-                ρ_pol_rz = (ψ_rz-M.psi[1])/(M.psi[end]-M.psi[1]) # The formula for the normalized flux coordinate ρ_pol = (ψ-ψ_axis)/(ψ_edge-ψ_axis)
+                ρ_pol_rz = sqrt(ψ_rz-M.psi[1])/(M.psi[end]-M.psi[1]) # The formula for the normalized flux coordinate ρ_pol = (ψ-ψ_axis)/(ψ_edge-ψ_axis)
 
                 if fileext_thermal=="jld2"
                     thermal_temp[i] = thermal_temp_etp(ρ_pol_rz) # Interpolate onto ρ_pol_rz using the data from the .jld2 file
@@ -732,16 +783,43 @@ else # ... if you do not use multiple cores, good luck!
     end
 end
 println("Done with sampling!")
+Ed_array = py"Ed_vals" # Extract the measurement bin centers from Python
+## ---------------------------------------------------------------------------------------------
+# Apply instrumental response to the computed signal
+if instrumental_response
+    spec_raw = deepcopy(spec_tot)
+    Ed_array_raw = deepcopy(Ed_array)
+    spec_tot = apply_instrumental_response(spec_raw,Ed_array_raw,instrumental_response_input,instrumental_response_output,instrumental_response_matrix)
+    Ed_array = instrumental_response_output
+end
+
 ## ---------------------------------------------------------------------------------------------
 # Add noise to the signal, if that was specified
 # Make sure there are no negative measurements
 if addNoise
-    spec_tot_with_noise, noise = add_noise(spec_tot,noiseLevel_b; k=noiseLevel_s)
-    spec_tot_with_noise = map(x-> x<0.0 ? 0.0 : x, spec_tot_with_noise)
+    S_clean = deepcopy(spec_tot)
+    spec_tot, noise = add_noise(spec_tot,noiseLevel_b; k=noiseLevel_s)
+    spec_tot = map(x-> x<0.0 ? 0.0 : x, spec_tot)
 end
 ## ---------------------------------------------------------------------------------------------
 verbose && println("Saving results to file... ")
-global filepath_output_orig = folderpath_o*"spec_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full)
+global filepath_output_orig = folderpath_o*"spec_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"
+if !isempty(findall(x-> x!==nothing,phase_space_point_of_interest))
+    const_inds = findall(x-> x!==nothing,phase_space_point_of_interest)
+    if 1 in const_inds
+        filepath_output_orig *= "E"*replace("$(phase_space_point_of_interest[1])","."=>",")*"keV_"
+    end
+    if 2 in const_inds
+        filepath_output_orig *= "p"*replace("$(phase_space_point_of_interest[2])","."=>",")*"_"
+    end
+    if 3 in const_inds
+        filepath_output_orig *= "R"*replace("$(phase_space_point_of_interest[3])","."=>",")*"m_"
+    end
+    if 4 in const_inds
+        filepath_output_orig *= "z"*replace("$(phase_space_point_of_interest[4])","."=>",")*"m_"
+    end
+end
+filepath_output_orig *= diagnostic_name*"_"*pretty2scpok(reaction_full)
 global filepath_output = deepcopy(filepath_output_orig)
 global count = 1
 while isfile(filepath_output*".jld2") # To take care of not overwriting files. Add _(1), _(2) etc
@@ -750,12 +828,16 @@ while isfile(filepath_output*".jld2") # To take care of not overwriting files. A
 end
 global filepath_output = filepath_output*".jld2"
 myfile = jldopen(filepath_output,true,true,false,IOStream)
-write(myfile,"S",spec_tot) # The clean (not noisy) signal
+write(myfile,"S",spec_tot)
+write(myfile,"Ed_array",Ed_array)
+if instrumental_response
+    write(myfile,"S_raw",spec_raw)
+    write(myfile,"Ed_array_raw",Ed_array_raw)
+end
 if addNoise
-    write(myfile,"S_noise",spec_tot_with_noise)
+    write(myfile,"S_clean",S_clean)
     write(myfile,"noise",noise)
 end
-write(myfile,"Ed_array",py"Ed_vals")
 if fileext_FI=="h5" || fileext_FI=="jld2"
     write(myfile,"nfast",nfast)
 else # Must have been .cdf file format for FI distribution

@@ -44,6 +44,7 @@
 # folderpath_o - The path to the folder where the results will be saved - String
 # gyro_samples - The number of points to discretize the gyro-motion for computation of synthetic spectra - Int64
 # iiimax - If specified to be greater than 1, several copies of weight functions will be calculated. For comparison. - Int64
+# iii_average - If set to true, an average of all the copies of weight functions will be computed. Saved without the "_i" suffix. - Bool
 # nE - The number of fast-ion energy grid points in (E,p) space - Int64
 # np - The number of fast-ion p grid points in (E,p) space - Int64
 # p_array - The fast-ion p grid points of your (E,p) grid. If set to 'nothing': np, p_min and p_max must be specified - Vector
@@ -123,7 +124,8 @@ end
     folderpath_o = "../OWCF_results/template/" # Output folder path. Finish with '/'
     folderpath_OWCF = $folderpath_OWCF # Set path to OWCF folder to same as main process (hence the '$')
     gyro_samples = 50 # 50 is the default discretization number for the gyro-motion
-    iiimax = 1 # The script will calculate iiimax number of weight functions. They can then be examined in terms of similarity (to determine MC noise influence etc).
+    iiimax = 1 # The script will calculate iiimax number of weight matrices. They can then be examined in terms of similarity (to determine MC noise influence etc).
+    (iiimax > 1) && (iii_average = false) # If true, the average of all weight matrices will be computed and saved. Without the "_i" suffix.
     nE = 0
     np = 0
     p_array = nothing # Array can be specified manually. Otherwise, leave as 'nothing'

@@ -84,6 +84,7 @@ verbose && println("Loading Julia packages... ")
     using NetCDF # To enable write/open .cdf files
     using Interpolations # To be able to interpolate, if no thermal distribution is specified
     include("misc/species_func.jl") # To convert species labels to particle mass
+    include("misc/temp_n_dens.jl")
     include("misc/availReacts.jl") # To examine fusion reaction and extract thermal and fast-ion species
     include("misc/rewriteReacts.jl") # To rewrite a fusion reaction from the A(b,c)D format to the A-b=c-D format
     pushfirst!(PyVector(pyimport("sys")."path"), "") # To add the forward, transp_dists, transp_output and vcone modules (scripts in current path)
@@ -289,28 +290,29 @@ end
 
 ## ---------------------------------------------------------------------------------------------
 # If available, load instrumental response and process it accordingly
+global instrumental_response # Declare global scope
 instrumental_response = false
-if isfile(instrumental_response_filepath)
-    myfile = jldopen(instrumental_response_filepath,false,false,false,IOStream)
-    instrumental_response_matrix = myfile["response_matrix"]
-    instrumental_response_input = myfile["input"]
-    instrumental_response_output = myfile["output"]
-    close(myfile)
-    instrumental_response = true
-end
-if typeof(instrumental_response_filepath)==Vector{String}
-    matrix_filepath = instrumental_response_filepath[1]
-    input_filepath = instrumental_response_filepath[2]
-    output_filepath = instrumental_response_filepath[3]
+if isfile(instrumental_response_filepath) # Returns true both for Strings and Vector{String}
+    if typeof(instrumental_response_filepath)==String # If it is a single file, it must be a .jld2 file (specified in start file)
+        myfile = jldopen(instrumental_response_filepath,false,false,false,IOStream)
+        instrumental_response_matrix = myfile["response_matrix"]
+        instrumental_response_input = myfile["input"]
+        instrumental_response_output = myfile["output"]
+        close(myfile)
+    else # Otherwise, it must be a Vector{String}
+        matrix_filepath = instrumental_response_filepath[1]
+        input_filepath = instrumental_response_filepath[2]
+        output_filepath = instrumental_response_filepath[3]
 
-    py"""
-        instrumental_response_matrix = np.loadtxt($matrix_filepath)
-        instrumental_response_input = np.loadtxt($input_filepath)
-        instrumental_response_output = np.loadtxt($output_filepath)
-    """
-    instrumental_response_matrix = py"instrumental_response_matrix"
-    instrumental_response_input = py"instrumental_response_input"
-    instrumental_response_output = py"instrumental_response_output"
+        py"""
+            instrumental_response_matrix = np.loadtxt($matrix_filepath)
+            instrumental_response_input = np.loadtxt($input_filepath)
+            instrumental_response_output = np.loadtxt($output_filepath)
+        """
+        instrumental_response_matrix = py"instrumental_response_matrix"
+        instrumental_response_input = py"instrumental_response_input"
+        instrumental_response_output = py"instrumental_response_output"
+    end
     instrumental_response = true
 end
 
@@ -531,42 +533,9 @@ end
 # If there is a specified valid timepoint,
 # and if a TRANSP .cdf file has been specified, but NOT a TRANSP FI .cdf file, 
 # and we are NOT computing analytical orbit weight functions
-if typeof(timepoint)==String && length(split(timepoint,","))==2 && lowercase(fileext_thermal)=="cdf" && !isfile(filepath_FI_cdf) && !analyticalOWs # Remove when fully developed
-    time_array = split(timepoint,",")
-    seconds = parse(Float64,time_array[1])
-    subseconds = parse(Float64,time_array[2])
-    if subseconds<10
-        subseconds = 0.1*subseconds
-    elseif subseconds>=10 && subseconds<100
-        subseconds = 0.01*subseconds
-    elseif subseconds>=100 && subseconds<1000
-        subseconds = 0.001*subseconds
-    elseif subseconds>=1000 && subseconds<10000
-        subseconds = 0.0001*subseconds
-    else # Just assume larger than or equal to 10000 but less than 100000
-        subseconds = 0.00001*subseconds
-    end
-    timepoint_float = seconds + subseconds # XX,0 + 0,YYYY
-
-    time_array_TRANSP = ncread(filepath_thermal_distr,"TIME")
-    idx_min = argmin(abs.(time_array_TRANSP .- timepoint_float)) # Closest TRANSP timepoint to timepoint specified in start file
-    PLFLX_array = ncread(filepath_thermal_distr,"PLFLX")[:,idx_min] # Load poloidal flux data
-    
-    thermal_species_TRANSP = thermalSpecies_OWCFtoTRANSP(thermal_species) # Convert from OWCF convention (e.g. 3he for Helium-3) to TRANSP convention (e.g. HE3 for Helium-3)
-    # LOAD CORRESPONDING TRANSP DATA
-    thermal_dens_TRANSP = ncread(filepath_thermal_distr,"N"*thermal_species_TRANSP)[:,idx_min]
-    thermal_temp_TRANSP = ncread(filepath_thermal_distr,"TI")[:,idx_min]
-
-    PLFLX_axis = PLFLX_array[1]
-    PLFLX_bdry = PLFLX_array[end]
-    rho_array = sqrt.((PLFLX_array .- PLFLX_axis) ./ (PLFLX_bdry - PLFLX_axis)) # Compute the normalized poloidal flux points, rho
-    
-    thermal_dens_TRANSP_itp = Interpolations.interpolate((rho_array,),(1.0e6) .*thermal_dens_TRANSP, Gridded(Linear())) # cm^-3
-    thermal_temp_TRANSP_itp = Interpolations.interpolate((rho_array,),(1.0e-3) .*thermal_temp_TRANSP, Gridded(Linear())) # eV to keV
-    thermal_dens_TRANSP_etp = Interpolations.extrapolate(thermal_dens_TRANSP_itp,0) # Add what happens in extrapolation scenario. 0 means we assume vacuum scrape-off layer (SOL)
-    thermal_temp_TRANSP_etp = Interpolations.extrapolate(thermal_temp_TRANSP_itp,0) # Add what happens in extrapolation scenario. 0 means we assume vacuum scrape-off layer (SOL)
-    thermal_temp = thermal_temp_TRANSP_etp
-    thermal_dens = thermal_dens_TRANSP_etp
+if typeof(timepoint)==String && length(split(timepoint,","))==2 && lowercase(fileext_thermal)=="cdf" && !isfile(filepath_FI_cdf) && !analyticalOWs
+    thermal_temp = getTempProfileFromTRANSP(timepoint, filepath_thermal_distr; verbose=verbose)
+    thermal_dens = getDensProfileFromTRANSP(timepoint, filepath_thermal_distr, thermal_species; verbose=verbose)
 end
 
 # Transfer the thermal_temp and thermal_dens variables to external processes
