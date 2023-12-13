@@ -65,7 +65,7 @@
 # Please note that the diagnostic energy grid will be created as bin centers.
 # That is, the first diagnostic energy grid value will be (Ed_min+Ed_diff/2) and so on.
 
-# Script written by Henrik Järleblad. Last maintained 2023-08-15.
+# Script written by Henrik Järleblad. Last maintained 2023-11-23.
 ################################################################################################
 
 ## ---------------------------------------------------------------------------------------------
@@ -266,27 +266,27 @@ end
 # If available, load instrumental response and process it accordingly
 global instrumental_response # Declare global scope
 instrumental_response = false
-if isfile(instrumental_response_filepath)
-    myfile = jldopen(instrumental_response_filepath,false,false,false,IOStream)
-    instrumental_response_matrix = myfile["response_matrix"]
-    instrumental_response_input = myfile["input"]
-    instrumental_response_output = myfile["output"]
-    close(myfile)
-    instrumental_response = true
-end
-if typeof(instrumental_response_filepath)==Vector{String}
-    matrix_filepath = instrumental_response_filepath[1]
-    input_filepath = instrumental_response_filepath[2]
-    output_filepath = instrumental_response_filepath[3]
+if isfile(instrumental_response_filepath) # Returns true both for Strings and Vector{String}
+    if typeof(instrumental_response_filepath)==String # If it is a single file, it must be a .jld2 file (specified in start file)
+        myfile = jldopen(instrumental_response_filepath,false,false,false,IOStream)
+        instrumental_response_matrix = myfile["response_matrix"]
+        instrumental_response_input = myfile["input"]
+        instrumental_response_output = myfile["output"]
+        close(myfile)
+    else # Otherwise, it must be a Vector{String}
+        matrix_filepath = instrumental_response_filepath[1]
+        input_filepath = instrumental_response_filepath[2]
+        output_filepath = instrumental_response_filepath[3]
 
-    py"""
-        instrumental_response_matrix = np.loadtxt($matrix_filepath)
-        instrumental_response_input = np.loadtxt($input_filepath)
-        instrumental_response_output = np.loadtxt($output_filepath)
-    """
-    instrumental_response_matrix = py"instrumental_response_matrix"
-    instrumental_response_input = py"instrumental_response_input"
-    instrumental_response_output = py"instrumental_response_output"
+        py"""
+            instrumental_response_matrix = np.loadtxt($matrix_filepath)
+            instrumental_response_input = np.loadtxt($input_filepath)
+            instrumental_response_output = np.loadtxt($output_filepath)
+        """
+        instrumental_response_matrix = py"instrumental_response_matrix"
+        instrumental_response_input = py"instrumental_response_input"
+        instrumental_response_output = py"instrumental_response_output"
+    end
     instrumental_response = true
 end
 ## ---------------------------------------------------------------------------------------------
@@ -312,7 +312,7 @@ else
     println("diagnostic_filepath not specified. Spherical emission will be assumed.")
 end
 if instrumental_response
-    println("instrumental_response_filepath specified. Diagnostic response included.")
+    println("Instrumental response filepath: "*instrumental_response_filepath)
 else
     println("instrumental_response_filepath not specified. Diagnostic response not included.")
 end
@@ -361,6 +361,10 @@ else
     println("Upper u bound: $(Ed_max) m/s")
 end
 println("")
+if saveVparaVperpWeights
+    println("Weight functions will be saved in both (E,p) and (vpara,vperp) coordinates.")
+    println("")
+end
 println("Results will be saved to: ")
 if iiimax == 1
     println(folderpath_o*"velWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = analytical2DWs)*"_$(length(range(Ed_min,stop=Ed_max,step=Ed_diff))-1)x$(nE)x$(np).jld2")
@@ -368,6 +372,10 @@ else
     println(folderpath_o*"velWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = analytical2DWs)*"_1.jld2")
     println("... ")
     println(folderpath_o*"velWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = analytical2DWs)*"_$(iiimax).jld2")
+    if iii_average
+        println("---> Average of all files will be computed and saved to: ")
+        println("---> "*folderpath_o*"velWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = analytical2DWs)*".jld2")
+    end
 end
 if debug
     println("")
@@ -378,7 +386,7 @@ println("Please remove previously saved files with the same file name (if any) p
 println("")
 println("If you would like to change any settings, please edit the start_calc2DW_template.jl file or similar.")
 println("")
-println("Written by Henrik Järleblad. Last maintained 2023-08-15.")
+println("Written by Henrik Järleblad. Last maintained 2023-11-23.")
 println("--------------------------------------------------------------------------------------------------")
 println("")
 
@@ -456,7 +464,7 @@ else
         thermal_dens_etp = Interpolations.extrapolate(thermal_dens_itp,0) # Add what happens in extrapolation scenario. 0 means we assume vacuum scrape-off layer (SOL)
         ψ_rz = M(R_of_interest,z_of_interest)
         psi_on_axis, psi_at_bdry = psi_limits(M)
-        ρ_pol_rz = (ψ_rz-psi_on_axis)/(psi_at_bdry-psi_on_axis) # The formula for the normalized flux coordinate ρ_pol = (ψ-ψ_axis)/(ψ_edge-ψ_axis)
+        ρ_pol_rz = sqrt((ψ_rz-psi_on_axis)/(psi_at_bdry-psi_on_axis)) # The formula for the normalized flux coordinate ρ_pol = sqrt((ψ-ψ_axis)/(ψ_edge-ψ_axis))
         thermal_dens = [thermal_dens_etp(ρ_pol_rz)]
     end
 
@@ -464,7 +472,7 @@ else
     if !isfile(filepath_thermal_distr)
         ψ_rz = M(R_of_interest,z_of_interest)
         psi_on_axis, psi_at_bdry = psi_limits(M)
-        ρ_pol_rz = (ψ_rz-psi_on_axis)/(psi_at_bdry-psi_on_axis) # The formula for the normalized flux coordinate ρ_pol = (ψ-ψ_axis)/(ψ_edge-ψ_axis)
+        ρ_pol_rz = sqrt((ψ_rz-psi_on_axis)/(psi_at_bdry-psi_on_axis)) # The formula for the normalized flux coordinate ρ_pol = sqrt((ψ-ψ_axis)/(ψ_edge-ψ_axis))
         thermal_dens = [getAnalyticalDens(thermal_dens_axis,ρ_pol_rz)] # Use the default OWCF density profile
     end
 
@@ -486,7 +494,7 @@ else
         thermal_temp_etp = Interpolations.extrapolate(thermal_temp_itp,0) # Add what happens in extrapolation scenario. 0 means we assume vacuum scrape-off layer (SOL)
         ψ_rz = M(R_of_interest,z_of_interest)
         psi_on_axis, psi_at_bdry = psi_limits(M)
-        ρ_pol_rz = (ψ_rz-psi_on_axis)/(psi_at_bdry-psi_on_axis) # The formula for the normalized flux coordinate ρ_pol = (ψ-ψ_axis)/(ψ_edge-ψ_axis)
+        ρ_pol_rz = sqrt((ψ_rz-psi_on_axis)/(psi_at_bdry-psi_on_axis)) # The formula for the normalized flux coordinate ρ_pol = sqrt((ψ-ψ_axis)/(ψ_edge-ψ_axis))
         thermal_temp = [thermal_temp_etp(ρ_pol_rz)]
     end
 
@@ -494,7 +502,7 @@ else
     if !isfile(filepath_thermal_distr)
         ψ_rz = M(R_of_interest,z_of_interest)
         psi_on_axis, psi_at_bdry = psi_limits(M)
-        ρ_pol_rz = (ψ_rz-psi_on_axis)/(psi_at_bdry-psi_on_axis) # The formula for the normalized flux coordinate ρ_pol = (ψ-ψ_axis)/(ψ_edge-ψ_axis)
+        ρ_pol_rz = sqrt((ψ_rz-psi_on_axis)/(psi_at_bdry-psi_on_axis)) # The formula for the normalized flux coordinate ρ_pol = sqrt((ψ-ψ_axis)/(ψ_edge-ψ_axis))
         thermal_temp = [getAnalyticalDens(thermal_temp_axis,ρ_pol_rz)] # Use the default OWCF temperature profile
     end
 
@@ -514,6 +522,7 @@ B_at_Rz = [B_at_Rz[1], B_at_Rz[2], B_at_Rz[3]] # Re-structure for Python
 B_at_Rz = reshape(B_at_Rz,(length(B_at_Rz),1)) # Re-structure for Python
 @everywhere B_at_Rz = $B_at_Rz
 npoints = length(E_iE_p_ip_array)
+list_o_saved_filepaths = Vector{String}(undef,iiimax) # Create a list to keep track of all saved files (needed for averaging)
 
 # Calculating the orbit weights
 verbose && println("Starting the "*diagnostic_name*" weights calculations... ")
@@ -630,8 +639,10 @@ for iii=1:iiimax
 
     if instrumental_response
         verbose && println("Applying diagnostic response to weight functions... ")
+        Wtot_raw = deepcopy(Wtot) # To be able to save the weight functions without instrumental response as well
         Wtot = apply_instrumental_response(Wtot, Ed_array, instrumental_response_input, instrumental_response_output, instrumental_response_matrix)
         if saveVparaVperpWeights
+            W_vel_raw = deepcopy(W_vel)
             W_vel = apply_instrumental_response(W_vel, Ed_array, instrumental_response_input, instrumental_response_output, instrumental_response_matrix)
         end
     end
@@ -650,6 +661,7 @@ for iii=1:iiimax
             global count += 1 # global scope, to surpress warnings
         end
         global filepath_output = filepath_output*".jld2"
+        list_o_saved_filepaths[iii] = filepath_output # Store a record of the saved file
         myfile_s = jldopen(filepath_output,true,true,false,IOStream)
         write(myfile_s, "W", Wtot)
         write(myfile_s, "E_array", vec(E_array))
@@ -671,10 +683,14 @@ for iii=1:iiimax
             write(myfile_s, "vperp_array", vperp_array)
         end
         if instrumental_response
-            write(myfile_s, "Ed_array_orig", Ed_array_orig)
+            write(myfile_s, "W_raw", Wtot_raw)
+            write(myfile_s, "Ed_array_raw",Ed_array)
             write(myfile_s, "instrumental_response_input", instrumental_response_input)
             write(myfile_s, "instrumental_response_output", instrumental_response_output)
             write(myfile_s, "instrumental_response_matrix", instrumental_response_matrix)
+            if saveVparaVperpWeights
+                write(myfile_s, "W_vel_raw", W_vel_raw)
+            end
         end
         write(myfile_s, "filepath_thermal_distr", filepath_thermal_distr)
         close(myfile_s)
@@ -682,5 +698,95 @@ for iii=1:iiimax
         verbose && println("Saving debugged quantities... ")
         # WRITE WHATEVER CODE TO SAVE THE DEBUGGED QUANTITIES
     end
-end # The end of the iii=1:iiimax for-loop. (to enable computation of several identical orbit weight functions, to post-analyze MC noise influence for example)
+end # The end of the iii=1:iiimax for-loop. (to enable computation of several identical orbit weight matrices, to post-analyze MC noise influence for example)
+if iiimax>1 # If we were supposed to compute more than one weight matrix...
+    if iii_average # If an average of all saved files were supposed to be computed... compute it!
+        verbose && println("Computing average of all weight matrices... ")
+        filepath_first_W = list_o_saved_filepaths[1]
+        myfile = jldopen(filepath_first_W,false,false,false,IOStream)
+        W_total = zeros(size(myfile["W"]))
+        E_array = myfile["E_array"]
+        p_array = myfile["p_array"]
+        Ed_array = myfile["Ed_array"]
+        reaction_full = myfile["reaction_full"]
+        R = myfile["R"]
+        z = myfile["z"]
+        if analytical2DWs
+            analytical2DWs = myfile["analytical2DWs"]
+        end
+        if saveVparaVperpWeights
+            W_vel_total = zeros(size(myfile["W_vel"]))
+            vpara_array = myfile["vpara_array"]
+            vperp_array = myfile["vperp_array"]
+        end
+        if instrumental_response
+            W_raw_total = zeros(size(myfile["W_raw"]))
+            Ed_array_raw = myfile["Ed_array_raw"]
+            instrumental_response_input = myfile["instrumental_response_input"]
+            instrumental_response_output = myfile["instrumental_response_output"]
+            instrumental_response_matrix = myfile["instrumental_response_matrix"]
+            if saveVparaVperpWeights
+                W_vel_raw_total = zeros(size(myfile["W_vel_raw"]))
+            end
+        end
+        filepath_thermal_distr = myfile["filepath_thermal_distr"]
+        close(myfile)
+
+        for filepath in list_o_saved_filepaths
+            local myfile = jldopen(filepath,false,false,false,IOStream)
+            W_total[:,:,:] += myfile["W"]
+            if saveVparaVperpWeights
+                W_vel_total[:,:,:] += myfile["W_vel"]
+            end
+            if instrumental_response
+                W_raw_total[:,:,:] += myfile["W_raw"]
+                if saveVparaVperpWeights
+                    W_vel_raw_total[:,:,:] += myfile["W_vel_raw"]
+                end
+            end
+            close(myfile)
+        end
+
+        W_total ./= length(list_o_saved_filepaths)
+        if saveVparaVperpWeights
+            W_vel_total ./= length(list_o_saved_filepaths)
+        end
+        if instrumental_response
+            W_raw_total ./= length(list_o_saved_filepaths)
+            if saveVparaVperpWeights
+                W_vel_raw_total ./= length(list_o_saved_filepaths)
+            end
+        end
+
+        verbose && println("Success! Saving average in separate file... ")
+        myfile = jldopen(folderpath_o*"velWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = analytical2DWs)*".jld2",true,true,false,IOStream)
+        write(myfile,"W",W_total)
+        write(myfile,"E_array",E_array)
+        write(myfile,"p_array",p_array)
+        write(myfile,"Ed_array",Ed_array)
+        write(myfile,"reaction_full",reaction_full)
+        write(myfile,"R",R)
+        write(myfile,"z",z)
+        if analytical2DWs
+            write(myfile,"analytical2DWs",analytical2DWs)
+        end
+        if saveVparaVperpWeights
+            write(myfile,"W_vel",W_vel_total)
+            write(myfile,"vpara_array",vpara_array)
+            write(myfile,"vperp_array",vperp_array)
+        end
+        if instrumental_response
+            write(myfile,"W_raw",W_raw_total)
+            write(myfile,"Ed_array_raw",Ed_array_raw)
+            write(myfile,"instrumental_response_input",instrumental_response_input)
+            write(myfile,"instrumental_response_output",instrumental_response_output)
+            write(myfile,"instrumental_response_matrix",instrumental_response_matrix)
+            if saveVparaVperpWeights
+                write(myfile,"W_vel_raw",W_vel_raw_total)
+            end
+        end
+        write(myfile,"filepath_thermal_distr",filepath_thermal_distr)
+        close(myfile)
+    end
+end
 println("------ Done! ------")

@@ -105,7 +105,7 @@ class Forward(object):
             if len(i_points) == 0:
                 #print('No points inside viewing cone!')
                 return np.zeros(len(Ed_bins)-1)
-
+            
             E_vc = E[i_points] # Extract energy points within diagnostic viewing cone
             p_vc = p[i_points] # Extract pitch points within diagnostic viewing cone
             R_vc = R[i_points] # Extract R points within diagnostic viewing cone

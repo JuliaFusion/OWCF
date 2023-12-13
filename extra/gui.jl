@@ -246,7 +246,7 @@ function plot_F_Ep(F_EpRz::Array{Float64,4}, energy::Array{Float64,1}, pitch::Ar
     F_R = F_EpRz .* reshape(R,(1,1,length(R),1)) # Multiply by R in the R-dimension, to account for toroidal symmetry
     F_Ep = dropdims(sum(F_R.*dR4D.*dZ4D, dims=(3,4))*(2*pi), dims=(3,4)) # Integrate out R,z
 
-    Plots.heatmap(energy,pitch, fEp', xlabel="Energy [keV]", ylabel="Pitch [-]", xaxis=xaxis, fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), kwargs... )
+    Plots.heatmap(energy,pitch, F_Ep', xlabel="Energy [keV]", ylabel="Pitch [-]", xaxis=xaxis, fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), kwargs... )
 end
 
 """
@@ -292,7 +292,7 @@ function plot_F_Rz(F_EpRz::Array{Float64,4}, energy::Array{Float64,1}, pitch::Ar
 
     verbose && println("Plotting... ")
     Plots.heatmap(R,z, F_Rz', xlabel="R [m]", ylabel="z[m]", aspect_ratio=:equal,fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]))
-    if !(wall==nothing)
+    if !(wall===nothing)
         Plots.plot!(wall.r,wall.z, color=:black, legend=false)
     end
 end
@@ -317,7 +317,7 @@ function plot_F_Rz(filepath_distr::String; verbose::Bool=false, filepath_equil::
         error("Unknown file extension for fast-ion distribution file. Please input a .h5 or .jld2 file.")
     end
 
-    if !(filepath_equil==nothing)
+    if !(filepath_equil===nothing)
         verbose && println("Loading tokamak equilibrium, extracting wall info... ")
         if ((split(filepath_equil,"."))[end] == "eqdsk") || ((split(filepath_equil,"."))[end] == "geqdsk")
             M, wall = read_geqdsk(filepath_equil,clockwise_phi=clockwise_phi) # Assume counter-clockwise phi-direction
@@ -689,7 +689,7 @@ from a top view of the tokamak, otherwise show the animation from a poloidal cro
 If 'save_anim' is set to true, save the animation after plotting.
 """
 function plot_orbit_movie(M::AbstractEquilibrium, o::Orbit; wall::Union{Nothing,Boundary{T}}=nothing, top_view::Bool=true, verbose::Bool=false, anim_numOtau_p = 3, save_anim::Bool=false) where {T}
-    if !(wall==nothing)
+    if !(wall===nothing)
         verbose && println("Creating tokamak wall data for topview plot... ")
         R_hfs = minimum(wall.r) # R-coord of high-field side wall
         R_lfs = maximum(wall.r) # R-coord of low-field side wall
@@ -726,7 +726,7 @@ function plot_orbit_movie(M::AbstractEquilibrium, o::Orbit; wall::Union{Nothing,
         error("Something's gone wrong!!! Orbit class unknown!")
     end
 
-    if !(wall==nothing)
+    if !(wall===nothing)
         verbose && println("Computing magnetic flux surfaces for plotting... ")
         # Define magnetic flux (R,z) grid range
         flux_r = range(minimum(wall.r),stop=maximum(wall.r),length=33)
