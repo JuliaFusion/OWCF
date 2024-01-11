@@ -142,7 +142,9 @@ end
     apply_instrumental_response(Q, Ed_array, instrumental_response_input, instrumental_response_output, instrumental_response_matrix)
     apply_instrumental_response(-||-; lo=nothing, hi=nothing, instrumental_response=true)
 
-Apply the instrumental response given by instrumental_response_matrix to each column of Q.
+Apply the instrumental response given by instrumental_response_matrix to each column of Q. Assume the diagnostic spectrum is accessed 
+via the first dimension of Q. That is, Q[1,...] corresponds to the first weight function, Q[2,...] corresponds to the second weight function
+and so on.
 """
 function apply_instrumental_response(Q::Array{Float64,2}, Ed_array::AbstractVector, instrumental_response_input::AbstractVector, instrumental_response_output::AbstractVector, instrumental_response_matrix::AbstractMatrix; lo::Union{Int64,Nothing}=nothing, hi::Union{Int64,Nothing}=nothing)
     if isnothing(lo)
@@ -173,7 +175,9 @@ end
     apply_instrumental_response(Q, Ed_array, instrumental_response_input, instrumental_response_output, instrumental_response_matrix)
     apply_instrumental_response(-||-; lo=nothing, hi=nothing, instrumental_response=true)
 
-Apply the instrumental response given by instrumental_response_matrix to each matrix of Q.
+Apply the instrumental response given by instrumental_response_matrix to each matrix of Q. Assume the diagnostic spectrum is accessed 
+via the first dimension of Q. That is, Q[1,...] corresponds to the first weight function, Q[2,...] corresponds to the second weight function
+and so on.
 """
 function apply_instrumental_response(Q::Array{Float64,3}, Ed_array::AbstractVector, instrumental_response_input::AbstractVector, instrumental_response_output::AbstractVector, instrumental_response_matrix::AbstractMatrix; lo::Union{Int64,Nothing}=nothing, hi::Union{Int64,Nothing}=nothing)
     if isnothing(lo)
@@ -204,7 +208,9 @@ end
     apply_instrumental_response(Q, Ed_array, instrumental_response_input, instrumental_response_output, instrumental_response_matrix)
     apply_instrumental_response(-||-; lo=nothing, hi=nothing, instrumental_response=true)
 
-Apply the instrumental response given by instrumental_response_matrix to each 3D array of Q.
+Apply the instrumental response given by instrumental_response_matrix to each 3D array of Q. Assume the diagnostic spectrum is accessed 
+via the first dimension of Q. That is, Q[1,...] corresponds to the first weight function, Q[2,...] corresponds to the second weight function
+and so on.
 """
 function apply_instrumental_response(Q::Array{Float64,4}, Ed_array::AbstractVector, instrumental_response_input::AbstractVector, instrumental_response_output::AbstractVector, instrumental_response_matrix::AbstractMatrix; lo::Union{Int64,Nothing}=nothing, hi::Union{Int64,Nothing}=nothing)
     if isnothing(lo)
@@ -236,7 +242,9 @@ end
     apply_instrumental_response(Q, Ed_array, instrumental_response_input, instrumental_response_output, instrumental_response_matrix)
     apply_instrumental_response(-||-; lo=nothing, hi=nothing)
 
-Apply the instrumental response given by instrumental_response_matrix to each 4D array of Q.
+Apply the instrumental response given by instrumental_response_matrix to each 4D array of Q. Assume the diagnostic spectrum is accessed 
+via the first dimension of Q. That is, Q[1,...] corresponds to the first weight function, Q[2,...] corresponds to the second weight function
+and so on.
 """
 function apply_instrumental_response(Q::Array{Float64,5}, Ed_array::AbstractVector, instrumental_response_input::AbstractVector, instrumental_response_output::AbstractVector, instrumental_response_matrix::AbstractMatrix; lo::Union{Int64,Nothing}=nothing, hi::Union{Int64,Nothing}=nothing)
     if isnothing(lo)
@@ -2558,7 +2566,7 @@ Transform a 2D (E,p) quantity Q into (v_para,v_perp) space. If needJac, assume a
 If isTopoMap, assume Q is a topological map, implying special care is needed for successful transform.
 PLEASE NOTE! E_array MUST be given in keV.
 """
-function Ep2VparaVperp(E_array::Vector, p_array::Vector, Q::Matrix{Float64}; my_gcp::AbstractParticle{T}=GCDeuteron(0.0,0.0,0.0,0.0), needJac::Bool=false, isTopoMap::Bool=false, verbose::Bool=false) where {T}
+function Ep2VparaVperp(E_array::Vector, p_array::Vector, Q::Matrix{Float64}; my_gcp::AbstractParticle{T}=GCDeuteron(0.0,0.0,0.0,0.0), needJac::Bool=false, isTopoMap::Bool=false, verbose::Bool=false, returnAbscissas::Bool=false) where {T}
     keV = 1000*(GuidingCenterOrbits.e0)
     min_keV_E_array = minimum(keV .*E_array)
     max_keV_E_array = maximum(keV .*E_array)
@@ -2583,7 +2591,7 @@ function Ep2VparaVperp(E_array::Vector, p_array::Vector, Q::Matrix{Float64}; my_
         ind += 1
     end
 
-    brutetree = BruteTree(hcat(E_rep,p_rep)')
+    #brutetree = BruteTree(hcat(E_rep,p_rep)')
     for (ivpara, vpara) in enumerate(vpara_array), (ivperp, vperp) in enumerate(vperp_array)
         v = sqrt(vpara^2 + vperp^2)
         Eq = ((my_gcp.m)*(GuidingCenterOrbits.c0)^2)*(sqrt(1/(1-(v/(GuidingCenterOrbits.c0))^(2)))-1) # Relativistic energy
@@ -2612,5 +2620,9 @@ function Ep2VparaVperp(E_array::Vector, p_array::Vector, Q::Matrix{Float64}; my_
         Q_VEL[ivpara,ivperp] = jac * interp_value # Including Jacobian
     end
 
-    return vpara_array, vperp_array, Q_VEL
+    if returnAbscissas
+        return vpara_array, vperp_array, Q_VEL
+    else
+        return Q_VEL
+    end
 end
