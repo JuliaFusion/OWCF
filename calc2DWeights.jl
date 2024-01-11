@@ -11,12 +11,15 @@
 # The DRESS code is written in Python and calc2DWeights.jl utilizes the DRESS code via the Julia-Python
 # interface package PyCall.jl
 #
-# The calcOrbWeights.jl script computes weight functions for an equidistant, rectangular grid 
+# The calc2DWeights.jl script computes weight functions for an equidistant, rectangular grid 
 # in (E,p) space. Irregular/non-equidistant grid points are currently not supported.
 #
 # The (R,z) point of interest for the weights is chosen in the input file as R_of_interest and 
 # z_of_interest. If set to :r_mag and :z_mag, the magnetic axis will be chosen as the point of 
 # interest.
+#
+# An instrumental response function can be specified in the start file. The weight functions will
+# then be saved both with and without instrumental response. Please see list of outputs below for further info.
 #
 ### For the thermal species distribution (filepath_thermal_distr), you have three options.
 ## First, you can specify a TRANSP shot .cdf file (for example '94701V01.cdf'). The thermal
@@ -60,12 +63,20 @@
 #   W_vel - The 2D weights but in (v_para,v_perp). Dimensions are (nEd, nvpara, nvperp) - Array{Float64,3}
 #   vpara_array - The fast-ion vpara grid array used for (v_para, v_perp) space - Array{Float64,1}
 #   vperp_array - The fast-ion vpara grid array used for (v_para, v_perp) space - Array{Float64,1}
+# If an instrumental response function has been specified in the start file, the output file will also contain
+#   W_raw - The computed (E,p) weights, without instrumental response. Dimensions are same as W - Array{Float64,3}
+#   Ed_array_raw - The diagnostic bin centers, if there was no instrumental response - Array{Float64,1}
+#   instrumental_response_input - The input grid points for the instrumental response model - Array{Float64,1}
+#   instrumental_response_output - The output grid points for the instrumental response model - Array{Float64,1}
+#   instrumental_response_matrix - The instrumental response matrix, i.e. the model - Matrix{Float64}
+# If, in addition, saveVparaVperpWeights was also set to true, the output file will also contain 
+#   W_vel_raw - The 2D weights but in (vpara,vperp), without instrumental response. Dimensions are same as W_vel - Array{Float64,3}
 
 ### Other
 # Please note that the diagnostic energy grid will be created as bin centers.
 # That is, the first diagnostic energy grid value will be (Ed_min+Ed_diff/2) and so on.
 
-# Script written by Henrik Järleblad. Last maintained 2023-11-23.
+# Script written by Henrik Järleblad. Last maintained 2023-12-18.
 ################################################################################################
 
 ## ---------------------------------------------------------------------------------------------
@@ -386,7 +397,7 @@ println("Please remove previously saved files with the same file name (if any) p
 println("")
 println("If you would like to change any settings, please edit the start_calc2DW_template.jl file or similar.")
 println("")
-println("Written by Henrik Järleblad. Last maintained 2023-11-23.")
+println("Written by Henrik Järleblad. Last maintained 2023-11-18.")
 println("--------------------------------------------------------------------------------------------------")
 println("")
 
@@ -524,7 +535,7 @@ B_at_Rz = reshape(B_at_Rz,(length(B_at_Rz),1)) # Re-structure for Python
 npoints = length(E_iE_p_ip_array)
 list_o_saved_filepaths = Vector{String}(undef,iiimax) # Create a list to keep track of all saved files (needed for averaging)
 
-# Calculating the orbit weights
+# Calculating the weights
 verbose && println("Starting the "*diagnostic_name*" weights calculations... ")
 for iii=1:iiimax
     verbose && println("iii: $(iii)")
