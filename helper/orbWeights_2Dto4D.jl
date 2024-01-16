@@ -152,6 +152,7 @@ else
     # Again, this code is not efficient, but it's ok thanks to assumed small array lengths
     Edi_array = []
     for Ed_energy in Ed_energies
+        global Edi # Declare that you are talking about the global Edi variable
         Ed_energy_array = Ed_energy .* ones(size(Ed_array))
         Edi = findmin(abs.(Ed_energy_array-Ed_array))[2] # Find closest value to Ed_energy in Ed_array
 

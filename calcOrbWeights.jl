@@ -315,6 +315,7 @@ if isfile(instrumental_response_filepath) # Returns true both for Strings and Ve
     end
     instrumental_response = true
 end
+@everywhere instrumental_response = $instrumental_response
 
 ## ---------------------------------------------------------------------------------------------
 # Printing script info and inputs
@@ -505,6 +506,7 @@ verbose && println("Setting all Python variables and structures on all distribut
     """
 end
 Ed_array = vec(py"Ed_vals")
+@everywhere Ed_array = $Ed_array
 
 ## ---------------------------------------------------------------------------------------------
 # If a .jld2 file has been specified for the thermal species distribution, we will need interpolation objects
@@ -546,6 +548,9 @@ end
 # Calculating the orbit weights
 verbose && println("Starting the "*diagnostic_name*" weights calculations... ")
 for iii=1:iiimax
+    global instrumental_response
+    global instrumental_response_matrix
+    global Ed_array
     verbose && println("iii: $(iii)")
     if distributed && !debug # If parallel computating is desired (and !debug)...
         if visualizeProgress # if you want the progress to be visualized...
