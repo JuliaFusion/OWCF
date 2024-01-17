@@ -147,7 +147,7 @@ close(myfile)
 # Mapping topological map to (E,μ, Pϕ; σ)
 if enable_COM && !(isfile(filepath_tm_COM))
     verbose && println(">>>>>> Mapping topological map from (E,pm,Rm) to (E,μ,Pϕ;σ) <<<<<<... ")
-    topoMap_COM, E_array, μ_matrix, Pϕ_matrix = os2COM(M, topoMap, vec(E_array), pm_array, Rm_array, FI_species; nμ=2*length(pm_array), nPϕ=2*length(Rm_array), isTopoMap=true, verbose=verbose)
+    topoMap_COM, E_array, μ_matrix, Pϕ_matrix = os2COM(M, topoMap, Vector(E_array), Vector(pm_array), Vector(Rm_array), FI_species; nμ=2*length(pm_array), nPϕ=2*length(Rm_array), isTopoMap=true, verbose=verbose)
 elseif enable_COM && isfile(filepath_tm_COM)
     verbose && println("Loading topological map in (E,mu,Pphi;sigma) coordinates from filepath_tm_COM... ")
     myfile = jldopen(filepath_tm_COM,false,false,false,IOStream)
@@ -192,8 +192,18 @@ if enable_COM && !(isfile(filepath_tm_COM))
     verbose && println("Saving topological map in (E,μ,Pϕ;σ) format... ")
     nmu = size(μ_matrix,2)
     nPphi = size(Pϕ_matrix,2)
-    filepath_tm_COM_new = folderpath_OWCF*"orbitsWebApp_COM_data_$(length(E_array))x$(nmu)x$(nPphi)x2.jld2"
-    myfile = jldopen(filepath_tm_COM_new,true,true,false,IOStream)
+    ### CONTINUE CODING HERE!!!
+    filepath_output_orig = folderpath_OWCF*"orbitsWebApp_COM_data_$(length(E_array))x$(nmu)x$(nPphi)x2"
+    global filepath_output = deepcopy(filepath_output_orig)
+    global count = 1
+    while isfile(filepath_output*".jld2") # To take care of not overwriting files. Add _(1), _(2) etc
+        global filepath_output
+        global count
+        filepath_output = filepath_output_orig*"_($(Int64(count)))"
+        count += 1 # global scope, to surpress warnings
+    end
+    filepath_output = filepath_output*".jld2"
+    myfile = jldopen(filepath_output,true,true,false,IOStream)
     write(myfile,"topoMap",topoMap_COM)
     write(myfile,"E_array",E_array)
     write(myfile,"mu_matrix_topoMap", μ_matrix)
@@ -208,8 +218,8 @@ if enable_COM && !(isfile(filepath_tm_COM))
         write(myfile,"Pphi_matrix_torTransTimes",Pϕ_matrix_tor)
     end
     close(myfile)
-    verbose && println("----> NEXT TIME orbitsWebApp.jl IS RUN WITH THE SAME INPUTS, set the 'filepath_tm_COM' input variable to "*filepath_tm_COM_new*", to avoid having to re-do the (E,pm,Rm) -> (E,μ,Pϕ;σ) mapping!")
-    verbose && println("----> PLEASE DELETE "*filepath_tm_COM_new*" MANUALLY IF NOT NEEDED.")
+    verbose && println("----> NEXT TIME orbitsWebApp.jl IS RUN WITH THE SAME INPUTS, set the 'filepath_tm_COM' input variable to "*filepath_output*", to avoid having to re-do the (E,pm,Rm) -> (E,μ,Pϕ;σ) mapping!")
+    verbose && println("----> PLEASE DELETE "*filepath_output*" MANUALLY IF NOT NEEDED.")
 end
 
 ## --------------------------------------------------------------------------
