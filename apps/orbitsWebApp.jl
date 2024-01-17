@@ -107,6 +107,7 @@ using Plots
 using FileIO
 using Mux
 using WebIO
+using Dates
 include(folderpath_OWCF*"misc/species_func.jl")
 include(folderpath_OWCF*"extra/dependencies.jl")
 
@@ -192,14 +193,15 @@ if enable_COM && !(isfile(filepath_tm_COM))
     verbose && println("Saving topological map in (E,μ,Pϕ;σ) format... ")
     nmu = size(μ_matrix,2)
     nPphi = size(Pϕ_matrix,2)
-    filepath_output_orig = folderpath_OWCF*"orbitsWebApp_COM_data_$(length(E_array))x$(nmu)x$(nPphi)x2"
+    date_and_time = split("$(Dates.now())","T")[1]*"at"*split("$(Dates.now())","T")[2][1:5]
+    filepath_output_orig = folderpath_OWCF*"orbitsWebApp_COM_data_$(length(E_array))x$(nmu)x$(nPphi)x2_"*date_and_time
     global filepath_output = deepcopy(filepath_output_orig)
-    global count = 1
+    global C = 1
     while isfile(filepath_output*".jld2") # To take care of not overwriting files. Add _(1), _(2) etc
         global filepath_output
-        global count
-        filepath_output = filepath_output_orig*"_($(Int64(count)))"
-        count += 1 # global scope, to surpress warnings
+        global C
+        filepath_output = filepath_output_orig*"_($(Int64(C)))"
+        C += 1 # global scope, to surpress warnings
     end
     filepath_output = filepath_output*".jld2"
     myfile = jldopen(filepath_output,true,true,false,IOStream)
