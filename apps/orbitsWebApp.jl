@@ -192,7 +192,6 @@ if enable_COM && !(isfile(filepath_tm_COM))
     verbose && println("Saving topological map in (E,μ,Pϕ;σ) format... ")
     nmu = size(μ_matrix,2)
     nPphi = size(Pϕ_matrix,2)
-    ### CONTINUE CODING HERE!!!
     filepath_output_orig = folderpath_OWCF*"orbitsWebApp_COM_data_$(length(E_array))x$(nmu)x$(nPphi)x2"
     global filepath_output = deepcopy(filepath_output_orig)
     global count = 1
