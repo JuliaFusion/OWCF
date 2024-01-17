@@ -64,20 +64,20 @@ Pkg.activate(".")
 
 ## --------------------------------------------------------------------------
 # Required inputs
-B0 = 11.08 # Magnetic field on-axis. Tesla
-R0 = 4.55 # Major radius position of magnetic axis. Meters
-ϵ = 1.2/R0 # Inverse aspect ratio
-δ = -0.5 # Triangularity
-κ = 1.4 # Plasma elongation
-α = -0.3 # Constant relating beta regime. This must be chosen freely. -0.155 works for ITER and results in a β-value of 0.05
-qstar = 2.6 # Kink safety factor
+B0 = 1.6 # Magnetic field on-axis. Tesla
+R0 = 0.894 # Major radius position of magnetic axis. Meters
+ϵ = 0.274/R0 # Inverse aspect ratio
+δ = 0.49 # Triangularity
+κ = 1.8 # Plasma elongation
+α = -2.4 # Constant relating beta regime. This must be chosen freely. -0.155 works for ITER and results in a β-value of 0.05
+qstar = 3.5 # Kink safety factor
 filepath_wall = ""
 folderpath_o = ""
 verbose = true
 
 # Optional inputs
-B0_dir = 1
-Ip_dir = 1
+B0_dir = -1
+Ip_dir = -1
 diverted = true
 
 ## --------------------------------------------------------------------------
