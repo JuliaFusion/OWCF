@@ -80,6 +80,7 @@ function thermalSpecies_OWCFtoTRANSP(species::String)
     elseif lowercase(species)=="alpha"
         return "HE4"
     else
-        error("Unknown input species. Please correct and re-try")
+        @warn "Did not recognize particle species. Output equal to input."
+        return species # If unknown, return input itself but give a warning
     end
 end
