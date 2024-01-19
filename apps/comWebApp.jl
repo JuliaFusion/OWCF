@@ -134,7 +134,7 @@ function app(req)
         B_matrix = sqrt.(BR.^2 + Bϕ.^2 + Bz.^2)
 
         Pϕ_matrix = Pϕ .* ones(size(B_matrix))
-        E_matrix = (E*1000*q) .* ones(size(B_matrix)) # 1000*q is to convert from keV to Joule
+        E_matrix = (E*1000*(GuidingCenterOrbits.e0)) .* ones(size(B_matrix)) # 1000*q is to convert from keV to Joule
         print("Extrema of B_matrix: "); verbose && println(extrema(B_matrix))
         print("Extrema of Ψ_matrix: "); verbose && println(extrema(Ψ_matrix))
         μ_matrix = map(μ_func, E_matrix, B_matrix, Pϕ_matrix, Ψ_matrix, RBϕ_matrix)
@@ -149,8 +149,8 @@ function app(req)
         for li=1:length(l)
             ll = l[li]
             Rll, zll = Contour.coordinates(ll)
-            closed_curve_measure = sqrt((Rll[end]-Rll[1])^2  +(zll[end]-zll[1])^2  )
-            closed_curve_ref = sqrt((Rll[end]-Rll[end-1])^2  +(zll[end]-zll[end-1])^2  )
+            closed_curve_measure = sqrt((Rll[end]-Rll[1])^2  +(zll[end]-zll[1])^2)
+            closed_curve_ref = sqrt((Rll[end]-Rll[end-1])^2  +(zll[end]-zll[end-1])^2)
             if isapprox(closed_curve_measure, closed_curve_ref, atol=1e-1)
                 Rmi = argmax(Rll)
                 Rm = Rll[Rmi]

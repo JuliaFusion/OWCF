@@ -830,7 +830,7 @@ end
 
 Please see documentation for other versions of plot_orbit_movie().
 """
-function plot_orbit_movie(M::AbstractEquilibrium, myEPRc::EPRCoordinate; wall::Union{Boundary{T},Nothing}=nothing, extra_kw_args=Dict(:toa => true, :limit_phi => true, :maxiter => 0), verbose=false, kwargs...) where {T}
+function plot_orbit_movie(M::AbstractEquilibrium, myEPRc::EPRCoordinate; wall::Union{Boundary{T},Nothing}=nothing, extra_kw_args=Dict(:toa => true, :limit_phi => true, :max_tries => 0), verbose=false, kwargs...) where {T}
     verbose && println("Computing orbit from (E,pm,Rm) coordinate... ")
     o = get_orbit(M,myEPRc; wall=wall, interp_dt=1.0e-10, max_length=500, extra_kw_args...) # interp_dt is set to ridiculously small value, to ensure orbit path length of 500
     plot_orbit_movie(M, o; wall=wall, verbose=verbose, kwargs... )
