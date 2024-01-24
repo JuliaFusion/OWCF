@@ -99,8 +99,10 @@ verbose && println("--- You can access the orbitWebApp via an internet web brows
 verbose && println("--- When 'Task (runnable)...' has appeared, please visit the website localhost:$(port) ---")
 verbose && println("--- Remember: It might take a minute or two to load the webpage. Please be patient. ---")
 function app(req)
-    @manipulate for tokamak_wall = Dict("on" => true, "off" => false), E=5.0, pm=0.5, Rm=(maximum(wall.r)+magnetic_axis(M)[1])/2, i=1:1:500, include_anim = Dict("on" => true, "off" => false), save_plots = Dict("on" => true, "off" => false)
-
+    @manipulate for tokamak_wall = Dict("on" => true, "off" => false), E=5.0, pm=0.5, Rm=(maximum(wall.r)+magnetic_axis(M)[1])/2, i=collect(1:1:500), include_anim = Dict("on" => true, "off" => false), save_plots = Dict("on" => true, "off" => false)
+        if i==1 # Stupid fix to a stupid bux
+            i=2
+        end
         EPRc = EPRCoordinate(M, E, pm, Rm, amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species))
         o = get_orbit(M,EPRc; wall=wall, interp_dt=1.0e-10, max_length=500, extra_kw_args...) # interp_dt is set to ridiculously small value, to ensure orbit path length of 500
         
