@@ -381,6 +381,12 @@ else
     println("instrumental_response_filepath not specified. Diagnostic response not included.")
 end
 println("")
+if include_flr_effects
+    println("---> Finite Larmor radius (FLR) effects included? Yes!")
+else
+    println("---> Finite Larmor radius (FLR) effects included? No.")
+end
+println("")
 println("Fast-ion distribution file specified: "*filepath_FI_distr)
 println("Timepoint: "*timepoint*" seconds")
 if interp
@@ -639,7 +645,7 @@ if distributed # If parallel computating is desired...
 
                     # Compute the spectra from the E,p,R,z MC sample
                     py"""
-                    spec_i = forwardmodel.calc($E, $p, $R, $z, $w, thermal_dist, Ed_bins, $B, n_repeat=50, reaction=reaction, bulk_temp=$thermal_temp, bulk_dens=$thermal_dens)
+                    spec_i = forwardmodel.calc($E, $p, $R, $z, $w, thermal_dist, Ed_bins, $B, n_repeat=50, reaction=reaction, bulk_temp=$thermal_temp, bulk_dens=$thermal_dens, flr=$include_flr_effects)
                     """
 
                     put!(channel, true) # Update the progress bar
@@ -709,7 +715,7 @@ if distributed # If parallel computating is desired...
 
             # Compute the spectra from the E,p,R,z MC sample
             py"""
-            spec_i = forwardmodel.calc($E, $p, $R, $z, $w, thermal_dist, Ed_bins, $B, n_repeat=50, reaction=reaction, bulk_temp=$thermal_temp, bulk_dens=$thermal_dens)
+            spec_i = forwardmodel.calc($E, $p, $R, $z, $w, thermal_dist, Ed_bins, $B, n_repeat=50, reaction=reaction, bulk_temp=$thermal_temp, bulk_dens=$thermal_dens, flr=$include_flr_effects)
             """
             spec_i = vec(py"spec_i") # Convert from Python to Julia (and vectorize, just in case)
             spec_i # Declare this spectrum to be added to the parallel computing reduction (@distributed (+))
@@ -776,7 +782,7 @@ else # ... if you do not use multiple cores, good luck!
 
         # Compute the spectra from the E,p,R,z MC sample
         py"""
-        spec_tot = forwardmodel.calc($E, $p, $R, $z, $w, thermal_dist, Ed_bins, $B, n_repeat=50, reaction=reaction, bulk_temp=$thermal_temp, bulk_dens=$thermal_dens)
+        spec_tot = forwardmodel.calc($E, $p, $R, $z, $w, thermal_dist, Ed_bins, $B, n_repeat=50, reaction=reaction, bulk_temp=$thermal_temp, bulk_dens=$thermal_dens, flr=$include_flr_effects)
         """
 
         global spec_tot .+= vec(py"spec_tot") # Convert from Python to Julia, vectorize and add spectrum sample to total spectrum
@@ -845,6 +851,9 @@ else # Must have been .cdf file format for FI distribution
 end
 if calcProjVel
     write(myfile,"calcProjVel",calcProjVel)
+end
+if include_flr_effects
+    write(myfile,"include_flr_effects",include_flr_effects)
 end
 close(myfile)
 

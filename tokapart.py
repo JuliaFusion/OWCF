@@ -135,7 +135,7 @@ def get_Larmor_radius(v_perp, B, Z, m):
     'v_perp' and 'B' can be length-N arrays with the relevant magnitudes.
     Alternatively, B could also be a (3,N) array with vector components.
 
-    'Z' and 'm' are the atomic number and mass (keV/c**2) of the particle(s).
+    'Z' and 'm' are the atomic charge number and mass (keV/c**2) of the particle(s).
     """
 
     B = np.atleast_2d(B)
@@ -150,7 +150,7 @@ def get_Larmor_radius(v_perp, B, Z, m):
     return abs(r_L)
 
 
-def add_gyration(E, p, m, B, theta_g=None, flr=False, Z=None, Rg=None, Zg=None):
+def add_gyration(E, p, m, B, theta_g=None, flr=False, Z=None, Rg=None, zg=None):
     """
     Calculate the cylindrical velocity vector of a particle in a tokamak.
     'theta_g' is the gyro angle; if 'None' it is sampled randomly from [0,2*pi).
@@ -160,8 +160,8 @@ def add_gyration(E, p, m, B, theta_g=None, flr=False, Z=None, Rg=None, Zg=None):
     'B' is the magnetic field vector at the gyrocenter of the particle (T).
 
     If 'flr' = True, the function also returns the position of the particle
-    (cylindrical coordinates). In this case, the gyrocenter position ('Rg','Zg')
-    needs to be provided (in meters), as well as the atomic mass number 'Z'.
+    (cylindrical coordinates). In this case, the gyrocenter position ('Rg','zg')
+    needs to be provided (in meters), as well as the atomic charge number 'Z'.
 
     Vectorized input works if 'B' is given as a (3,N) array and all other
     input are length-N arrays (or scalars).
@@ -188,12 +188,12 @@ def add_gyration(E, p, m, B, theta_g=None, flr=False, Z=None, Rg=None, Zg=None):
         # Larmor radius
         r_L = get_Larmor_radius(v_perp, B, Z, m)
 
-        # The gyro-center is at (Rg,phi_g,Zg). Actual position should be
+        # The gyro-center is at (Rg,phi_g,zg). Actual position should be
         # displaced by one Larmor radius in the (e1,e3) plane.
         R_hat = np.array([1,0,0]).reshape(3,1)    # reshape needed for broadcasting to work
-        Z_hat = np.array([0,0,1]).reshape(3,1)
+        z_hat = np.array([0,0,1]).reshape(3,1)
 
-        x = Rg*R_hat + Zg*Z_hat + r_L*(np.cos(theta_g)*e1 + np.sin(theta_g)*e3)
+        x = Rg*R_hat + zg*z_hat + r_L*(np.cos(theta_g)*e1 + np.sin(theta_g)*e3)
 
         return v, x
 

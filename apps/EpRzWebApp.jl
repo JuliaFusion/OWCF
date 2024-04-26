@@ -333,6 +333,10 @@ E_array = vec(collect(E_array)) # Ensure type Array{Float64,1}
 p_array = vec(collect(p_array)) # Ensure type Array{Float64,1}
 R_array = vec(collect(R_array)) # Ensure type Array{Float64,1}
 z_array = vec(collect(z_array)) # Ensure type Array{Float64,1}
+dE = abs.(diff(E_array))[1] # Assume equidistant
+dp = abs.(diff(p_array))[1] # Assume equidistant
+dR = abs.(diff(R_array))[1] # Assume equidistant
+dz = abs.(diff(z_array))[1] # Assume equidistant
 
 keV = 1000*(GuidingCenterOrbits.e0)
 
@@ -417,7 +421,7 @@ function app(req) # Here is where the app starts!
             if space==:EP # (E,p) plot
                 plt_topo = Plots.heatmap(E_array,p_array, F[:,:,Rci,zci]', fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), xlabel="E [keV]", ylabel="p [-]", title="f(E,p) at (R,z)", right_margin=3Plots.mm)
             else # :VEL => (v_para, v_perp) plot
-                vpara_array, vperp_array, F_VEL = Ep2VparaVperp(E_array, p_array, F[:,:,Rci,zci]; my_gcp=my_gcp, needJac=true)
+                vpara_array, vperp_array, F_VEL = Ep2VparaVperp(E_array, p_array, F[:,:,Rci,zci]; my_gcp=my_gcp, needJac=true, returnAbscissas=true)
                 plt_topo = Plots.heatmap(vpara_array, vperp_array, F_VEL', fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), xlabel="v_para [m/s]", ylabel="v_perp [m/s]", title="f(v_para,v_perp) at (R,z)", right_margin=3Plots.mm )
             end
         elseif study==:tpol && poltor
@@ -440,7 +444,7 @@ function app(req) # Here is where the app starts!
                 xlabel = "E [keV]"
                 ylabel = "p [-]"
             else
-                x_array, y_array, z_matrix = Ep2VparaVperp(E_array, p_array, pTT_microsecs; my_gcp=my_gcp)
+                x_array, y_array, z_matrix = Ep2VparaVperp(E_array, p_array, pTT_microsecs; my_gcp=my_gcp, returnAbscissas=true)
                 title = "tau_pol(vpara,vperp) at (R,z) [microseconds] \n tau_pol($(round(p*sqrt(2*keV*E/my_gcp.m),sigdigits=3)),$(round(sqrt(1-p^2)*sqrt(2*keV*E/my_gcp.m),sigdigits=3)))=$(round(o.tau_p /(1.0e-6),sigdigits=3)) microseconds"
                 xlabel = "vpara [m/s]"
                 ylabel = "vperp [m/s]"
@@ -472,7 +476,7 @@ function app(req) # Here is where the app starts!
                 xlabel = "E [keV]"
                 ylabel = "p [-]"
             else
-                x_array, y_array, z_matrix = Ep2VparaVperp(E_array, p_array, tTT_microsecs; my_gcp=my_gcp)
+                x_array, y_array, z_matrix = Ep2VparaVperp(E_array, p_array, tTT_microsecs; my_gcp=my_gcp, returnAbscissas=true)
                 title = "tau_tor(vpara,vperp) at (R,z) [microseconds] \n tau_tor($(round(p*sqrt(2*keV*E/my_gcp.m),sigdigits=3)),$(round(sqrt(1-p^2)*sqrt(2*keV*E/my_gcp.m),sigdigits=3)))=$(round(o.tau_t /(1.0e-6),sigdigits=3)) microseconds"
                 xlabel = "vpara [m/s]"
                 ylabel = "vperp [m/s]"
@@ -514,7 +518,7 @@ function app(req) # Here is where the app starts!
                 p_array_ext = vcat(p_array,2*p_array[end]-p_array[end-1]) # Extend p_array by one dummy element
                 plt_topo = Plots.heatmap(E_array,p_array_ext,topoMap_ext',color=:Set1_9,legend=false,xlabel="E [keV]", ylabel="p [-]", title="(E,p) orbit topology at (R,z)", ylims=(minimum(p_array),maximum(p_array)))
             else
-                vpara_array, vperp_array, topoMap_raw_VEL = Ep2VparaVperp(E_array, p_array, topoMap_raw; my_gcp=my_gcp, isTopoMap=true)
+                vpara_array, vperp_array, topoMap_raw_VEL = Ep2VparaVperp(E_array, p_array, topoMap_raw; my_gcp=my_gcp, isTopoMap=true, returnAbscissas=true)
                 topoMap_ext_VEL = ones(size(topoMap_raw_VEL,1),size(topoMap_raw_VEL,2)+1) # We ensure 1.0 in data by using ones() function. Add one extra column
                 topoMap_ext_VEL[1:size(topoMap_raw_VEL,1),1:size(topoMap_raw_VEL,2)] .= topoMap_raw_VEL # put in the true topoMap to be plotted
                 topoMap_ext_VEL[end,end] = 9.0 # Get the 9.0. This is such an ugly solution (to acquire correct orbit type coloring)...
@@ -553,6 +557,8 @@ function app(req) # Here is where the app starts!
         if study==:FI && !(filepath_distr=="")
             F_Ep = F[:,:,Rci,zci]
             sum_o_FI_distr = sum(F_Ep[valid_orb_inds])
+            #n_FI = sum((2*pi*R*dE*dp*dR*dz) .*F_Ep[valid_orb_inds])
+            #println(n_FI)
             stagnation_fraction = sum(F_Ep[findall(x-> x==1.0,topoMap[:,:,Rci,zci])]) / sum_o_FI_distr
             trapped_fraction = sum(F_Ep[findall(x-> x==2.0,topoMap[:,:,Rci,zci])]) / sum_o_FI_distr
             copassing_fraction = sum(F_Ep[findall(x-> x==3.0,topoMap[:,:,Rci,zci])]) / sum_o_FI_distr

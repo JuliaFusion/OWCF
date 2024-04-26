@@ -1,9 +1,9 @@
 ################################ start_os2com_template.jl ##################################################
-# This file contains all the inputs that the script os2com.jl needs to transform an orbit weight
-# function matrix from (E,pm,Rm) coordinates to (E,mu,Pphi;alpha) coordinates. This can also be 
+# This file contains all the inputs that the script os2com.jl needs to transform a fast-ion distribution
+# from (E,pm,Rm) coordinates to (E,mu,Pphi;alpha) coordinates. This can also be 
 # achieved by simply utilizing the os2COM() function in extra/dependencies.jl. However, this script
-# let's you avoid having to think about it, and just does it for you. It also works with topological
-# maps or boundarie, as well as poloidal and toroidal transit times, and null orbits.
+# let's you avoid having to think about it, and just does it for you. It also works with weight functions,
+# topological maps or boundaries, as well as poloidal and toroidal transit times, and null orbits.
 #
 # batch_job - If true, the script assumes that it will be executed via an HPC batch job. The script will act accordingly. - Bool
 # distributed - If true, parallel computing with multiple CPU cores will be used. - Bool
@@ -23,7 +23,7 @@
 # extra_kw_args - Here you can define extra keyword arguments to be used when integrating the equations-of-motion
 # for the guiding-center orbits. Please consult the OWCF manual for further info on this.
 
-# Script written by Henrik Järleblad. Last maintained 2022-10-11.
+# Script written by Henrik Järleblad. Last maintained 2024-04-26.
 #############################################################################################################
 
 ## First you have to set the system specifications

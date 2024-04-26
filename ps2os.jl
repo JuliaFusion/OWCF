@@ -341,6 +341,7 @@ if (@isdefined jacobian_OS)
     write(myfile,"J_os",jacobian_OS)
 end
 write(myfile,"numOsamples",numOsamples)
+write(myfile,"FI_species",FI_species)
 write(myfile,"E_array",E_array)
 write(myfile,"pm_array",pm_array)
 write(myfile,"Rm_array",Rm_array)
@@ -381,6 +382,7 @@ if include1Dto3D
     if (@isdefined J_os_3D)
         write(myfile, "J_os_3D", J_os_3D)
     end
+    write(myfile, "FI_species", FI_species)
     write(myfile, "E_array", E_array)
     write(myfile, "pm_array", pm_array)
     write(myfile, "Rm_array", Rm_array)
