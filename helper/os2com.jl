@@ -1,12 +1,9 @@
 ####################################################  os2com.jl ####################################################
 
 #### Description:
-# This script will convert an orbit weight function matrix from (E,pm,Rm) coordinates to 
-# (E,mu,Pphi;sigma) coordinates. PLEASE NOTE! It is to be used only for weight functions and 
-# quantities that do NOT require a Jacobian. It CANNOT be used to transform fast-ion distributions
-# due to the need for Jacobians. Weight functions can be mapped between coordinate systems
-# without the need for Jacobians. So can topological maps, topological boundaries, null orbits and maps of poloidal 
-# and toroidal transit times etc.
+# This script will transform a quantity from (E,pm,Rm) coordinates to 
+# (E,mu,Pphi;sigma) coordinates. If the quantity is given per phase-space volume, a Jacobian is needed when 
+# transforming. This is taken care of automatically, via automatic differentiation using dual numbers.
 #
 # Also, please note that, if os2com.jl is used for orbit weight functions, it expects the input
 # to be in the 4D inflated format. That is, an output file from orbWeights_2Dto4D.jl or similar.
@@ -25,6 +22,7 @@
 #   'topoMap'. The pertaining mu- and Pphi-matrices (one pair of grid points for every fast-ion energy grid point) will
 #   have the keys 'mu_matrix_topoMap' and 'Pphi_matrix_topoMap'. If the mapping from (E,pm,Rm) to (E,mu,Pphi;sigma) was
 #   instead done for an inflated orbit weight matrix, the keys will be 'mu_matrix_Wtot' and 'Pphi_matrix_Wtot' etc.
+#   If the mapping was instead done for a fast-ion distribution, the keys will be 'mu_matrix_F' and 'Pphi_matrix_F' etc.
 #   To see all data keys for a .jld2 file, do 'myfile = jldopen(...)' followed by 'keys(myfile)'. 
 # In addition to the COM keys, the saved file will have the keys
 #   E_array - The energy grid points of the (E,mu,Pphi;sigma) grid (and the (E,pm,Rm) grid) - Array{Float64,1}
@@ -40,7 +38,7 @@
 ### Other
 #
 
-# Script written by Henrik Järleblad. Last maintained 2022-09-22.
+# Script written by Henrik Järleblad. Last maintained 2024-04-26.
 ######################################################################################################################
 
 ## ---------------------------------------------------------------------------------------------
@@ -83,7 +81,7 @@ end
 
 ## ---------------------------------------------------------------------------------------------
 # Load orbit grid vectors and quantities to be mapped from (E,pm,Rm) to (E,mu,Pphi;sigma) filepath_Q
-analyticalOWs = false # Assume by default that the orbit weight functions are not analytical
+analyticalOWs = false # Assume by default that, if orbit weight functions, the orbit weight functions are not analytical
 Q_dict = Dict() # A dictionary containing all the quantities to be mapped
 Q_message = "" # A message that will be printed informing the user of the quantitie(s) to be mapped
 if isfile(filepath_Q)
@@ -115,6 +113,9 @@ if isfile(filepath_Q)
         nullOrbs[myfile["nullOrbs_indices"]] = 1.0
         Q_dict["nullOrbs"] = nullOrbs
         Q_message *= "Null orbits in (E,pm,Rm) will be mapped to (E,mu,Pphi;sigma) constants-of-motion space."
+    elseif haskey(myfile,"F_os_3D")
+        Q_dict["F"] = myfile["F_os_3D"]
+        Q_message *= "An (E,pm,Rm) fast-ion distribution will be transformed to (E,mu,Pphi;sigma) constants-of-motion space."
     else
         error("filepath_Q did not contain weights functions, topological map, topological boundaries or indices for null orbits (via include2Dto4D when executing extractNullOrbits.jl). Please correct and re-try.")
     end
@@ -149,6 +150,17 @@ elseif (@isdefined reaction)
     FI_species = (split(reaction,"-"))[1] # Assume first species specified in reaction to be the fast-ion species. For example, in 'p-t' the 'p' will be assumed the thermal species.
     @everywhere FI_species = $FI_species # Transfer variable to all external processes
 else
+    # Backwards compatibility with output files from older versions of ps2os.jl and F_os_1Dto3D.jl
+    if !(@isdefined FI_species)
+        # Must be the case of output file from older version of ps2os.jl or F_os_1Dto3D.jl
+        # Try to determine FI_species from filename
+        if Sys.iswindows()
+            filename_Q = split(filepath_Q,"\\")[end] # Special Windows case with backwards slash
+        else
+            filename_Q = split(filepath_Q,"/")[end]
+        end
+        FI_species = split(filename_Q,"_")[end-1] # For both F_os_1Dto3D.jl and ps2os.jl output, the FI_species should be found second to last in the filename
+    end
     FI_species = FI_species # Already defined
 end
 ## ---------------------------------------------------------------------------------------------
@@ -179,7 +191,7 @@ println("Please remove previously saved files with the same file name (if any) p
 println("")
 println("If you would like to change any settings, please edit the start_os2com_template.jl file or similar.")
 println("")
-println("Written by Henrik Järleblad. Last maintained 2022-09-22.")
+println("Written by Henrik Järleblad. Last maintained 2024-04-26.")
 println("------------------------------------------------------------------------------------------------------------------")
 println("")
 ## ---------------------------------------------------------------------------------------------
@@ -194,6 +206,8 @@ for key in keys(Q_dict)
     verbose && println("Mapping "*key*" to (E,mu,Pphi;sigma)... ")
     if key=="Wtot"
         good_coords = nothing # We don't know anything...
+    elseif key=="F"
+        good_coords = nothing # We don't know anything...
     elseif key=="topoMap"
         good_coords = findall(x-> x!=9.0,Q_dict[key])
     elseif key=="polTransTimes"
@@ -207,7 +221,7 @@ for key in keys(Q_dict)
     else
         error("This should be impossible to reach, given the load check above.")
     end
-    Q_dict_COM[key], global E_array, Q_dict_COM["mu_matrix_"*key], Q_dict_COM["Pphi_matrix_"*key] = os2COM(M, Q_dict[key], vec(E_array), vec(pm_array), vec(Rm_array), FI_species; nμ=nmu, nPϕ=nPphi, isTopoMap=(key=="topoMap" ? true : false), verbose=verbose, good_coords=good_coords, wall=wall, extra_kw_args=extra_kw_args)
+    Q_dict_COM[key], global E_array, Q_dict_COM["mu_matrix_"*key], Q_dict_COM["Pphi_matrix_"*key] = os2COM(M, Q_dict[key], vec(E_array), vec(pm_array), vec(Rm_array), FI_species; nμ=nmu, nPϕ=nPphi, isTopoMap=(key=="topoMap" ? true : false), needJac=(key=="F" ? true : false), verbose=verbose, good_coords=good_coords, wall=wall, extra_kw_args=extra_kw_args)
 end
 ## ---------------------------------------------------------------------------------------------
 
@@ -231,7 +245,9 @@ end
 write(myfile,"E_array",E_array)
 write(myfile,"pm_array",pm_array)
 write(myfile,"Rm_array",Rm_array)
-write(myfile,"FI_species",FI_species)
+if @isdefined FI_spcies
+    write(myfile,"FI_species",FI_species)
+end
 write(myfile,"filepath_equil",filepath_equil)
 write(myfile,"tokamak",tokamak)
 if @isdefined TRANSP_id
