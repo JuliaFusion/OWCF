@@ -2302,6 +2302,7 @@ function pmRm_2_μPϕ(M::AbstractEquilibrium, good_coords_pmRm::Vector{Cartesian
     data_COM[:,:,1] = data_COM_ctgo # Counter-going (first element, σ=-1)
     data_COM[:,:,2] = data_COM_cogo # Co-going (Second element, σ=+1)
     if debug
+        verbose && println("Returning debug quantities (pmRm_2_μPϕ())... ")
         return μ_values_cogo, μ_values_ctgo, Pϕ_values_cogo, Pϕ_values_ctgo, μ_array, Pϕ_array
     end
 
@@ -2399,6 +2400,7 @@ function os2COM(M::AbstractEquilibrium, data::Union{Array{Float64, 3},Array{Floa
     end
 
     if !input_4D
+        verbose && println("Reshaping output data from 5D to 4D... ")
         return dropdims(data_COM,dims=1), E_array, μ_matrix, Pϕ_matrix 
     end
     return data_COM, E_array, μ_matrix, Pϕ_matrix
