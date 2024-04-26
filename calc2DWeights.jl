@@ -278,6 +278,7 @@ end
 global instrumental_response # Declare global scope
 instrumental_response = false
 if isfile(instrumental_response_filepath) # Returns true both for Strings and Vector{String}
+    verbose && println("Loading instrumental response... ")
     if typeof(instrumental_response_filepath)==String # If it is a single file, it must be a .jld2 file (specified in start file)
         myfile = jldopen(instrumental_response_filepath,false,false,false,IOStream)
         instrumental_response_matrix = myfile["response_matrix"]
@@ -290,9 +291,9 @@ if isfile(instrumental_response_filepath) # Returns true both for Strings and Ve
         output_filepath = instrumental_response_filepath[3]
 
         py"""
-            instrumental_response_matrix = np.loadtxt($matrix_filepath)
-            instrumental_response_input = np.loadtxt($input_filepath)
-            instrumental_response_output = np.loadtxt($output_filepath)
+        instrumental_response_matrix = np.loadtxt($matrix_filepath)
+        instrumental_response_input = np.loadtxt($input_filepath)
+        instrumental_response_output = np.loadtxt($output_filepath)
         """
         instrumental_response_matrix = py"instrumental_response_matrix"
         instrumental_response_input = py"instrumental_response_input"
@@ -356,6 +357,11 @@ else
 end
 println("")
 println("$(iiimax) weight matrix/matrices will be computed.")
+if include_flr_effects
+    println("---> Finite Larmor radius (FLR) effects included? Yes!")
+else
+    println("---> Finite Larmor radius (FLR) effects included? No.")
+end
 println("")
 println("2D weight function(s) will be computed for a $(length(E_array))x$(length(p_array)) (E,p)-space grid with")
 println("Energy: [$(minimum(E_array)),$(maximum(E_array))] keV")
@@ -557,7 +563,7 @@ for iii=1:iiimax
                         py"""
                         #forwardmodel = $forwardmodel # Convert the Forward Python object from Julia to Python.
                         # Please note, the '$' symbol is used below to convert objects from Julia to Python. Even Julia PyObjects
-                        spec = forwardmodel.calc($([E]), $([p]), $([R_of_interest]), $([z_of_interest]), $([1.0]), thermal_dist, Ed_bin_edges, $B_at_Rz, n_repeat=$gyro_samples, reaction=$reaction, bulk_temp=$thermal_temp, bulk_dens=$thermal_dens) # Please see the forward.py script, for further specifications
+                        spec = forwardmodel.calc($([E]), $([p]), $([R_of_interest]), $([z_of_interest]), $([1.0]), thermal_dist, Ed_bin_edges, $B_at_Rz, n_repeat=$gyro_samples, reaction=$reaction, bulk_temp=$thermal_temp, bulk_dens=$thermal_dens, flr=$include_flr_effects) # Please see the forward.py script, for further specifications
                         """
 
                         spec = vec(py"spec")
@@ -580,7 +586,7 @@ for iii=1:iiimax
                 py"""
                 #forwardmodel = $forwardmodel # Convert the Forward Python object from Julia to Python.
                 # Please note, the '$' symbol is used below to convert objects from Julia to Python. Even Julia PyObjects
-                spec = forwardmodel.calc($([E]), $([p]), $([R_of_interest]), $([z_of_interest]), $([1.0]), thermal_dist, Ed_bin_edges, $B_at_Rz, n_repeat=$gyro_samples, reaction=$reaction, bulk_temp=$thermal_temp, bulk_dens=$thermal_dens) # Please see the forward.py script, for further specifications
+                spec = forwardmodel.calc($([E]), $([p]), $([R_of_interest]), $([z_of_interest]), $([1.0]), thermal_dist, Ed_bin_edges, $B_at_Rz, n_repeat=$gyro_samples, reaction=$reaction, bulk_temp=$thermal_temp, bulk_dens=$thermal_dens, flr=$include_flr_effects) # Please see the forward.py script, for further specifications
                 """
 
                 spec = vec(py"spec")
@@ -604,7 +610,7 @@ for iii=1:iiimax
             py"""
             #forwardmodel = $forwardmodel # Convert the Forward Python object from Julia to Python.
             # Please note, the '$' symbol is used below to convert objects from Julia to Python. Even Julia PyObjects
-            spec = forwardmodel.calc($([E]), $([p]), $([R_of_interest]), $([z_of_interest]), $([1.0]), thermal_dist, Ed_bin_edges, $B_at_Rz, n_repeat=$gyro_samples, reaction=$reaction, bulk_temp=$thermal_temp, bulk_dens=$thermal_dens) # Please see the forward.py script, for further specifications
+            spec = forwardmodel.calc($([E]), $([p]), $([R_of_interest]), $([z_of_interest]), $([1.0]), thermal_dist, Ed_bin_edges, $B_at_Rz, n_repeat=$gyro_samples, reaction=$reaction, bulk_temp=$thermal_temp, bulk_dens=$thermal_dens, flr=$include_flr_effects) # Please see the forward.py script, for further specifications
             """
 
             spec = vec(py"spec")
@@ -628,7 +634,7 @@ for iii=1:iiimax
                 py"""
                 #forwardmodel = $forwardmodel # Convert the Forward Python object from Julia to Python.
                 # Please note, the '$' symbol is used below to convert objects from Julia to Python. Even Julia PyObjects
-                spec = forwardmodel.calc($([E]), $([p]), $([R_of_interest]), $([z_of_interest]), $([1.0]), thermal_dist, Ed_bin_edges, $B_at_Rz, n_repeat=$gyro_samples, reaction=$reaction, bulk_temp=$thermal_temp, bulk_dens=$thermal_dens) # Please see the forward.py script, for further specifications
+                spec = forwardmodel.calc($([E]), $([p]), $([R_of_interest]), $([z_of_interest]), $([1.0]), thermal_dist, Ed_bin_edges, $B_at_Rz, n_repeat=$gyro_samples, reaction=$reaction, bulk_temp=$thermal_temp, bulk_dens=$thermal_dens, flr=$include_flr_effects) # Please see the forward.py script, for further specifications
                 """
 
                 spec = vec(py"spec")
@@ -639,12 +645,12 @@ for iii=1:iiimax
 
     if saveVparaVperpWeights
         verbose && println("Transforming (E,p) weights to (vpara,vperp)... ")
-        nvpara = Int64(round(sqrt(nE*np)))
-        nvperp = nvpara
+        nvpara = Int64(round(sqrt(nE*np))) # We know the default values for Ep2VparaVperp()
+        nvperp = nvpara # We know the default values for Ep2VparaVperp()
         W_vel = zeros(nEd,nvpara,nvperp)
-        vpara_array, vperp_array, W_vel[1,:,:] = Ep2VparaVperp(E_array, p_array, Wtot[1,:,:])
+        W_vel[1,:,:], vpara_array, vperp_array = Ep2VparaVperp(E_array, p_array, Wtot[1,:,:], returnAbscissas=true)
         for iEd=2:nEd
-            vpara_array, vperp_array, W_vel[iEd,:,:] = Ep2VparaVperp(E_array, p_array, Wtot[iEd,:,:])
+            W_vel[iEd,:,:] = Ep2VparaVperp(E_array, p_array, Wtot[iEd,:,:], returnAbscissas=false)
         end
     end
 

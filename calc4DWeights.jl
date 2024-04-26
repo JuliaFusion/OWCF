@@ -327,6 +327,7 @@ end
 global instrumental_response # Declare global scope
 instrumental_response = false
 if isfile(instrumental_response_filepath) # Returns true both for Strings and Vector{String}
+    verbose && println("Loading instrumental response... ")
     if typeof(instrumental_response_filepath)==String # If it is a single file, it must be a .jld2 file (specified in start file)
         myfile = jldopen(instrumental_response_filepath,false,false,false,IOStream)
         instrumental_response_matrix = myfile["response_matrix"]
@@ -339,9 +340,10 @@ if isfile(instrumental_response_filepath) # Returns true both for Strings and Ve
         output_filepath = instrumental_response_filepath[3]
 
         py"""
-            instrumental_response_matrix = np.loadtxt($matrix_filepath)
-            instrumental_response_input = np.loadtxt($input_filepath)
-            instrumental_response_output = np.loadtxt($output_filepath)
+	    import numpy as np
+        instrumental_response_matrix = np.loadtxt($matrix_filepath)
+        instrumental_response_input = np.loadtxt($input_filepath)
+        instrumental_response_output = np.loadtxt($output_filepath)
         """
         instrumental_response_matrix = py"instrumental_response_matrix"
         instrumental_response_input = py"instrumental_response_input"

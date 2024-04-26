@@ -173,6 +173,7 @@ end
 global filepath_output = filepath_output*".jld2"
 myfile = jldopen(filepath_output,true,true,false,IOStream)
 write(myfile, "F_os_3D", F_os_3D)
+write(myfile, "FI_species", FI_species)
 write(myfile, "nfast_orig", nfast)
 write(myfile, "E_array", E_array)
 write(myfile, "pm_array", pm_array)

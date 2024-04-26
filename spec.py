@@ -30,27 +30,35 @@ class Particle:
         if name == 'n':
             self.long_name = 'neutron'
             self.u = constants.mn
+            self.q = 0.0
         elif name == 'p':
             self.long_name = 'proton'
             self.u = constants.mp
-        elif name == 'g': ### HENRIK
-            self.long_name = 'gamma' ### HENRIK
-            self.u = 0.0 ### HENRIK
+            self.q = constants.e
+        elif name == 'g':
+            self.long_name = 'gamma'
+            self.u = 0.0
+            self.q = 0.0
         elif name == 'd':
             self.long_name = 'deuteron'
             self.u = constants.md
+            self.q = constants.e
         elif name == 't':
             self.long_name = 'triton'
             self.u = constants.mt
+            self.q = constants.e
         elif name == '3he':
             self.long_name = 'helium-3'
             self.u = constants.m3He
+            self.q = 2*(constants.e) 
         elif name == '4he':
             self.long_name = 'helium-4'
             self.u = constants.m4He
+            self.q = 2*(constants.e)
         elif name == 'proj': # In this case, the Particle class is simply used as a data placeholder to enable the workflow of forward.py 
             self.long_name = 'projection'
             self.u = 0.0
+            self.q = 0.0
         else:
             raise ValueError('Invalid particle name')
 
@@ -84,6 +92,10 @@ class Reactant:
     @property
     def m(self):
         return self.particle.m
+    
+    @property
+    def q(self):
+        return self.particle.q
 
     @property
     def B_dir(self):
@@ -313,6 +325,14 @@ class SpectrumCalculator:
     @property
     def mb(self):
         return self.reactant_b.m
+    
+    @property
+    def qa(self):
+        return self.reactant_a.q
+    
+    @property
+    def qb(self):
+        return self.reactant_b.q
 
     @property
     def m1(self):

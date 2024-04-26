@@ -21,7 +21,9 @@
 # cd(folderpath_OWCF)#
 # Pkg.activate(".")
 #
-# Written by H. Järleblad. Last updated 2022-09-22.
+# Finally, please note that some functions in dependencies.jl might be under construction. Hence, the bad code.
+#
+# Written by H. Järleblad. Last updated 2024-04-26.
 ###################################################################################################
 
 println("Loading the Julia packages for the OWCF dependencies... ")
@@ -46,9 +48,121 @@ using Distributions
 using VoronoiDelaunay
 import OrbitTomography: orbit_grid
 
+# Constants needed for dependencies
+const kB = 1.380649e-23 # Boltzmann constant, J/K
+const ϵ0 = 8.8541878128e-12 # Permittivity of free space
+
+"""
+    getGCP(species_identifier)
+
+The same function as is provided by OWCF/misc/species_func.jl. However, since it's needed in certain functions below, which are also
+a part of extra/dependencies.jl, it needs to be defined here as well. Sometimes, it's more efficient to only load OWCF/misc/species_func.jl, 
+since one does not always want all the packages needed for dependencies.jl. Therefore, the functions below are also loadable as a separate
+script, i.e. OWCF/misc/species_func.jl.
+"""
+function getGCP(species_identifier::AbstractString)
+    if lowercase(species_identifier)=="d"
+        return GuidingCenterOrbits.GCDeuteron
+    elseif lowercase(species_identifier)=="t"
+        return GuidingCenterOrbits.GCTriton
+    elseif lowercase(species_identifier)=="3he"
+        return GuidingCenterOrbits.GCHelium3
+    elseif lowercase(species_identifier)=="p"
+        return GuidingCenterOrbits.GCProton
+    elseif lowercase(species_identifier)=="e"
+        return GuidingCenterOrbits.GCElectron
+    elseif (lowercase(species_identifier)=="alpha" || lowercase(species_identifier)=="4he")
+        return GuidingCenterOrbits.GCAlpha
+    else
+        error("getSpeciesMass got unknown species as input. Please re-try.")
+    end
+end
+
+function getSpeciesMass(species_identifier::AbstractString)
+    return (getGCP(species_identifier)(0.0,0.0,0.0,0.0)).m # 0.0, 0.0, 0.0, 0.0 is just to activate the function
+end
+
+function getSpeciesAmu(species_identifier::AbstractString)
+    return getSpeciesMass(species_identifier) / GuidingCenterOrbits.mass_u
+end
+
+function getSpeciesEcu(species_identifier::AbstractString)
+    return (getGCP(species_identifier)(0.0,0.0,0.0,0.0)).q # 0.0, 0.0, 0.0, 0.0 is just to activate the function
+end
+
+function getSpeciesCharge(species_identifier::AbstractString)
+    return getSpeciesEcu(species_identifier) * GuidingCenterOrbits.e0
+end
+
+"""
+    debye_length(n_e, T_e, species_1, n_1, T_1, species_2, n_2, T_2)
+
+Compute the (exact) plasma debye length. Assume a two-species plasma.
+If one-species plasma, simply put 2==1 for n, T and species.
+"""
+function debye_length(n_e::Float64, T_e::Union{Float64,Int64}, species_1::String, n_1::Float64, T_1::Union{Float64,Int64}, species_2::String, n_2::Float64, T_2::Union{Float64,Int64})
+    temp_e = T_e*1000*(GuidingCenterOrbits.e0)/kB
+    temp_1 = T_1*1000*(GuidingCenterOrbits.e0)/kB
+    temp_2 = T_2*1000*(GuidingCenterOrbits.e0)/kB
+    z_1 = getSpeciesEcu(species_1)
+    z_2 = getSpeciesEcu(species_2)
+    denom = (n_e/temp_e)+(z_1*z_1*n_1/temp_1)+(z_2*z_2*n_2/temp_2)
+    return sqrt((ϵ0*kB/(GuidingCenterOrbits.e0)^2)/denom)
+end
+
+"""
+    gyro_radius(M,p)
+
+Compute the gyro radius for guiding-center particle p, given the magnetic 
+equilibrium M. Output in meters. Take relativity into account.
+"""
+function gyro_radius(M::AbstractEquilibrium,p::GCParticle)
+    γ = GuidingCenterOrbits.lorentz_factor(p)
+    Babs = norm(Bfield(M, p.r, p.z)) # Magnetic field magnitude. Tesla
+    m = p.m # Mass of particle
+    KE = p.energy # Kinetic energy. keV
+    mc2 = m*GuidingCenterOrbits.c0*GuidingCenterOrbits.c0 # Rest energy. Joule
+    KE_j = GuidingCenterOrbits.e0*KE*1e3 # Kinetic energy. Joule
+    p_rel2 = ((KE_j + mc2)^2 - mc2^2)/(GuidingCenterOrbits.c0*GuidingCenterOrbits.c0) # Relativistic momentum
+    p_perp2 = p_rel2*(1-p.pitch^2) # Square of relativistic perpendicular momentum
+
+    return sqrt(p_perp2) / (abs(GuidingCenterOrbits.e0*p.q)*Babs)
+end
+
+"""
+    spitzer_slowdown_time(n_e, T_e, species_1, n_1, T_1, species_2, n_2, T_2)
+    spitzer_slowdown_time(-||-; plasma_model = :texas)
+
+Compute the non-relativistic Spitzer slowing-down time. Assume a two-species plasma (1 and 2).
+By default, use the texas (University of Texas) model for the Coloumb logarithm.
+"""
+function spitzer_slowdown_time(n_e::Float64, T_e::Union{Float64,Int64}, species_1::String, n_1::Float64, T_1::Union{Int64,Float64}, species_2::String, n_2::Float64, T_2::Union{Float64,Int64}; plasma_model = :texas)
+    λ_D = debye_length(n_e, T_e, species_1, n_1, T_1, species_2, n_2, T_2)
+
+    ϵ0 = 8.8541878128e-12 # Permittivity of free space
+    m_2 = getSpeciesMass(species_2)
+    z_1 = getSpeciesEcu(species_1)
+    z_2 = getSpeciesEcu(species_2)
+    m_e = (GuidingCenterOrbits.e_amu)*(GuidingCenterOrbits.mass_u)
+
+    if plasma_model==:salewski
+        Λ = 6*pi*n_e*λ_D^3 # From M. Salewski, A.H. Nielsen, Plasma Physics: lectures notes, 2021.
+        Λ_c = Λ # Actually, this is Λ_c ≈ Λ, where Λ is the plasma parameter.
+    elseif plasma_model==:texas
+        r_closest = (z_1*GuidingCenterOrbits.e0*z_2*GuidingCenterOrbits.e0)/(4*pi*ϵ0*T_e*GuidingCenterOrbits.e0*1000) # r_closest = (e_1*e_2)/(4*pi*ϵ0*T). Mean value of closest approach, University of Texas. Assume same termperature.
+        Λ_c = λ_D/r_closest
+    else
+        error("Currently supported models for the plasma parameter are :salewski and :texas. Please correct and re-try.")
+    end
+    coulomb_log = log(Λ_c)
+    A_D = (n_e*((GuidingCenterOrbits.e0)^4)*coulomb_log)/(2*pi*(ϵ0^2)*(m_2^2))
+    τ_s = (3*sqrt(2*pi)*((T_e*GuidingCenterOrbits.e0*1e3)^(3/2)))/(sqrt(m_e)*m_2*A_D)
+    return τ_s
+end
+
 """
     add_noise(S,0.05)
-    add_noise(-||-, k=0.15)
+    add_noise(-||-; k=0.15)
 
 A function that adds noise to a signal in a consistent way. The function adds both background noise as well as
 noise to the signal itself. The level of the background noise and the signal noise is determined by the b
@@ -273,17 +387,8 @@ function apply_instrumental_response(Q::Array{Float64,5}, Ed_array::AbstractVect
 end
 
 """
-    average_weight_matrices()
-    average_weight_matrices()
-
-Bla bla bla
-"""
-function average_weight_matrices(list_o_files::Vector{String}, )
-end
-
-"""
     orbit_grid(M,false,eo,po,ro)
-    orbit_grid(-||-, q=2, amu=OrbitTomography.p_amu, kwargs... )
+    orbit_grid(-||-, q=1, amu=OrbitTomography.H2_amu, kwargs... )
 
 This function is just like OrbitTomography.orbit_grid, but allows execution without progress bar.
 Good for HPC batch job submission, to not overrun log files.
@@ -363,10 +468,11 @@ function orbit_grid(M::AbstractEquilibrium, visualizeProgress::Bool, eo::Abstrac
 end
 
 """
-    mu_func()
-    mu_func()
+    mu_func(energy, B, Pϕ, Ψ, RBϕ)
+    mu_func(-||-; m=GuidingCenterOrbits.H2_amu*GuidingCenterOrbits.mass_u, q=1*GuidingCenterOrbits.e0)
 
-Bla bla bla
+Compute the magnetic moment mu, given the fast-ion energy, magnetic field B, toroidal canonical angular momentum Pϕ, magnetic flux Ψ and flux function RBϕ.
+Use a 0-cap, meaning that all negative values are set to 0.
 """
 function mu_func(energy::T, B::T, Pϕ::T, Ψ::T, RBϕ::T;m::Float64=GuidingCenterOrbits.H2_amu*GuidingCenterOrbits.mass_u, q::Float64=1*GuidingCenterOrbits.e0) where {T}
     res = energy/B - (B/(2*m)) * ((Pϕ-q*Ψ)/RBϕ)^2
@@ -455,10 +561,10 @@ function interpFps(f::AbstractArray, E::AbstractArray, p::AbstractArray, R::Abst
 
     fq = zeros(length(Eq),length(pq),length(Rq),length(zq)) # Pre-allocate 4D array
     numObadInds = 0
-    for Ei=1:length(Eq)
-        for pi=1:length(pq)
-            for Ri=1:length(Rq)
-                for zi=1:length(zq)
+    for Ei in eachindex(Eq)
+        for pi in eachindex(pq)
+            for Ri in eachindex(Rq)
+                for zi in eachindex(zq)
                     try
                         fq[Ei,pi,Ri,zi] = itp(Eq[Ei],pq[pi],Rq[Ri],zq[zi]) # Interpolate at 4D query point
                     catch
@@ -480,7 +586,7 @@ end
 
 """
     do4Dto2D(og, W)
-    do4Dto2D(-||-, returnComplement=true)
+    do4Dto2D(-||-, returnComplement=false)
 
 This function converts orbit weights of the form (channel,E,pm,Rm) to the form
 (channel,orbits). 'orbits' consists of the valid orbits for the (E,pm,Rm)-grid.
@@ -500,10 +606,10 @@ function do4Dto2D(og::OrbitGrid, W4D::AbstractArray; returnComplement::Bool=fals
         Cindices = Array{Tuple{Int64,Int64,Int64},1}(undef,length(W4D)-length(og.counts)) #Pre-allocate
         ii = 1
     end
-    for c=1:size(W4D,1)
-        for Ei=1:size(W4D,2)
-            for pmi=1:size(W4D,3)
-                for Rmi=1:size(W4D,4)
+    for c in axes(W4D,1)
+        for Ei in axes(W4D,2)
+            for pmi in axes(W4D,3)
+                for Rmi in axes(W4D,4)
                     o_index = og.orbit_index[Ei,pmi,Rmi] # By the method of L. Stagner, every valid orbit corresponds to a non-zero integer: their index. The invalid and lost orbits are simply represented by a zero as their index.
                     if o_index==0 && returnComplement
                         C[ii] = W4D[c,Ei,pmi,Rmi]
@@ -527,7 +633,7 @@ end
 
 """
     flip_along_pm(W)
-    flip_along_pm(W, with_channels=true)
+    flip_along_pm(W, with_channels=false)
 
 Flip the elements of an orbit-space function along the pm axis. If with_channels=true,
 then a 4D orbit-space function on the form (channel,E,pm,Rm) or (channel,Rm,pm,E) is assumed.
@@ -537,11 +643,11 @@ function flip_along_pm(W::AbstractArray; with_channels::Bool=false)
 
     Wres = zeros(size(W))
     if with_channels
-        for pmi=1:size(W,3)
+        for pmi in axes(W,3)
             Wres[:,:,(end+1)-pmi,:] .= W[:,:,pmi,:]
         end
     else
-        for pmi=1:size(W,2)
+        for pmi in axes(W,2)
             Wres[:,(end+1)-pmi,:] .= W[:,pmi,:]
         end
     end
@@ -558,7 +664,7 @@ Assume the fast-ion distribution to be of the form (E,p,R,z)
 function flip_along_p(F_EpRz::AbstractArray)
 
     F_EpRz_res = zeros(size(F_EpRz))
-    for pi=1:size(F_EpRz,2)
+    for pi in axes(F_EpRz,2)
         F_EpRz_res[:,end+1-pi,:,:] .= F_EpRz[:,pi,:,:]
     end
     return F_EpRz_res
@@ -566,7 +672,7 @@ end
 
 """
     h5To4D(filepath_distr)
-    h5To4D(filepath_distr, backwards=false, verbose=true)
+    h5To4D(filepath_distr, backwards=true, verbose=false)
 
 Load and read an h5 file containing the data necessary to construct a 4D fast-ion distribution, with dimensions (E,p,R,z).
 Automatically assume that the data will be loaded backwards, because that seems to be the case when exporting 4D
@@ -595,10 +701,10 @@ function h5to4D(filepath_distr::AbstractString; backwards::Bool = true, verbose:
     if backwards
         verbose && println("Fast-ion distribution data is permutated. Attemping to fix... ")
         f = zeros(size(fbackwards,4),size(fbackwards,3),size(fbackwards,2),size(fbackwards,1))
-        for i=1:size(f,1)
-            for j=1:size(f,2)
-                for k=1:size(f,3)
-                    for l=1:size(f,4)
+        for i in axes(f,1)
+            for j in axes(f,2)
+                for k in axes(f,3)
+                    for l in axes(f,4)
                         f[i,j,k,l] = fbackwards[l,k,j,i]
                     end
                 end
@@ -972,7 +1078,8 @@ function get4DVols(E::AbstractVector, p::AbstractVector, R::AbstractVector, z::A
 end
 
 """
-    sample_f_OWCF(fr,dvols,energy,pitch,R,z,n=100_000)
+    sample_f_OWCF(fr,dvols,energy,pitch,R,z)
+    sample_f_OWCF(-||-;n=100_000)
 
 This function is the OWCF version of the original function sample_f which already exists in the OrbitTomography.jl package.
 This version has the ability to take non-equidistant 4D grid-points into consideration. w is energy, x is pitch, y is R and z is z.
@@ -1004,7 +1111,7 @@ end
 
 """
     class2int(M,o)
-    class2int(M,o; plot=false, distinguishLost=true, distinguishIncomplete=true)
+    class2int(-||-; plot=false, distinguishLost=true, distinguishIncomplete=true)
 
 Take an orbit, examine its class (stagnation, trapped, co-passing etc) and return 
 the appropriate integer. The integers are as follows
@@ -1050,9 +1157,10 @@ end
 
 """
     map_orbits_OWCF(og, f, equidistant)
+    map_orbits_OWCF(-||-;weights=false)
 
 This function is the OWCF version of the original function map_orbits which already exists in the OrbitTomography.jl package.
-It has the ability to take non-equidistant 3D grid-points into account.
+It has the ability to take non-equidistant 3D grid-points into account. If weights, then do not divide by phase-space volume.
 """
 function map_orbits_OWCF(grid::OrbitGrid, f::Vector, equidistant::Bool; weights::Bool=false)
     if equidistant
@@ -1072,11 +1180,12 @@ function map_orbits_OWCF(grid::OrbitGrid, f::Vector, equidistant::Bool; weights:
 end
 
 """
-    ps2os_streamlined(filepath_distr, filepath_equil, og, numOsamples)
-    ps2os_streamlined(-||-, verbose=true, distr_dim=[99,43,54,56], btipsign=-1, GCP=GCProton)
+    ps2os_streamlined(filepath_distr, filepath_equil, og; numOsamples)
+    ps2os_streamlined(-||-; numOsamples, verbose=false, kwargs...)
 
 This function is a streamlined version of sampling particle-space (PS) and converting those samples to orbit-space (OS).
-It allows transformation from (E,p,R,z) to (E,pm,Rm) directly from filepath_distr
+It allows transformation from (E,p,R,z) to (E,pm,Rm) directly from filepath_distr, using a magnetic equilibrium found in the filepath_equil file.
+numOsamples sets the number of Monte-Carlo samples for the transformation. Verbose switches function print statements on/off.
 """
 function ps2os_streamlined(filepath_distr::AbstractString, filepath_equil::AbstractString, og::OrbitGrid; numOsamples::Int64, verbose::Bool=false, kwargs...)
 
@@ -1090,17 +1199,18 @@ function ps2os_streamlined(filepath_distr::AbstractString, filepath_equil::Abstr
 end
 
 """
-    ps2os_point()
-    ps2os_point()
+ps2os_streamlined(F_EpRz, energy, pitch, R, z, filepath_equil, og)
+ps2os_streamlined(-||-;numOsamples, verbose=false, distr_dim = [], flip_F_EpRz_pitch=false, GCP = GCDeuteron, distributed=true, nbatch = 1_000_000, clockwise_phi, kwargs...)
 
-Bla bla bla
-"""
-function ps2os_point(M::AbstractEquilibrium, E::T, p::T, R::T, z::T, ) where {T}
-    
-end
-
-"""
-Continuation of the ps2os_streamlined function above.
+Continuation of the ps2os_streamlined function above. F_EpRz is f(E,p,R,z). Energy is a vector with the energy grid points (keV). Pitch is a vector with the pitch grid points.
+R is a vector with the major radius grid points (meters). z is a vector with the vertical coordinate grid points (meters). filepath_equial is a string pointing to the filepath 
+of a magnetic equilibrium file (either .eqdsk file or output from extra/compSolovev.jl). og is an orbit grid, computed with the orbit_grid() function (above). 
+numOsamples is a necessary keyword argument that sets the number of Monte-Carlo samples for the transformation. verbose is a bool switch that turns function print statements on/off.
+distr_dim is a list of exactly 4 elements. If specified, the fast-ion distribution will be interpolated to have this size in each of the 4 dimensions. For example, 
+distr_dim=[50,40,30,35] will lead to that f(E,p,R,z) has size 50x40x30x35. flip_F_EpRz_pitch is a bool switch that f(E,p,R,z)->f(E,-p,R,z). GCP is a guiding-centre particle 
+object (Please see GuidingCenterOrbits.jl/src/particles.jl). distributed is a bool switch for multi-core computations. nbatch is an integer that specifies the number of Monte-Carlo 
+samples that the algorithm will perform, between saving the progress. clockwise_phi is a bool switch for magnetic equilibria. Most magnetic equilibria have their 
+cylindrical coordinate phi-direction in the anti-clockwise direction, tokamak viewed from above. However, some don't. For these, set clockwise_phi to true.
 """
 function ps2os_streamlined(F_EpRz::Array{Float64,4}, energy::AbstractVector, pitch::AbstractVector, R::AbstractVector, z::AbstractVector, filepath_equil::AbstractString, og::OrbitGrid; numOsamples::Int64, verbose::Bool=false, distr_dim = [], flip_F_EpRz_pitch::Bool=false, GCP = GCDeuteron, distributed::Bool=true, nbatch::Int64 = 1_000_000, clockwise_phi::Bool=false, kwargs...)
 
@@ -1693,7 +1803,7 @@ function unmap_orbits(og::OrbitGrid, F_os_3D::AbstractArray; verbose::Bool=false
         println("Unmapping the orbits... ")
     end
     F_os = zeros(length(og.counts))
-    for i=1:length(F_os_3D)
+    for i in eachindex(F_os_3D)
         if og.orbit_index[i]==0
         else
             F_os[og.orbit_index[i]] = F_os_3D[i]*dorbs[i]*og.counts[og.orbit_index[i]]
@@ -1808,161 +1918,112 @@ function os2ps(M::AbstractEquilibrium, Σ_ff_inv::AbstractArray, F_os::Vector, o
     return EPRZDensity(f_eprz,energy,pitch,r,z) # Return as EPRZDensity object
 end
 
+# ---> These functions are deprecated and will be completely removed in the next OWCF version update
+# ---> These functions are deprecated and will be completely removed in the next OWCF version update
+# ---> These functions are deprecated and will be completely removed in the next OWCF version update
 #"""
-#Just a simple object to hold the fast-ion distribution in orbit-space, together with the corresponding energy, pitch-maximum
-#and radius-maximum arrays, defining the orbit grid.
+#    wahba_estimator(OS; kwargs...)
+#
+#Compute the Wahba expression G using the Tikhonov regularisation parameter in OS.alpha. The Wahba expression G can be written as
+#
+#                   |Wx-S|^2
+#G = ---------------------------------------
+#    Trace(I-W*Inv(Wt*W+alpha*alpha*I)*Wt)^2
+#
+#Where I is the identity matrix, Wt is the transpose of W and alpha is OS.alpha. Inv(A) is the inverse of the matrix A. This function
+#is heavily inspired by the marginal_loglike() function written by L. Stagner, which can be found in the OrbitTomography.jl 
+#package in the tomography.jl file.
+#
+#WARNING! If the signal S has a lot of diagnostic energy bins, then this algorithm will require a lot of RAM memory.
 #"""
-#struct EpmRmDensity{T::AbstractArray,S::AbstractVector}
-#    d::T
-#    energy::S
-#    pm::S
-#    Rm::S
+#function wahba_estimator(OS; norm=1.0e18/size(OS.W,2),max_iter=30*size(OS.W,1))
+#    S = OS.d
+#    noise = OS.err
+#    Σ_S = Diagonal(noise.^2)
+#    Σ_S_inv = inv(Σ_S)
+#
+#    W_scaled = norm*OS.W
+#
+#    F_prior_scaled = OS.mu/norm
+#
+#    # Scale covariance matrices
+#    Σ_ff_scaled = OS.alpha*OS.S
+#    Σ_ff_inv_scaled = inv(OS.alpha)*OS.S_inv
+#    Γ_scaled = sqrt(inv(OS.alpha))*Matrix(OS.G)
+#
+#    F_scaled = (try 
+#        vec(nonneg_lsq(vcat(W_scaled./noise, Γ_scaled), vcat(S./noise, Γ_scaled*F_prior_scaled); alg=:fnnls, use_parallel=false, max_iter=max_iter))
+#    catch er
+#        if isa(er,InterruptException)
+#            rethrow(er)
+#        end
+#        @warn "Non-negative Least Squares failed. Using MAP estimate"
+#        println(err)
+#
+#        Σ_inv = Σ_ff_inv_scaled .+ W_scaled'*Σ_S_inv*W_scaled
+#        Σ_inv \ (W_scaled'*(Σ_S_inv*S) + Σ_ff_inv_scaled*F_prior_scaled)
+#    end)
+#
+#    F = vec((norm/size(W_scaled,2)) .*F_scaled) # Re-scale solution to correct size
+#
+#    W = OS.W
+#    alpha = OS.alpha
+#
+#    nom = (LinearAlgebra.norm(W*F-S))^2
+#    denom = tr(Diagonal(ones(size(W,1))) - W*inv(transpose(W)*W + (alpha*alpha) .*Diagonal(ones(size(W,2))))*transpose(W))^2
+#
+#    return nom/denom
 #end
-
-"""
-    wahba_estimator(OS; kwargs...)
-
-Compute the Wahba expression G using the Tikhonov regularisation parameter in OS.alpha. The Wahba expression G can be written as
-
-                   |Wx-S|^2
-G = ---------------------------------------
-    Trace(I-W*Inv(Wt*W+alpha*alpha*I)*Wt)^2
-
-Where I is the identity matrix, Wt is the transpose of W and alpha is OS.alpha. Inv(A) is the inverse of the matrix A. This function
-is heavily inspired by the marginal_loglike() function written by L. Stagner, which can be found in the OrbitTomography.jl 
-package in the tomography.jl file.
-
-WARNING! If the signal S has a lot of diagnostic energy bins, then this algorithm will require a lot of RAM memory.
-"""
-function wahba_estimator(OS; norm=1.0e18/size(OS.W,2),max_iter=30*size(OS.W,1))
-    S = OS.d
-    noise = OS.err
-    Σ_S = Diagonal(noise.^2)
-    Σ_S_inv = inv(Σ_S)
-
-    W_scaled = norm*OS.W
-
-    F_prior_scaled = OS.mu/norm
-
-    # Scale covariance matrices
-    Σ_ff_scaled = OS.alpha*OS.S
-    Σ_ff_inv_scaled = inv(OS.alpha)*OS.S_inv
-    Γ_scaled = sqrt(inv(OS.alpha))*Matrix(OS.G)
-
-    F_scaled = (try 
-        vec(nonneg_lsq(vcat(W_scaled./noise, Γ_scaled), vcat(S./noise, Γ_scaled*F_prior_scaled); alg=:fnnls, use_parallel=false, max_iter=max_iter))
-    catch er
-        if isa(er,InterruptException)
-            rethrow(er)
-        end
-        @warn "Non-negative Least Squares failed. Using MAP estimate"
-        println(err)
-
-        Σ_inv = Σ_ff_inv_scaled .+ W_scaled'*Σ_S_inv*W_scaled
-        Σ_inv \ (W_scaled'*(Σ_S_inv*S) + Σ_ff_inv_scaled*F_prior_scaled)
-    end)
-
-    F = vec((norm/size(W_scaled,2)) .*F_scaled) # Re-scale solution to correct size
-
-    W = OS.W
-    alpha = OS.alpha
-
-    nom = (LinearAlgebra.norm(W*F-S))^2
-    denom = tr(Diagonal(ones(size(W,1))) - W*inv(transpose(W)*W + (alpha*alpha) .*Diagonal(ones(size(W,2))))*transpose(W))^2
-
-    return nom/denom
-end
-
-"""
-    wahba_optimize_tikhonov_factor!(OS; kwargs...)
-    wahba_optimize_tikhonov_factor!(OS; log_bounds=(-3,3), kwargs...)
-
-Wahba lahba dub dub! This optimisation function attempts to find the optimal Tikhonov regularisation factor by minimizing
-the expression G, as found at https://en.wikipedia.org/wiki/Tikhonov_regularization under 'Determination of the Tikhonov factor'.
-Grace Wahba proved that the optimal Tikhonov regularisation parameter, in the sense of leave-one-out cross-validation, minimizes the expression G.
-See for example Wahba, G. (1990). "Spline Models for Observational Data". CBMS-NSF Regional Conference Series in Applied Mathematics. Society for 
-Industrial and Applied Mathematics. See also for example www.doi.org/10.1080/00401706.1979.10489751 (Golub, G.; Heath, M.; Wahba, G. (1979). Technometrics. 21 (2)).
-
-The function structure is heavily inspired by the optimize_alpha!() function written by L. Stagner, which can be found in the OrbitTomography.jl
-package in the tomography.jl file.
-
-The optimization will print info every 2nd iterations by default (show_trace=true and show_every=2, respectively).
-
-A time limit for the optimization is set to 15 minutes (15*60 seconds) by default.
-"""
-function wahba_optimize_tikhonov_factor!(OS; log_bounds=(-6,6), show_trace=true, show_every=2, iterations=1000, kwargs...)
-    f = x -> begin
-        OS.alpha = 10.0^x
-        return -wahba_estimator(OS; kwargs...)
-    end
-
-    op = optimize(f, log_bounds[1], log_bounds[2], Brent(),rel_tol=1e-3, show_trace=show_trace, show_every=show_every, iterations=iterations)
-
-    OS.alpha = 10.0^Optim.minimizer(op)
-
-    return Optim.minimum(op)
-end
-
-"""
-    loglike_optimize_tikhonov_factor!(OS)
-
-Given the OrbitSystem struct OS, compute the optimal tikhonov regularization factor by maximizing the log
-likelihood.
-"""
-function loglike_optimize_tikhonov_factor!(OS; show_trace=true, show_every=2, iterations=1000, log_bounds = (-6,6), kwargs...)
-    f = x -> begin
-        OS.alpha = 10.0^x
-        return -marginal_loglike(OS; kwargs...)
-    end
-
-    op = optimize(f, log_bounds[1], log_bounds[2], Brent(),rel_tol=1e-3, show_trace=show_trace, show_every=show_every, iterations=iterations)
-
-    OS.alpha = 10.0^Optim.minimizer(op)
-
-    return Optim.minimum(op)
-end
-
-"""
-    getGCP(species_identifier)
-
-The same function as is provided by OWCF/misc/species_func.jl. However, since it's needed in the os2COM() function, which is also
-a part of extra/dependencies.jl, it needs to be defined here as well. Sometimes, it's more efficient to only load misc/species_func.jl, 
-since one does not always want all the packages needed for dependencies.jl. Therefore, the functions below are also loadable as a separate
-script, i.e. misc/species_func.jl.
-"""
-function getGCP(species_identifier::AbstractString)
-    if lowercase(species_identifier)=="d"
-        return GuidingCenterOrbits.GCDeuteron
-    elseif lowercase(species_identifier)=="t"
-        return GuidingCenterOrbits.GCTriton
-    elseif lowercase(species_identifier)=="3he"
-        return GuidingCenterOrbits.GCHelium3
-    elseif lowercase(species_identifier)=="p"
-        return GuidingCenterOrbits.GCProton
-    elseif lowercase(species_identifier)=="e"
-        return GuidingCenterOrbits.GCElectron
-    elseif (lowercase(species_identifier)=="alpha" || lowercase(species_identifier)=="4he")
-        return GuidingCenterOrbits.GCAlpha
-    else
-        error("getSpeciesMass got unknown species as input. Please re-try.")
-    end
-end
-
-function getSpeciesMass(species_identifier::AbstractString)
-    return (getGCP(species_identifier)(0.0,0.0,0.0,0.0)).m # 0.0, 0.0, 0.0, 0.0 is just to activate the function
-end
-
-function getSpeciesAmu(species_identifier::AbstractString)
-    return getSpeciesMass(species_identifier) / GuidingCenterOrbits.mass_u
-end
-
-function getSpeciesEcu(species_identifier::AbstractString)
-    return (getGCP(species_identifier)(0.0,0.0,0.0,0.0)).q # 0.0, 0.0, 0.0, 0.0 is just to activate the function
-end
-
-function getSpeciesCharge(species_identifier::AbstractString)
-    return getSpeciesEcu(species_identifier) * GuidingCenterOrbits.e0
-end
+#
+#"""
+#    wahba_optimize_tikhonov_factor!(OS; kwargs...)
+#    wahba_optimize_tikhonov_factor!(OS; log_bounds=(-3,3), kwargs...)
+#
+#Wahba lahba dub dub! This optimisation function attempts to find the optimal Tikhonov regularisation factor by minimizing
+#the expression G, as found at https://en.wikipedia.org/wiki/Tikhonov_regularization under 'Determination of the Tikhonov factor'.
+#Grace Wahba proved that the optimal Tikhonov regularisation parameter, in the sense of leave-one-out cross-validation, minimizes the expression G.
+#See for example Wahba, G. (1990). "Spline Models for Observational Data". CBMS-NSF Regional Conference Series in Applied Mathematics. Society for 
+#Industrial and Applied Mathematics. See also for example www.doi.org/10.1080/00401706.1979.10489751 (Golub, G.; Heath, M.; Wahba, G. (1979). Technometrics. 21 (2)).
+#
+#The function structure is heavily inspired by the optimize_alpha!() function written by L. Stagner, which can be found in the OrbitTomography.jl
+#package in the tomography.jl file.
+#
+#The optimization will print info every 2nd iterations by default (show_trace=true and show_every=2, respectively).
+#
+#A time limit for the optimization is set to 15 minutes (15*60 seconds) by default.
+#"""
+#function wahba_optimize_tikhonov_factor!(OS; log_bounds=(-6,6), show_trace=true, show_every=2, iterations=1000, kwargs...)
+#    f = x -> begin
+#        OS.alpha = 10.0^x
+#        return -wahba_estimator(OS; kwargs...)
+#    end
+#
+#    op = optimize(f, log_bounds[1], log_bounds[2], Brent(),rel_tol=1e-3, show_trace=show_trace, show_every=show_every, iterations=iterations)
+#
+#    OS.alpha = 10.0^Optim.minimizer(op)
+#
+#    return Optim.minimum(op)
+#end
+#
+#"""
+#    loglike_optimize_tikhonov_factor!(OS)
+#
+#Given the OrbitSystem struct OS, compute the optimal tikhonov regularization factor by maximizing the log
+#likelihood.
+#"""
+#function loglike_optimize_tikhonov_factor!(OS; show_trace=true, show_every=2, iterations=1000, log_bounds = (-6,6), kwargs...)
+#    f = x -> begin
+#        OS.alpha = 10.0^x
+#        return -marginal_loglike(OS; kwargs...)
+#    end
+#
+#    op = optimize(f, log_bounds[1], log_bounds[2], Brent(),rel_tol=1e-3, show_trace=show_trace, show_every=show_every, iterations=iterations)
+#
+#    OS.alpha = 10.0^Optim.minimizer(op)
+#
+#    return Optim.minimum(op)
+#end
+#
 
 """
     getOSTopoMap(M, E, pmRm_inds, pm_array, Rm_array)
@@ -1998,7 +2059,7 @@ function getOSTopoMap(M::AbstractEquilibrium, E_array::AbstractVector, pm_array:
     Rm_inds_rep = repeat(CartesianIndices(Rm_array),outer=length(pm_array)) # To get all points
     topoMap = zeros(length(E_array),length(pm_array),length(Rm_array)) # The total 3D topological map
     pmRm_inds_array = collect(zip(pm_inds_rep,Rm_inds_rep)) # All points in an energy slice, in one long vector
-    for iE=1:length(E_array)
+    for iE in eachindex(E_array)
         topoMap[iE,:,:] = getOSTopoMap(M, E_array[iE], pmRm_inds_array, pm_array, Rm_array; kwargs... )
     end
     return topoMap
@@ -2560,10 +2621,18 @@ end
 
 """
     Ep2VparaVperp(E_array, p_array, Q)
-    Ep2VparaVperp(E_array, p_array, Q; my_gcp=GCDeuteron, needJac=false, isTopoMap=false, verbose=false)
+    Ep2VparaVperp(E_array, p_array, Q; my_gcp=GCDeuteron, needJac=false, isTopoMap=false, verbose=false, returnAbscissas=false)
 
 Transform a 2D (E,p) quantity Q into (v_para,v_perp) space. If needJac, assume a jacobian is needed (e.g distribution).
 If isTopoMap, assume Q is a topological map, implying special care is needed for successful transform.
+If returnAbscissas, then the vpara, vperp grid points will be returned as separate output variables. That is
+
+Q_vel, vpara_vector, vperp_vector = Ep2VparaVperp(E_array, p_array, Q; returnAbscissas=true)
+
+Otherwise, please use as
+
+Q_vel = Ep2VparaVperp(E_array, p_array, Q)
+
 PLEASE NOTE! E_array MUST be given in keV.
 """
 function Ep2VparaVperp(E_array::Vector, p_array::Vector, Q::Matrix{Float64}; my_gcp::AbstractParticle{T}=GCDeuteron(0.0,0.0,0.0,0.0), needJac::Bool=false, isTopoMap::Bool=false, verbose::Bool=false, returnAbscissas::Bool=false) where {T}
@@ -2621,8 +2690,48 @@ function Ep2VparaVperp(E_array::Vector, p_array::Vector, Q::Matrix{Float64}; my_
     end
 
     if returnAbscissas
-        return vpara_array, vperp_array, Q_VEL
+        return Q_VEL, vpara_array, vperp_array
     else
         return Q_VEL
+    end
+end
+
+"""
+    slowing_down_function_core()
+
+Assume species_1 is thermal, species_2 is fast.
+
+THIS FUNCTION IS UNDER CONSTRUCTION
+THIS FUNCTION IS UNDER CONSTRUCTION
+THIS FUNCTION IS UNDER CONSTRUCTION
+"""
+function slowing_down_function_core(v_array, p_array, n_e, T_e, species_1, n_1, T_1, species_2, n_2, T_2; S0::Float64=1.0, g=(v-> 0))
+    m_e = (GuidingCenterOrbits.e_amu)*(GuidingCenterOrbits.mass_u) # Electron mass, kg
+    τ_s = spitzer_slowdown_time(n_e, T_e, species_1, n_1, T_1, species_2, n_2, T_2) # Spitzer slowing-down time, s
+    Z_1 = ((n_1*getSpeiesEcu(species_1)*getSpeciesMass(species_2))/(n_e*getSpeciesMass(species_1)))+((n_2*getSpeiesEcu(species_2)*getSpeciesMass(species_2))/(n_e*getSpeciesMass(species_2))) # Assume two ion species in plasma
+    E_e = T_e*1000*GuidingCenterOrbits.e0 # Thermal electron energy, J
+    v_e = (GuidingCenterOrbits.c0)*sqrt(1-(1/((E_e/(m_e*(GuidingCenterOrbits.c0)^2))+1)^2))# Thermal electron (relativistic) speed
+    v_c = (((3*sqrt(pi)*m_e*Z_1)/(4*getSpeciesMass(species_2)))^(1/3))*v_e # Cross-over speed
+    Z_2 = ((n_1*getSpeciesEcu(species_1)^2)/(n_e*Z_1))+((n_2*getSpeciesEcu(species_2)^2)/(n_e*Z_1)) # Assume two ion species in plasma
+    β = Z_2/(2*τ_s) # A Fokker-planck plasma parameter
+    alpha0 = β*(1-p0^2)/3 # Remember to a Heaviside function to alpha when computing in the below foor-loop
+    f_SD = zeros(length(v_array),length(p_array))
+    for (iv,v) in enumerate(v_array), (ip,p) in enumerate(p_array)
+        
+    end
+
+end
+
+"""
+THIS FUNCTION IS UNDER CONSTRUCTION
+THIS FUNCTION IS UNDER CONSTRUCTION
+THIS FUNCTION IS UNDER CONSTRUCTION
+"""
+function slowing_down_function(;type=:core)
+
+    if type==:core
+        return slowing_down_function_core()
+    else
+        error("Slowing-down functions currently only support W.G.F. Core type. Please correct and re-try.")
     end
 end

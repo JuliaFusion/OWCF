@@ -138,6 +138,7 @@ end
     filepath_TRANSP_shot = "" # As an example, if filepath_FI_distr=="96100J01_fi_1.cdf" then this variable should be "96100J01.cdf". If filepath_thermal_distr=="96100J01.cdf", then filepath_TRANSP_shot==filepath_thermal_distr.
     folderpath_o = "../OWCF_results/template/" # Output folder path. Finish with '/'
     folderpath_OWCF = $folderpath_OWCF # Set path to OWCF folder to same as main process (hence the '$')
+    include_flr_effects = false
     mc_samples = 1_000_000
     mc_chunk = 10_000 # Should be smaller than mc_samples. If unsure, do not alter from default value of 10_000
     noiseLevel_b = 0.05 # Background noise level. As a decimal fraction of 1.0. Could also be greater than 1.0 but why would you want that?
