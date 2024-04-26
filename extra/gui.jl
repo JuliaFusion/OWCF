@@ -337,11 +337,10 @@ end
 # into their orbit-type constituents (as in Figure 10 and 11 in H. Järleblad et al, NF, 2022)
 @userplot OrbPile
 
-@recipe function f(of::OrbPile)
+@recipe function f(of::OrbPile; orbcolors = [:red :blue :green :purple :orange :pink]) # Assume maximum 6 orbit types
     weights, returns = of.args
     weights = cumsum(weights,dims=2)
     seriestype := :shape
-    orbcolors = [:red :blue :green :purple :orange :pink] # Assume maximum 6 orbit types
     for c=1:size(weights,2)
         sx = vcat(weights[:,c], c==1 ? zeros(length(returns)) : reverse(weights[:,c-1]))
         sy = vcat(returns, reverse(returns))

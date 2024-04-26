@@ -305,9 +305,9 @@ if isfile(instrumental_response_filepath) # Returns true both for Strings and Ve
         output_filepath = instrumental_response_filepath[3]
 
         py"""
-            instrumental_response_matrix = np.loadtxt($matrix_filepath)
-            instrumental_response_input = np.loadtxt($input_filepath)
-            instrumental_response_output = np.loadtxt($output_filepath)
+        instrumental_response_matrix = np.loadtxt($matrix_filepath)
+        instrumental_response_input = np.loadtxt($input_filepath)
+        instrumental_response_output = np.loadtxt($output_filepath)
         """
         instrumental_response_matrix = py"instrumental_response_matrix"
         instrumental_response_input = py"instrumental_response_input"
