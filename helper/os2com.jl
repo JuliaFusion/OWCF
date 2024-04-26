@@ -221,7 +221,7 @@ for key in keys(Q_dict)
     else
         error("This should be impossible to reach, given the load check above.")
     end
-    Q_dict_COM[key], global E_array, Q_dict_COM["mu_matrix_"*key], Q_dict_COM["Pphi_matrix_"*key] = os2COM(M, Q_dict[key], vec(E_array), vec(pm_array), vec(Rm_array), FI_species; nμ=nmu, nPϕ=nPphi, isTopoMap=(key=="topoMap" ? true : false), needJac=(key=="F" ? true : false), verbose=verbose, good_coords=good_coords, wall=wall, extra_kw_args=extra_kw_args)
+    Q_dict_COM[key], E_array[:], Q_dict_COM["mu_matrix_"*key], Q_dict_COM["Pphi_matrix_"*key] = os2COM(M, Q_dict[key], Vector(E_array), Vector(pm_array), Vector(Rm_array), FI_species; nμ=nmu, nPϕ=nPphi, isTopoMap=(key=="topoMap" ? true : false), needJac=(key=="F" ? true : false), verbose=verbose, good_coords=good_coords, wall=wall, extra_kw_args=extra_kw_args)
 end
 ## ---------------------------------------------------------------------------------------------
 
@@ -245,7 +245,7 @@ end
 write(myfile,"E_array",E_array)
 write(myfile,"pm_array",pm_array)
 write(myfile,"Rm_array",Rm_array)
-if @isdefined FI_spcies
+if @isdefined FI_species
     write(myfile,"FI_species",FI_species)
 end
 write(myfile,"filepath_equil",filepath_equil)
