@@ -127,11 +127,14 @@ class Reactant:
 
     # Convenience functions for sampling various distributions
 
-    def sample_maxwellian_dist(self, T, pitch_range=[-1,1], v_rot=0.0):
-        """ Sample reactant four-momenta from a Maxwellian distribution with a given temperature
-        (with uniform pitch distribution in a given range). Units in keV.
+    def sample_maxwellian_dist(self, T, pitch_range=[-1,1], v_rot=np.array([0.0,0.0,0.0])):
+        """ Sample reactant four-momenta from a Maxwellian distribution with a given temperature T
+        (with uniform pitch distribution in a given range pitch_range). Units in keV.
 
-        A toroidal rotation speed (including sign) can also be supplied (m/s)."""
+        v_rot: A plasma rotation velocity vector in (R, phi, z) can also be supplied (m/s). Usually,
+        this plasma rotation vector points purely in the toroidal direction [0.0, 1.0, 0.0] or 
+        [0.0,-1.0,0.0] but not always. Rotation along the magnetic field lines might also exist, which
+        is not purely in the toroidal direction when a poloidal magnetic field is taken into account."""
 
         m = self.m
 
@@ -145,8 +148,7 @@ class Reactant:
         self.set_energy_pitch(E, pitch)
 
         # Add rotation
-        if np.abs(v_rot) > 0.0:
-            v_rot = v_rot * phi_hat          # toroidal rotation [m/s]
+        if not (np.sum(v_rot) == 0.0):
             self.v = self.v + v_rot
 
     def sample_mono_dist(self, E0, pitch_range=[-1,1]):

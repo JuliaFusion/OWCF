@@ -63,7 +63,7 @@
 #   FI_species - The fast-ion species. "D", "3he", "T" etc - String
 #   filepath_distr - If used, the filepath to the fast-ion distribution .jld2 file - String
 
-# Script written by Henrik Järleblad. Last maintained 2023-05-17.
+# Script written by Henrik Järleblad. Last maintained 2024-06-25.
 ########################################################################################
 
 ## First you have to set the system specifications
@@ -137,7 +137,7 @@ end
     R_min = nothing # Automatically HFS wall to LFS wall. Override by specifying together with R_max
     R_max = nothing # Automatically HFS wall to LFS wall. Override by specifying together with R_min
     z_min = nothing # Automatically divertor bottom to vacuum vessel roof. Override by specifying together with z_max
-    z_min = nothing # Automatically divertor bottom to vacuum vessel roof. Override by specifying together with z_min
+    z_max = nothing # Automatically divertor bottom to vacuum vessel roof. Override by specifying together with z_min
     # /\ Only necessary if E_array, p_array, R_array and/or z_array are set to nothing
     # /\ Only necessary if !(useDistrFile)
 

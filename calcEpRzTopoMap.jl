@@ -61,7 +61,7 @@
 # If saveXYZJacobian==true,
 #   jacobian - The Jacobian from (x,y,z,vx,vy,vz) to (E,p,R,z) for all (E,p,R,z) points - Array{Float64,4}
 
-# Script written by Henrik Järleblad. Last maintained 2023-05-23.
+# Script written by Henrik Järleblad. Last maintained 2024-06-25.
 ########################################################################################
 
 ## ------
@@ -137,21 +137,21 @@ if useDistrFile
         close(myfile)
     end
 else
-    if (E_array) == nothing
+    if isnothing(E_array)
         E_array = collect(range(Emin,stop=Emax,length=nE))
     end
-    if (p_array) == nothing
+    if isnothing(p_array)
         p_array = collect(range(p_min,stop=p_max,length=np))
     end
-    if (R_array) == nothing
-        if (R_min==nothing) || (R_max==nothing)
+    if isnothing(R_array)
+        if isnothing(R_min) || isnothing(R_max)
             R_array = range(minimum(wall.r), stop=maximum(wall.r), length=nR)
         else
             R_array = range(R_min, stop=R_max, length=nR)
         end
     end
-    if (z_array) == nothing
-        if (z_min==nothing) || (z_max==nothing)
+    if isnothing(z_array)
+        if isnothing(z_min) || isnothing(z_max)
             z_array = range(minimum(wall.z), stop=maximum(wall.z), length=nz)
         else
             z_array = range(z_min, stop=z_max, length=nz)
@@ -224,9 +224,9 @@ println("")
 npoints = length(p_array)*length(R_array)*length(z_array) # Number of points for one energy level
 pRz_array = Array{Tuple{Float64,Float64,Float64}}(undef,npoints) # To be shared among available processor cores
 point = 1
-for ip=1:length(p_array)
-    for iR=1:length(R_array)
-        for iz=1:length(z_array)
+for ip in eachindex(p_array)
+    for iR in eachindex(R_array)
+        for iz in eachindex(z_array)
             pRz_array[point] = (p_array[ip],R_array[iR],z_array[iz]) # Create a tuple
             global point += 1
         end
@@ -237,7 +237,7 @@ polTimeMap_tottot = zeros(length(E_array),length(p_array),length(R_array),length
 torTimeMap_tottot = zeros(length(E_array),length(p_array),length(R_array),length(z_array)) # The total 4D toroidal transit time map
 jacobian_tottot = zeros(length(E_array),length(p_array),length(R_array),length(z_array)) # The total 4D Jacobian from (x,y,z,vx,vy,vz) to (E,p,R,z)
 count = 1 # For single-threaded computational progress visualization
-for iE=1:length(E_array) ###########################################
+for iE in eachindex(E_array) ###########################################
 E = E_array[iE]
 verbose && println("Creating topological map for: $(round(E,digits=2)) keV... ")
 if distributed

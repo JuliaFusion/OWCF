@@ -1,5 +1,9 @@
 ###########################################################
-# This script is currently under construction.
+# THIS SCRIPT IS CURRENTLY UNDER CONSTRUCTION!!!
+# THIS SCRIPT IS CURRENTLY UNDER CONSTRUCTION!!!
+# THIS SCRIPT IS CURRENTLY UNDER CONSTRUCTION!!!
+#
+#
 # When completed, it will be able to solve the S=WF inverse
 # problem. That is, given a set of measurements S (either from 
 # calcSpec.jl or experimental data), use 0th or 1st order 
@@ -8,6 +12,10 @@
 # to reconstruct the fast-ion distribution F. This is done for 
 # many regularization parameter values, and returned as a 
 # multi-dimensional array.
+#
+# THIS SCRIPT IS CURRENTLY UNDER CONSTRUCTION!!!
+# THIS SCRIPT IS CURRENTLY UNDER CONSTRUCTION!!!
+# THIS SCRIPT IS CURRENTLY UNDER CONSTRUCTION!!!
 ###########################################################
 
 # Load packages
@@ -261,8 +269,72 @@ function nonunique2(x::AbstractArray{T}) where T
     duplicatevector
 end
 ###########################################################
+# Execute part of extra/getEpRzFIdistrFromTRANSP.jl
+###########################################################
 # Create SD basis functions
-
+using NetCDF
+include("misc/temp_n_dens.jl")
+my_dict = read_ncdf("/home/henrikj/Data/JET/TRANSP/99971/L72/99971L72_fi_2.cdf",wanted_keys=["TIME"])
+t_mid = my_dict["TIME"]
+R_of_interest = 2.8989
+z_of_interest = 0.27561
+M, wall = read_geqdsk("/home/henrikj/Data/JET/eqdsk/99971/g99971_474-48.9.eqdsk",clockwise_phi=false)
+psi_axis, psi_bdry = psi_limits(M)
+rho_of_interest = sqrt((M(R_of_interest,z_of_interest)-psi_axis)/(psi_bdry-psi_axis))
+ne_itp = getDensProfileFromTRANSP(t_mid,"/home/henrikj/Data/JET/TRANSP/99971/L72/99971L72.cdf","e")
+nD_itp = getDensProfileFromTRANSP(t_mid,"/home/henrikj/Data/JET/TRANSP/99971/L72/99971L72.cdf","D")
+nT_itp = getDensProfileFromTRANSP(t_mid,"/home/henrikj/Data/JET/TRANSP/99971/L72/99971L72.cdf","T")
+n_e = ne_itp(rho_of_interest)
+n_D = nD_itp(rho_of_interest)
+n_T = nT_itp(rho_of_interest)
+Te_itp = getTempProfileFromTRANSP(t_mid,"/home/henrikj/Data/JET/TRANSP/99971/L72/99971L72.cdf","e")
+TD_itp = getTempProfileFromTRANSP(t_mid,"/home/henrikj/Data/JET/TRANSP/99971/L72/99971L72.cdf","D")
+TT_itp = getTempProfileFromTRANSP(t_mid,"/home/henrikj/Data/JET/TRANSP/99971/L72/99971L72.cdf","T")
+T_e = Te_itp(rho_of_interest)
+T_D = TD_itp(rho_of_interest)
+T_T = TT_itp(rho_of_interest)
+###########################################################
+# Test upgraded Debye length function
+λ_D = debye_length(n_e, T_e, ["T","D"], [n_T,n_D], [T_T, T_D])
+###########################################################
+E0_array = E_coarse[1:1:end-1] .+ diff(E_coarse)[1]/2
+p0_array = p_coarse[2:1:end-1]
+F_SD = zeros(length(E_coarse)*length(p_coarse),length(E0_array)*length(p0_array))
+i_SD = 1
+for E_0 in E0_array, p_0 in p0_array
+    #println("$(round(100*i_SD/(length(E_coarse)*length(p_coarse)),digits=3)) %")
+    f_SD = slowing_down_function(E_0, p_0, E_coarse, p_coarse, n_e, T_e, "T", n_T, T_T, "D", n_D, T_D; dampen=true)
+    println(extrema(f_SD))
+    dE = diff(E_coarse)[1]
+    dp = diff(p_coarse)[1]
+    f_SD = f_SD ./sum((dE*dp) .*f_SD) # Normalize the basis function so they integrate to 1.0
+    F_SD[:,i_SD] .= reshape(f_SD,(length(E_coarse)*length(p_coarse),1))
+    i_SD += 1
+end
+###########################################################
+for i in 1:size(F_SD,2)
+    f_SD = reshape(F_SD[:,i],(length(E_coarse),length(p_coarse)))
+    my_plt = Plots.heatmap(E_coarse,p_coarse,f_SD',fillcolor=cgrad([:white, :yellow, :orange, :red, :black]))
+    display(my_plt)
+end
+###########################################################
+function testyMcTestface(x::T) where T<:Real
+    return 2*x
+end
+###########################################################
+# Filter out all basis functions that are NOT identically zero and do NOT contain NaNs 
+# hcat them back into a matrix
+F_SD_new = reduce(hcat,filter(col-> sum(col)!=0.0 && sum(isnan.(col))==0, eachcol(F_SD)))
+###########################################################
+for i in 1:size(F_SD_new,2)
+    f_SD_new = reshape(F_SD_new[:,i],(length(E_coarse),length(p_coarse)))
+    my_plt = Plots.heatmap(E_coarse,p_coarse,f_SD_new',fillcolor=cgrad([:white, :yellow, :orange, :red, :black]))
+    display(my_plt)
+end
+###########################################################
+W_SD_KM14_orig = W_2D_KM14_orig*F_SD_new
+W_SD_KM15_orig = W_2D_KM15_orig*F_SD_new
+W_SD_MPRu_orig = W_2D_MPRu_orig*F_SD_new
 ###########################################################
 # Rescale weight functions, if necessary
 # In final OWCF version, code an intelligent check, to 
@@ -275,14 +347,14 @@ end
 # compared with the experimental data. If none of the signals are within an 
 # order of magnitude from the maximum of any of the experimental signals, 
 # the weight functions should be re-scaled as below
-W_2D_KM14 = (maximum(S_exp_KM14)/maximum(S_synth_KM14_clean)) .*W_2D_KM14_orig
-W_2D_KM15 = (maximum(S_exp_KM15)/maximum(S_synth_KM15_clean)) .*W_2D_KM15_orig
-W_2D_MPRu = (maximum(S_exp_MPRu)/maximum(S_synth_MPRu_clean)) .*W_2D_MPRu_orig
+W_2D_KM14 = (maximum(S_exp_KM14)/maximum(S_synth_KM14_clean)) .*W_SD_KM14_orig
+W_2D_KM15 = (maximum(S_exp_KM15)/maximum(S_synth_KM15_clean)) .*W_SD_KM15_orig
+W_2D_MPRu = (maximum(S_exp_MPRu)/maximum(S_synth_MPRu_clean)) .*W_SD_MPRu_orig
 ###########################################################
 # Try using the non-rescaled weight functions on the experimental data
-W_2D_KM14 = W_2D_KM14_orig
-W_2D_KM15 = W_2D_KM15_orig
-W_2D_MPRu = W_2D_MPRu_orig
+W_2D_KM14 = W_SD_KM14_orig#W_2D_KM14_orig
+W_2D_KM15 = W_SD_KM15_orig#W_2D_KM15_orig
+W_2D_MPRu = W_SD_MPRu_orig#W_2D_MPRu_orig
 ###########################################################
 # Prepare experimental data problem first
 noise_floor_factor = 1.0e-4
@@ -292,13 +364,13 @@ noise_floor_MPRu = maximum(S_exp_MPRu)*noise_floor_factor
 replace!(x-> (x<noise_floor_KM14) ? noise_floor_KM14 : x, err_exp_KM14)
 replace!(x-> (x<noise_floor_KM15) ? noise_floor_KM15 : x, err_exp_KM15)
 replace!(x-> (x<noise_floor_MPRu) ? noise_floor_MPRu : x, err_exp_MPRu)
-W_hat = vcat(W_2D_KM14 ./err_exp_KM14, W_2D_KM15 ./err_exp_KM15, W_2D_MPRu ./err_exp_MPRu)
-s_hat = vcat(S_exp_KM14 ./err_exp_KM14, S_exp_KM15 ./err_exp_KM15, S_exp_MPRu ./err_exp_MPRu)
+W_hat = vcat(W_2D_KM14 ./err_exp_KM14, W_2D_KM15 ./err_exp_KM15) #W_hat = vcat(W_2D_KM14 ./err_exp_KM14, W_2D_KM15 ./err_exp_KM15, W_2D_MPRu ./err_exp_MPRu)
+s_hat = vcat(S_exp_KM14 ./err_exp_KM14, S_exp_KM15 ./err_exp_KM15)
 ###########################################################
 # Add 0th order Tikhonov
-L0 = zeros(length(f_1D),length(f_1D))
-for i=1:length(f_1D)
-    for j=1:length(f_1D)
+L0 = zeros(size(F_SD_new,2),size(F_SD_new,2)) #L0 = zeros(length(f_1D),length(f_1D))
+for i=1:size(F_SD_new,2)#length(f_1D)
+    for j=1:size(F_SD_new,2)#length(f_1D)
         if i==j
             L0[i,j] = 1.0
         end
@@ -327,19 +399,19 @@ W_hh = W_hat ./Whm
 shm = maximum(s_hat)
 s_hh = s_hat ./shm
 L_orig = L0
-f0 = zeros(size(L_orig,1))
+f0 = zeros(size(F_SD_new,2))#zeros(size(L_orig,1))
 ###########################################################
 # SOLVE THE EXPERIMENTAL DATA PROBLEM
 using SCS, Convex
 using LinearAlgebra
-lambda_values = 10 .^(range(-2,stop=2.0,length=5))
+lambda_values = 10 .^(range(-3,stop=3.0,length=50))
 x_sols = zeros(length(lambda_values))
 p_sols = zeros(length(lambda_values))
 F_sols = zeros(length(f0),length(lambda_values))
 for (il,lambda) in enumerate(lambda_values)
     println("lambda: $(lambda)")
     L = lambda*L_orig
-    x = Convex.Variable(length(f_1D))
+    x = Convex.Variable(length(f0))
 
     problem = Convex.minimize(Convex.sumsquares(vcat(W_hh,L) * x - vcat(s_hh,f0)), [x >= 0])
 
@@ -403,8 +475,9 @@ for i=1:length(lambda_values)
     display(myplt)
 end
 for i=1:length(lambda_values)
-    Fr_2D = reshape(F_sols[:,i],size(f_test))
-    myplt = Plots.heatmap(E_coarse,p_coarse,Fr_2D',title="$(i): log10(λ)=$(log10(lambda_values[i]))")
+    Fr_2D = reshape(F_SD_new*F_sols[:,i],length(E_coarse),length(p_coarse))#reshape(F_sols[:,i],size(f_test))
+    gi = findall(x-> x<250.0,E_coarse)
+    myplt = Plots.heatmap(E_coarse[gi],p_coarse,Fr_2D[gi,:]',title="$(i): log10(λ)=$(log10(lambda_values[i]))",fillcolor=cgrad([:white, :yellow, :orange, :red, :black]))
     p0, pN = extrema(p_sols); diffP = abs(pN-p0)
     x0, xN = extrema(x_sols); diffX = abs(xN-x0)
     l_mag = sqrt((p_sols[i]-p0)*(p_sols[i]-p0)/(diffP*diffP)+(x_sols[i]-x0)*(x_sols[i]-x0)/(diffX*diffX))
@@ -425,20 +498,20 @@ replace!(x-> (x==0.0) ? 1.0 : x, err_synth_KM15)
 replace!(x-> (x==0.0) ? 1.0 : x, err_synth_MPRu)
 # W_2D_KM14, W_2D_KM15 and W_2D_MPRu are f*cked here 
 # Because of normalize to fit experimental data
-W_hat = vcat(W_2D_KM14_orig ./err_synth_KM14, W_2D_KM15_orig ./err_synth_KM15, W_2D_MPRu_orig ./err_synth_MPRu)
+W_hat = vcat(W_SD_KM14_orig ./err_exp_KM14, W_SD_KM15_orig ./err_exp_KM15, W_SD_MPRu_orig ./err_exp_MPRu) #vcat(W_2D_KM14_orig ./err_synth_KM14, W_2D_KM15_orig ./err_synth_KM15, W_2D_MPRu_orig ./err_synth_MPRu)
 s_hat = vcat(S_synth_KM14_noisy ./err_synth_KM14, S_synth_KM15_noisy ./err_synth_KM15, S_synth_MPRu_noisy ./err_synth_MPRu)
 Whm = maximum(W_hat)
 W_hh = W_hat ./Whm
 shm = maximum(s_hat)
 s_hh = s_hat ./shm
-f0 = zeros(size(L,1))
+f0 = zeros(size(L_orig,1))
 x_sols_synth = zeros(length(lambda_values))
 p_sols_synth = zeros(length(lambda_values))
 F_sols_synth = zeros(length(f0),length(lambda_values))
 for (il,lambda) in enumerate(lambda_values)
     println("lambda: $(lambda)")
     L = lambda*L0
-    x = Convex.Variable(length(f_1D))
+    x = Convex.Variable(length(f0))
 
     problem = Convex.minimize(Convex.sumsquares(vcat(W_hh,L) * x - vcat(s_hh,f0)), [x >= 0])
 
@@ -451,31 +524,31 @@ end
 ###########################################################
 # Check the synthetic reconstruction
 for i=1:length(lambda_values)
-    Sr = W_hh*F_sols_synth[:,i]
+    Sr = W_hh*F_sols_synth[:,i]#W_hh*F_sols_synth[:,i]
     myplt = Plots.plot(Sr ./maximum(Sr),title="$(i): log10(λ)=$(log10(lambda_values[i]))",label="ŴF*")
     myplt = Plots.plot!(s_hh ./maximum(s_hh),label="Ŝ")
     display(myplt)
 end
 for i=1:length(lambda_values)
-    Sr_KM14 = W_2D_KM14*F_sols_synth[:,i]
+    Sr_KM14 = W_2D_KM14*F_SD_new*F_sols_synth[:,i]
     myplt = Plots.plot(Ed_array_S_KM14,Sr_KM14 ./maximum(Sr_KM14),title="$(i): log10(λ)=$(log10(lambda_values[i]))",label="WF*")
     myplt = Plots.plot!(Ed_array_S_KM14,S_synth_KM14_noisy ./maximum(S_synth_KM14_noisy),label="S")
     display(myplt)
 end
 for i=1:length(lambda_values)
-    Sr_KM15 = W_2D_KM15*F_sols_synth[:,i]
+    Sr_KM15 = W_2D_KM15*F_SD_new*F_sols_synth[:,i]
     myplt = Plots.plot(Ed_array_S_KM15,Sr_KM15 ./maximum(Sr_KM15),title="$(i): log10(λ)=$(log10(lambda_values[i]))",label="WF*")
     myplt = Plots.plot!(Ed_array_S_KM15,S_synth_KM15_noisy ./maximum(S_synth_KM15_noisy),label="S")
     display(myplt)
 end
 for i=1:length(lambda_values)
-    Sr_MPRu = W_2D_MPRu*F_sols_synth[:,i]
+    Sr_MPRu = W_2D_MPRu*F_SD_new*F_sols_synth[:,i]
     myplt = Plots.plot(Ed_array_S_MPRu,Sr_MPRu ./maximum(Sr_MPRu),title="$(i): log10(λ)=$(log10(lambda_values[i]))",label="WF*")
     myplt = Plots.plot!(Ed_array_S_MPRu,S_synth_MPRu_noisy ./maximum(S_synth_MPRu_noisy),label="S")
     display(myplt)
 end
 for i=1:length(lambda_values)
-    Fr_2D = reshape(F_sols_synth[:,i],size(f_test))
+    Fr_2D = reshape(F_SD_new*F_sols_synth[:,i],size(f_test))
     myplt = Plots.heatmap(E_coarse,p_coarse,Fr_2D',title="$(i): log10(λ)=$(log10(lambda_values[i]))")
     p0, pN = extrema(p_sols_synth); diffP = abs(pN-p0)
     x0, xN = extrema(x_sols_synth); diffX = abs(xN-x0)
@@ -489,5 +562,3 @@ for i=1:length(lambda_values)
     myplt_tot = Plots.plot(myplt,myplt1,layout=(1,2),size=(900,400))
     display(myplt_tot)  
 end
-#########################################################
-# Define function to compute slowing-down basis function

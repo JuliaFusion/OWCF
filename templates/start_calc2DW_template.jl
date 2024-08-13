@@ -41,7 +41,10 @@
 # filepath_equil - The path to the file with the tokamak magnetic equilibrium and geometry - String
 # filepath_FI_cdf - To be specified, if filepath_thermal_distr is a TRANSP .cdf shot file. See below for specifications - String
 # filepath_thermal_distr - The path to the thermal distribution file to extract thermal species data from. Must be TRANSP .cdf, .jld2 file format or "" - String
+# filepath_start - The path to the start file. This is set automatically, and saved in the calc2DWeights.jl output file. LEAVE UNCHANGED. - String
+# flr_effects - If set to true, finite Larmor radius effects will be included in the weight function computations - Bool
 # folderpath_o - The path to the folder where the results will be saved - String
+# folderpath_OWCF - The path to the folder on your computer where the OWCF is installed - String
 # gyro_samples - The number of points to discretize the gyro-motion for computation of synthetic spectra - Int64
 # iiimax - If specified to be greater than 1, several copies of weight functions will be calculated. For comparison. - Int64
 # iii_average - If set to true, an average of all the copies of weight functions will be computed. Saved without the "_i" suffix. - Bool
@@ -49,7 +52,12 @@
 # np - The number of fast-ion p grid points in (E,p) space - Int64
 # p_array - The fast-ion p grid points of your (E,p) grid. If set to 'nothing': np, p_min and p_max must be specified - Vector
 # p_min - The lower boundary for the (E,p) grid p values - Float64
-# p_max - THe upper boundary for the (E,p) grid p values - Float64
+# p_max - The upper boundary for the (E,p) grid p values - Float64
+# plasma_rot - If true, then plasma rotation will be included in the computations - Bool
+# plasma_rot_speed_data_source_type - Set :TRANSP, to load from TRANSP file (if specified). Set :MANUAL, to use plasma_rot_speed - Symbol
+# plasma_rot_speed_data_source - The filepath to a TRANSP file containing the "OMEGA" variable, i.e. the plasma rotation data - String
+# plasma_rot_speed - If plasma_rot_speed_data_source is set to :MANUAL, use this value - Float64 or Int64
+# plasma_rot_dir - The direction of plasma rotation. Either :TOROIDAL (with same sign as plasma current) or along B-field lines with :BFIELD - Symbol
 # R_of_interest - The major radius coordinate of interest, for the (E,p) weight functions. Specified in meters or symbol (see below) - Float64 or symbol
 # reaction - The nuclear fusion reaction that you want to simulate. Please see OWCF/misc/availReacts.jl for available fusion reactions - String
 # saveVparaVperpWeights - If set to true, the weight functions will be saved on a (vpara,vperp) grid, in addition to (E,p)
@@ -58,6 +66,7 @@
 # thermal_temp_axis - The temperature of the thermal species distribution on axis, if filepath_thermal_distr is not specified - Float64
 # thermal_dens - The density of the thermal species distribution at the (R,z) point of interest - Float64
 # thermal_dens_axis - The density of the thermal species distribution on axis, if filepath_thermal_distr is not specified - Float64
+# tokamak - The identification abbreviation for the tokamak. E.g. "JET", "ITER" etc - String
 # verbose - If true, lots of information will be printed during execution - Bool
 # visualizeProgress - If false, progress bar will not be displayed during computations - Bool
 # z_of_interest - The vertical coordinate of interest, for the (E,p) weight functions. Specified in meters or symbol (see below) - Float64 or symbol
@@ -68,7 +77,7 @@
 # and thermal_dens_axis variables will be used to scale the polynomial profiles to match the specified
 # thermal temperature and thermal density at the magnetic axis. Please see the /misc/temp_n_dens.jl script for info.
 
-# Script written by Henrik Järleblad. Last maintained 2023-08-15.
+# Script written by Henrik Järleblad. Last maintained 2024-08-13.
 ######################################################################################################
 
 ## First you have to set the system specifications
@@ -121,6 +130,8 @@ end
     filepath_equil = "" # for example "equilibrium/JET/g96100/g96100_0-53.0012.eqdsk" or "myOwnSolovev.jld2"
     filepath_FI_cdf = "" # If filepath_thermal_distr=="96100J01.cdf", then filepath_FI_cdf should be "96100J01_fi_1.cdf" for example
     filepath_thermal_distr = "" # for example "96100J01.cdf", "myOwnThermalDistr.jld2" or ""
+    filepath_start = Base.source_path() # For saving in output file, for posterity and reproducibility
+    flr_effects = false
     folderpath_o = "../OWCF_results/template/" # Output folder path. Finish with '/'
     folderpath_OWCF = $folderpath_OWCF # Set path to OWCF folder to same as main process (hence the '$')
     gyro_samples = 50 # 50 is the default discretization number for the gyro-motion
@@ -131,6 +142,11 @@ end
     p_array = nothing # Array can be specified manually. Otherwise, leave as 'nothing'
     p_min = -1.0
     p_max = 1.0
+    plasma_rot = false # Set to true to include plasma rotation in the weight function computations
+    plasma_rot_speed_data_source_type = :MANUAL # :MANUAL or :TRANSP
+    plasma_rot_speed_data_source = "" # /path/to/the/TRANSP/file.cdf
+    plasma_rot_speed = 0.0 # If plasma_rot_speed_data_source is set to :MANUAL, use this value (m/s)
+    plasma_rot_dir = :TOROIDAL # :TOROIDAL or :BFIELD
     R_of_interest = :r_mag # The major radius coordinate of interest. Specify in meters e.g. "3.0", "3.4" etc. Can also be specified as a symbol :r_mag, then the major radius coordinate of the magnetic axis will automatically be used
     saveVparaVperpWeights = false # Set to true, and the weight functions will be saved in (vpara,vperp), in addition to (E,p)
     reaction = "D(d,n)3He" # Specified on the form a(b,c)d where a is thermal ion, b is fast ion, c is emitted particle and d is the product nucleus. However, if analyticalOWs==true then 'reaction' should be provided in the format 'proj-X' where 'X' is the fast ion species ('D', 'T' etc)
@@ -140,13 +156,13 @@ end
     thermal_temp_axis = 0.0 # keV. Please specify this if filepath_thermal_distr, filepath_FI_cdf and thermal_temp are not specified
     thermal_dens = nothing # The thermal species density for the (R,z) point of interest. If filepath_thermal_distr is provided, leave as nothing
     thermal_dens_axis = 0.0e20 # m^-3. Please specify this if filepath_thermal_distr and filepath_FI_cdf are not specified
-
+    # Below, you should specify the tokamak as well, if you know it. E.g. "JET", "ITER" etc.
+    # PLEASE NOTE! When plasma_rot is set to true and filepath_plasma_rot_TRANSP is specified 
+    # but filepath_thermal_distr is NOT a TRANSP output file (and filepath_FI_cdf is not a corresponding NUBEAM output file, as explained above), 
+    # a correct specification of the tokamak variable becomes necessary. 
+    tokamak = "JET"
     verbose = true # If true, then the program will be very talkative!
     visualizeProgress = false # If false, progress bar will not be displayed for computations
-
-    # You could specify the tokamak as well, if you know it. Please note, it's only for esthetic purposes
-    tokamak = "JET"
-
     z_of_interest = :z_mag # The vertical coordinate of interest. Specify in meters e.g. "0.3", "0.4" etc. Can also be specified as a symbol :z_mag, then the vertical coordinate of the magnetic axis will automatically be used
 end
 
