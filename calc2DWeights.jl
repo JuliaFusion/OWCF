@@ -57,6 +57,9 @@
 #   Ed_array - The diagnostic energy bin centers - Array{Float64,1}
 #   reaction_full - The nuclear fusion reaction for which the weights are computed - String
 #   filepath_thermal_distr - The filepath of the thermal species distribution. For reference - String
+#   filepath_start - The filepath to the start file used to execute calc2DWeights.jl. For reference - String
+# If plasma_rot was set to true, the output file will contain
+#   plasma_rot_at_Rz - An (R,phi,z) vector with the plasma rotation at the (R,z) point of interest - Array{Float,1}
 # If analytical weight functions (with projected velocities) are computed, the saved file will also have the key
 #   analytical2DWs - True if analytical weight functions were computed. False otherwise - Bool
 # If saveVparaVperpWeights was set to true, the output file will also contain
@@ -76,7 +79,7 @@
 # Please note that the diagnostic energy grid will be created as bin centers.
 # That is, the first diagnostic energy grid value will be (Ed_min+Ed_diff/2) and so on.
 
-# Script written by Henrik Järleblad. Last maintained 2023-12-18.
+# Script written by Henrik Järleblad. Last maintained 2024-08-13.
 ################################################################################################
 
 ## ---------------------------------------------------------------------------------------------
@@ -236,6 +239,14 @@ else # Otherwise, assume magnetic equilibrium is a saved .jld2 file
     end
 end
 
+if tokamak=="JET" && parse(Float64,replace(timepoint,","=>"."))>=40.0
+    # Standard JET pulse needs 40 seconds to prepare.
+    # This is sometimes included.
+    # The OWCF (and TRANSP) does not count this preparation time.
+    # Therefore, deduct it.
+    timepoint = replace("$(parse(Float64,replace(timepoint,","=>"."))-40.0)", "." => ",")
+end
+
 if (fileext_thermal=="cdf") && (fileext_FI_cdf=="cdf")
     # If the user has specified a TRANSP .cdf file with pertaining NUBEAM fast-ion distribution data...
     # Load the time, and overwrite timepoint. TRANSP time data superseeds .eqdsk time data
@@ -262,15 +273,6 @@ if !(p_array == nothing)
     np = length(p_array)
 else
     p_array = collect(range(p_min, stop=p_max, length=np))
-end
-
-## ---------------------------------------------------------------------------------------------
-# Pre-processing (R,z) of interest input data
-if (R_of_interest==:r_mag)
-    R_of_interest, zdummy = magnetic_axis(M)
-end
-if (z_of_interest==:z_mag)
-    rdummy, z_of_interest = magnetic_axis(M)
 end
 
 ## ---------------------------------------------------------------------------------------------
@@ -301,6 +303,54 @@ if isfile(instrumental_response_filepath) # Returns true both for Strings and Ve
     end
     instrumental_response = true
 end
+
+## ---------------------------------------------------------------------------------------------
+# Pre-processing (R,z) of interest input data
+if (R_of_interest==:r_mag)
+    R_of_interest = magnetic_axis(M)[1]
+end
+if (z_of_interest==:z_mag)
+    z_of_interest = magnetic_axis(M)[2]
+end
+
+## ---------------------------------------------------------------------------------------------
+# Load/compute the B-field at the (R,z) point of interest
+B_at_Rz = Equilibrium.Bfield(M,R_of_interest,z_of_interest) # Calculate the B-field vector at the (R,z) point
+B_at_Rz = [B_at_Rz[1], B_at_Rz[2], B_at_Rz[3]] # Re-structure for Python
+B_at_Rz = reshape(B_at_Rz,(length(B_at_Rz),1)) # Re-structure for Python
+@everywhere B_at_Rz = $B_at_Rz # Export to all external CPU processes
+
+## ---------------------------------------------------------------------------------------------
+# If specified, include plasma rotation in the weight computations
+# If TRANSP data available and desired, load plasma rotation data from TRANSP file
+if plasma_rot
+    if plasma_rot_speed_data_source_type == :TRANSP
+        include("misc/load_TRANSP_interp_object.jl") # Need to load plasma rotation interpolation object from TRANSP
+        omega_itp = getTRANSPInterpObject("OMEGA",parse(Float64,replace(timepoint,","=>".")),plasma_rot_speed_data_source)
+        ψ_rz = M(R_of_interest,z_of_interest)
+        psi_on_axis, psi_at_bdry = psi_limits(M)
+        ρ_pol_rz = sqrt((ψ_rz-psi_on_axis)/(psi_at_bdry-psi_on_axis)) # The formula for the normalized flux coordinate ρ_pol = sqrt((ψ-ψ_axis)/(ψ_edge-ψ_axis))
+        omega = omega_itp(ρ_pol_rz) # Get omega at (R,z) of interest
+        plasma_rot_speed = (magnetic_axis(M)[1])*omega # v = R * Ω (in m/s)
+    elseif plasma_rot_speed_data_source_type == :MANUAL
+        plasma_rot_speed = plasma_rot_speed
+    else
+        error("Invalid data source type for the plasma rotation. Please correct and re-try.")
+    end
+    if plasma_rot_dir == :BFIELD
+        plasma_rot_unit_vec = B_at_Rz ./norm(B_at_Rz) # Plasma is assumed to rotate in the direction of the B-field
+    elseif plasma_rot_dir == :TOROIDAL
+        plasma_rot_unit_vec = [0.0, jdotb*sign(B_at_Rz[2]), 0.0] # Plasma is assumed to rotate in the toroidal direction. Clockwise/counter-clockwise is determined by the plasma current
+    else
+        error("Invalid direction for plasma rotation. Please correct and re-try.")
+    end
+    plasma_rot_at_Rz = plasma_rot_speed .* plasma_rot_unit_vec
+else
+    plasma_rot_at_Rz = [0.0, 0.0, 0.0]
+end
+plasma_rot_at_Rz = reshape(plasma_rot_at_Rz, (length(plasma_rot_at_Rz),1)) # Reshape for Python
+@everywhere plasma_rot_at_Rz = $plasma_rot_at_Rz # Export to all external CPU processes
+
 ## ---------------------------------------------------------------------------------------------
 # Printing script info and inputs
 println("")
@@ -311,10 +361,29 @@ else
     print("Tokamak not specified.         ")
 end
 if !(TRANSP_id=="")
-    println("TRANSP ID specified: "*TRANSP_id)
+    print("TRANSP ID specified: "*TRANSP_id*"      ")
 else
-    println("TRANSP ID not specified.")
+    print("TRANSP ID not specified."*"      ")
 end
+println("Timepoint: "*timepoint*" seconds")
+println("")
+if !analytical2DWs
+    println("Fusion reaction specified: "*reaction_full)
+else
+    println("Projected velocity (u) will be used as weights for the weight functions.")
+end
+println("Fast-ion species specified: "*FI_species)
+if emittedParticleHasCharge && !analytical2DWs
+    println("The emitted "*getEmittedParticle(reaction_full)*" particle of the "*reaction_full*" reaction has non-zero charge!")
+    println("The resulting energy distribution for "*getEmittedParticle(reaction_full)*" from the plasma as a whole will be computed.")
+end
+println("")
+if flr_effects
+    println("---> Finite Larmor radius (FLR) effects included? Yes!")
+else
+    println("---> Finite Larmor radius (FLR) effects included? No.")
+end
+println("")
 if !(diagnostic_name=="")
     println("Diagnostic name specified: "*diagnostic_name)
 end
@@ -328,6 +397,12 @@ if instrumental_response
 else
     println("instrumental_response_filepath not specified. Diagnostic response not included.")
 end
+println("")
+if plasma_rot
+    println("Plasma rotation included. Plasma rotation vector at (R,z) is (in m/s): ")
+    println(round.(reshape(plasma_rot_at_Rz,(1,3)),sigdigits=4))
+    println("")
+end
 if !(filepath_thermal_distr=="")
     println("Thermal distribution file specified: "*filepath_thermal_distr)
 elseif (filepath_thermal_distr=="") && !analytical2DWs
@@ -339,29 +414,7 @@ else
 end
 println("Magnetic equilibrium file specified: "*filepath_equil)
 println("")
-if !analytical2DWs
-    println("Fusion reaction specified: "*reaction_full)
-else
-    println("Projected velocity (u) will be used as weights for the weight functions.")
-end
-println("Fast-ion species specified: "*FI_species)
-if emittedParticleHasCharge && !analytical2DWs
-    println("The emitted "*getEmittedParticle(reaction_full)*" particle of the "*reaction_full*" reaction has non-zero charge!")
-    println("The resulting energy distribution for "*getEmittedParticle(reaction_full)*" from the plasma as a whole will be computed.")
-end
-println("")
-if distributed
-    println("Parallel computing will be used with $(nprocs()) processes (1 main + $(nprocs()-1) workers).")
-else
-    println("Single-threaded computing the weights... Good luck!")
-end
-println("")
 println("$(iiimax) weight matrix/matrices will be computed.")
-if include_flr_effects
-    println("---> Finite Larmor radius (FLR) effects included? Yes!")
-else
-    println("---> Finite Larmor radius (FLR) effects included? No.")
-end
 println("")
 println("2D weight function(s) will be computed for a $(length(E_array))x$(length(p_array)) (E,p)-space grid with")
 println("Energy: [$(minimum(E_array)),$(maximum(E_array))] keV")
@@ -394,6 +447,13 @@ else
         println("---> "*folderpath_o*"velWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = analytical2DWs)*".jld2")
     end
 end
+println("")
+if distributed
+    println("Parallel computing will be used with $(nprocs()) processes (1 main + $(nprocs()-1) workers).")
+else
+    println("Single-threaded computing the weights... Good luck!")
+end
+println("")
 if debug
     println("")
     println("!!!!!! DEBUGGING SPECIFIED. ALGORITHM WILL DEBUG. !!!!!!")
@@ -403,7 +463,7 @@ println("Please remove previously saved files with the same file name (if any) p
 println("")
 println("If you would like to change any settings, please edit the start_calc2DW_template.jl file or similar.")
 println("")
-println("Written by Henrik Järleblad. Last maintained 2023-11-18.")
+println("Written by Henrik Järleblad. Last maintained 2024-08-13.")
 println("--------------------------------------------------------------------------------------------------")
 println("")
 
@@ -476,7 +536,7 @@ if !isnothing(thermal_dens) && (typeof(thermal_dens)==Float64 || typeof(thermal_
     thermal_dens = [thermal_dens]
 else
     if fileext_thermal=="jld2"
-        verbose && println("Creating thermal density interpolations object... ")
+        verbose && println("Creating thermal density interpolations object and setting data... ")
         thermal_dens_itp = Interpolations.interpolate((ρ_pol_array,), thermal_dens_array, Gridded(Linear()))
         thermal_dens_etp = Interpolations.extrapolate(thermal_dens_itp,0) # Add what happens in extrapolation scenario. 0 means we assume vacuum scrape-off layer (SOL)
         ψ_rz = M(R_of_interest,z_of_interest)
@@ -485,7 +545,7 @@ else
         thermal_dens = [thermal_dens_etp(ρ_pol_rz)]
     end
 
-    # If a thermal species distribution has not been specified, we simply need the thermal species temperature on axis
+    # If a thermal species distribution has not been specified
     if !isfile(filepath_thermal_distr)
         ψ_rz = M(R_of_interest,z_of_interest)
         psi_on_axis, psi_at_bdry = psi_limits(M)
@@ -506,7 +566,7 @@ if !isnothing(thermal_temp) && (typeof(thermal_temp)==Float64 || typeof(thermal_
     thermal_temp = [thermal_temp]
 else
     if fileext_thermal=="jld2"
-        verbose && println("Creating thermal temperature interpolations object... ")
+        verbose && println("Creating thermal temperature interpolations object and setting data... ")
         thermal_temp_itp = Interpolations.interpolate((ρ_pol_array,), thermal_temp_array, Gridded(Linear()))
         thermal_temp_etp = Interpolations.extrapolate(thermal_temp_itp,0) # Add what happens in extrapolation scenario. 0 means we assume vacuum scrape-off layer (SOL)
         ψ_rz = M(R_of_interest,z_of_interest)
@@ -515,7 +575,7 @@ else
         thermal_temp = [thermal_temp_etp(ρ_pol_rz)]
     end
 
-    # If a thermal species distribution has not been specified, we simply need the thermal species temperature on axis
+    # If a thermal species distribution has not been specified
     if !isfile(filepath_thermal_distr)
         ψ_rz = M(R_of_interest,z_of_interest)
         psi_on_axis, psi_at_bdry = psi_limits(M)
@@ -534,11 +594,8 @@ end
 
 ## ---------------------------------------------------------------------------------------------
 E_iE_p_ip_array = zip(repeat(E_array,outer=length(p_array)),repeat(eachindex(E_array),outer=length(p_array)),repeat(p_array,inner=length(E_array)),repeat(eachindex(p_array),inner=length(E_array)))
-B_at_Rz = Equilibrium.Bfield(M,R_of_interest,z_of_interest) # Calculate the B-field vector at the (R,z) point
-B_at_Rz = [B_at_Rz[1], B_at_Rz[2], B_at_Rz[3]] # Re-structure for Python
-B_at_Rz = reshape(B_at_Rz,(length(B_at_Rz),1)) # Re-structure for Python
-@everywhere B_at_Rz = $B_at_Rz
 npoints = length(E_iE_p_ip_array)
+
 list_o_saved_filepaths = Vector{String}(undef,iiimax) # Create a list to keep track of all saved files (needed for averaging)
 
 # Calculating the weights
@@ -563,7 +620,7 @@ for iii=1:iiimax
                         py"""
                         #forwardmodel = $forwardmodel # Convert the Forward Python object from Julia to Python.
                         # Please note, the '$' symbol is used below to convert objects from Julia to Python. Even Julia PyObjects
-                        spec = forwardmodel.calc($([E]), $([p]), $([R_of_interest]), $([z_of_interest]), $([1.0]), thermal_dist, Ed_bin_edges, $B_at_Rz, n_repeat=$gyro_samples, reaction=$reaction, bulk_temp=$thermal_temp, bulk_dens=$thermal_dens, flr=$include_flr_effects) # Please see the forward.py script, for further specifications
+                        spec = forwardmodel.calc($([E]), $([p]), $([R_of_interest]), $([z_of_interest]), $([1.0]), thermal_dist, Ed_bin_edges, $B_at_Rz, n_repeat=$gyro_samples, reaction=$reaction, bulk_temp=$thermal_temp, bulk_dens=$thermal_dens, flr=$flr_effects, v_rot=$plasma_rot_at_Rz) # Please see the forward.py script, for further specifications
                         """
 
                         spec = vec(py"spec")
@@ -586,7 +643,7 @@ for iii=1:iiimax
                 py"""
                 #forwardmodel = $forwardmodel # Convert the Forward Python object from Julia to Python.
                 # Please note, the '$' symbol is used below to convert objects from Julia to Python. Even Julia PyObjects
-                spec = forwardmodel.calc($([E]), $([p]), $([R_of_interest]), $([z_of_interest]), $([1.0]), thermal_dist, Ed_bin_edges, $B_at_Rz, n_repeat=$gyro_samples, reaction=$reaction, bulk_temp=$thermal_temp, bulk_dens=$thermal_dens, flr=$include_flr_effects) # Please see the forward.py script, for further specifications
+                spec = forwardmodel.calc($([E]), $([p]), $([R_of_interest]), $([z_of_interest]), $([1.0]), thermal_dist, Ed_bin_edges, $B_at_Rz, n_repeat=$gyro_samples, reaction=$reaction, bulk_temp=$thermal_temp, bulk_dens=$thermal_dens, flr=$flr_effects, v_rot=$plasma_rot_at_Rz) # Please see the forward.py script, for further specifications
                 """
 
                 spec = vec(py"spec")
@@ -610,7 +667,7 @@ for iii=1:iiimax
             py"""
             #forwardmodel = $forwardmodel # Convert the Forward Python object from Julia to Python.
             # Please note, the '$' symbol is used below to convert objects from Julia to Python. Even Julia PyObjects
-            spec = forwardmodel.calc($([E]), $([p]), $([R_of_interest]), $([z_of_interest]), $([1.0]), thermal_dist, Ed_bin_edges, $B_at_Rz, n_repeat=$gyro_samples, reaction=$reaction, bulk_temp=$thermal_temp, bulk_dens=$thermal_dens, flr=$include_flr_effects) # Please see the forward.py script, for further specifications
+            spec = forwardmodel.calc($([E]), $([p]), $([R_of_interest]), $([z_of_interest]), $([1.0]), thermal_dist, Ed_bin_edges, $B_at_Rz, n_repeat=$gyro_samples, reaction=$reaction, bulk_temp=$thermal_temp, bulk_dens=$thermal_dens, flr=$flr_effects, v_rot=$plasma_rot_at_Rz) # Please see the forward.py script, for further specifications
             """
 
             spec = vec(py"spec")
@@ -634,7 +691,7 @@ for iii=1:iiimax
                 py"""
                 #forwardmodel = $forwardmodel # Convert the Forward Python object from Julia to Python.
                 # Please note, the '$' symbol is used below to convert objects from Julia to Python. Even Julia PyObjects
-                spec = forwardmodel.calc($([E]), $([p]), $([R_of_interest]), $([z_of_interest]), $([1.0]), thermal_dist, Ed_bin_edges, $B_at_Rz, n_repeat=$gyro_samples, reaction=$reaction, bulk_temp=$thermal_temp, bulk_dens=$thermal_dens, flr=$include_flr_effects) # Please see the forward.py script, for further specifications
+                spec = forwardmodel.calc($([E]), $([p]), $([R_of_interest]), $([z_of_interest]), $([1.0]), thermal_dist, Ed_bin_edges, $B_at_Rz, n_repeat=$gyro_samples, reaction=$reaction, bulk_temp=$thermal_temp, bulk_dens=$thermal_dens, flr=$flr_effects, v_rot=$plasma_rot_at_Rz) # Please see the forward.py script, for further specifications
                 """
 
                 spec = vec(py"spec")
@@ -709,7 +766,11 @@ for iii=1:iiimax
                 write(myfile_s, "W_vel_raw", W_vel_raw)
             end
         end
+        if plasma_rot
+            write(myfile_s, "plasma_rot_at_Rz", plasma_rot_at_Rz)
+        end
         write(myfile_s, "filepath_thermal_distr", filepath_thermal_distr)
+        write(myfile_s, "filepath_start", filepath_start)
         close(myfile_s)
     else
         verbose && println("Saving debugged quantities... ")
@@ -746,7 +807,11 @@ if iiimax>1 # If we were supposed to compute more than one weight matrix...
                 W_vel_raw_total = zeros(size(myfile["W_vel_raw"]))
             end
         end
+        if plasma_rot
+            plasma_rot_at_Rz = myfile["plasma_rot_at_Rz"]
+        end
         filepath_thermal_distr = myfile["filepath_thermal_distr"]
+        filepath_start = myfile["filepath_start"]
         close(myfile)
 
         for filepath in list_o_saved_filepaths
@@ -802,7 +867,11 @@ if iiimax>1 # If we were supposed to compute more than one weight matrix...
                 write(myfile,"W_vel_raw",W_vel_raw_total)
             end
         end
+        if plasma_rot
+            write(myfile, "plasma_rot_at_Rz", plasma_rot_at_Rz)
+        end
         write(myfile,"filepath_thermal_distr",filepath_thermal_distr)
+        write(myfile,"filepath_start",filepath_start)
         close(myfile)
     end
 end

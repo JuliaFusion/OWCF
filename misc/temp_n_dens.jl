@@ -61,13 +61,14 @@
 ### Other
 # -
 
-# Script written by Henrik Järleblad. Last maintained 2023-11-23.
+# Script written by Henrik Järleblad. Last maintained 2024-06-25.
 ###################################################################################################
 
 using NetCDF
 using Interpolations
 include(folderpath_OWCF*"/misc/rewriteReacts.jl")
 include(folderpath_OWCF*"/misc/species_func.jl")
+include(folderpath_OWCF*"/misc/load_TRANSP_interp_object.jl")
 
 """
     getAnalyticalTemp(T_axis, ρ_pol)
@@ -122,13 +123,6 @@ species - The particle species of interest ("D","T","e" etc) - String
 verbose - If true, the function will talk a lot! - Bool
 """
 function getTempProfileFromTRANSP(timepoint::Float64,filepath_thermal_distr::String, species::String; verbose::Bool=false)
-    verbose && println("getTempProfileFromTRANSP(): Loading time... ")
-    time_array_TRANSP = ncread(filepath_thermal_distr,"TIME")
-    idx_min = argmin(abs.(time_array_TRANSP .- timepoint)) # Closest TRANSP timepoint to timepoint specified in start file
-    verbose && println("getTempProfileFromTRANSP(): Time index of interest: $(idx_min)")
-    verbose && println("getTempProfileFromTRANSP(): Loading poloidal flux... ")
-    PLFLX_array = ncread(filepath_thermal_distr,"PLFLX")[:,idx_min] # Load poloidal flux data
-    
     T_identifier = ""
     if lowercase(species) in VALID_OWCF_SPECIES
         if species=="e"
@@ -137,20 +131,11 @@ function getTempProfileFromTRANSP(timepoint::Float64,filepath_thermal_distr::Str
             global T_identifier = "TI"
         end
     else
-        error("No valid OWCF species recognized")
+        error("No valid OWCF particle species recognized")
     end
     verbose && println("getTempProfileFromTRANSP(): T_identifier="*T_identifier)
-    temp_TRANSP = ncread(filepath_thermal_distr,T_identifier)[:,idx_min] # LOAD CORRESPONDING TRANSP TEMPERATURE DATA
-
-    verbose && println("getTempProfileFromTRANSP(): Poloidal flux on-axis: $(PLFLX_array[1])")
-    verbose && println("getTempProfileFromTRANSP(): Poloidal flux at separatrix: $(PLFLX_array[end])")
-    PLFLX_axis = PLFLX_array[1]
-    PLFLX_bdry = PLFLX_array[end]
-    rho_array = sqrt.((PLFLX_array .- PLFLX_axis) ./ (PLFLX_bdry - PLFLX_axis)) # Compute the normalized poloidal flux points, rho
-    
     verbose && println("getTempProfileFromTRANSP(): Creating interpolation object... ")
-    temp_TRANSP_itp = Interpolations.interpolate((rho_array,),(1.0e-3) .*temp_TRANSP, Gridded(Linear())) # eV to keV
-    return Interpolations.extrapolate(temp_TRANSP_itp,0) # Add what happens in extrapolation scenario. 0 means we assume vacuum scrape-off layer (SOL)
+    return getTRANSPInterpObject(T_identifier, timepoint, filepath_thermal_distr; verbose=verbose, temperature_eV=true)
 end
 """
     getTempProfileFromTRANSP(timepoint::String, filepath_thermal_distr::String,species::String)
@@ -184,27 +169,12 @@ species - The species of interest, e.g. "D", "T", "e" - String
 verbose - If true, the function will talk a lot! - Bool
 """
 function getDensProfileFromTRANSP(timepoint::Float64,filepath_thermal_distr::String, species::String; verbose::Bool=false)
-    verbose && println("getDensProfileFromTRANSP(): Loading time... ")
-    time_array_TRANSP = ncread(filepath_thermal_distr,"TIME")
-    idx_min = argmin(abs.(time_array_TRANSP .- timepoint)) # Closest TRANSP timepoint to timepoint specified in start file
-    verbose && println("getDensProfileFromTRANSP(): Time index of interest: $(idx_min)")
-    verbose && println("getDensProfileFromTRANSP(): Loading poloidal flux... ")
-    PLFLX_array = ncread(filepath_thermal_distr,"PLFLX")[:,idx_min] # Load poloidal flux data
-    
     verbose && println("getDensProfileFromTRANSP(): OWCF species label: "*species)
     species_TRANSP = thermalSpecies_OWCFtoTRANSP(species) # Convert from OWCF convention (e.g. 3he for Helium-3) to TRANSP convention (e.g. HE3 for Helium-3)
     verbose && println("getDensProfileFromTRANSP(): TRANSP species label: "*species_TRANSP)
-    dens_TRANSP = ncread(filepath_thermal_distr,"N"*species_TRANSP)[:,idx_min] # LOAD CORRESPONDING TRANSP DENSITY DATA
-
-    verbose && println("getDensProfileFromTRANSP(): Poloidal flux on-axis: $(PLFLX_array[1])")
-    verbose && println("getDensProfileFromTRANSP(): Poloidal flux at separatrix: $(PLFLX_array[end])")
-    PLFLX_axis = PLFLX_array[1]
-    PLFLX_bdry = PLFLX_array[end]
-    rho_array = sqrt.((PLFLX_array .- PLFLX_axis) ./ (PLFLX_bdry - PLFLX_axis)) # Compute the normalized poloidal flux points, rho
     
     verbose && println("getDensProfileFromTRANSP(): Creating interpolation object... ")
-    dens_TRANSP_itp = Interpolations.interpolate((rho_array,),(1.0e6) .*dens_TRANSP, Gridded(Linear())) # cm^-3 to m^-3
-    return Interpolations.extrapolate(dens_TRANSP_itp,0) # Add what happens in extrapolation scenario. 0 means we assume vacuum scrape-off layer (SOL)
+    return getTRANSPInterpObject("N"*species_TRANSP, timepoint, filepath_thermal_distr; verbose=verbose, density_cm=true)
 end
 """
     getDensProfileFromTRANSP(timepoint::String, filepath_thermal_distr::String, species::String)
