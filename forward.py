@@ -33,9 +33,9 @@ class Forward(object):
 
 
     def calc(self, E, p, R, z, weights, bulk_dist, Ed_bins, B_vec,
-            n_repeat=1, reaction='d-d', bulk_temp='', bulk_dens='', flr=False, prompt_gamma_energy=None):
+            n_repeat=1, reaction='d-d', bulk_temp='', bulk_dens='', flr=False, v_rot=np.array([0.0,0.0,0.0]), prompt_gamma_energy=None):
         """
-        Calculate spectrum for fast ions (specified by E, p, R, z)
+        Calculate spectrum for fast ion(s) (specified by the N (E,p,R,z) points)
         reacting with the given bulk distribution, for a given viewing cone
         (which is set with the set_view function above).
 
@@ -45,18 +45,16 @@ class Forward(object):
 
         Ed_bins specifies the neutron bin edges (keV).
 
-        B_vec is an (3,N) array containing the components of the (R,phi,z) components
-        of the magnetic field vector at all the N particle locations.
+        B_vec is a (3,N) array containing the (R,phi,z) components of the magnetic field 
+        vector at all of the N (E,p,R,z) points.
 
         n_repeat is the number of gyro angles sampled for each energy-pitch value.
 
         reaction is the fusion reaction to simulate ('D-D', 'D-T' etc). The species the the left of the '-' is always the 
         thermal species and the species to the right of the '-' is always the fast ion. However, as can be seen in the code,
-        the order is flipped once it's been provided as input to the calc() function. 
-        
+        the order is flipped once it's been provided as input to the calc() function:
         reaction = reaction[::-1]
-        
-        This is because the DRESS Python code framework assumes the order to be the other way around. 
+        This is because the DRESS Python code framework assumes the order to be the other way around, compared to the OWCF. 
 
         bulk_temp will be used as the bulk plasma temperature, if bulk_dist is not specified.
         It should be an array equal in length to E,p,R,z and weights.
@@ -66,6 +64,11 @@ class Forward(object):
 
         flr should be set to true if finite Larmor radius effects should be taken into account.
         The computation will be more costly, but signals will be more realistic.
+
+        v_rot is a (3,N) array containing the plasma rotation velocity vector (in m/s) in (R,phi,z) coordinates at all of the 
+        N (E,p,R,z) points.
+
+        All input arrays are assumed to be numpy arrays. 
         """
         
         # Here, the ordering in the input variable reaction is a-b, where 'a' is the thermal species and 'b' is the fast-ion species.
@@ -80,12 +83,15 @@ class Forward(object):
         if bulk_dist=='' and (not calcProjVel):
                 if (not len(bulk_temp)==len(E)) or (not len(bulk_dens)==len(E)):
                     raise Exception("bulk_temp and/or bulk_dens was not equal in length to the E,p,R,z and weights input. Please correct and re-try.")
+        # Repeat inputs, to prepare for gyro-angle sampling
         E = E.repeat(n_repeat)
         p = p.repeat(n_repeat)
         R = R.repeat(n_repeat)
         z = z.repeat(n_repeat)
         weights = weights.repeat(n_repeat)
         B_vec = B_vec.repeat(n_repeat, axis=1)
+        if not np.sum(v_rot) == 0.0:
+            v_rot = v_rot.repeat(n_repeat, axis=1)
         if bulk_dist=='' and (not calcProjVel):
             bulk_temp = bulk_temp.repeat(n_repeat)
             bulk_dens = bulk_dens.repeat(n_repeat)
@@ -102,13 +108,17 @@ class Forward(object):
         else:
             v = tokapart.add_gyration(E, p, m, B_vec) # Add gyro-motion to the guiding centre, via randomness. Don't return actual gyro-orbit positions (x)
 
+        if not (np.sum(v_rot) == 0.0):
+            v = v + v_rot # Add plasma rotation to fast-ion velocities
+
         # Map orbit points to viewing cone voxels, if viewing cone has been specified
         if self.viewing_cone == "":
             #E_vc = E # No viewing cone specified. All energy points are accepted (/inside the universe)
             #p_vc = p # No viewing cone specified. All pitch points are accepted (/inside the universe)
             R_vc = R # No viewing cone specified. All R points are accepted (/inside the universe)
             z_vc = z # No viewing cone specified. All z points are accepted (/inside the universe)
-            v = v # No viewing cone specified. All v vectors are accepted (/inside the universe)
+            v_vc = v # No viewing cone specified. All v vectors are accepted (/inside the universe)
+            v_rot_vc = v_rot # No viewing cone specified. All v_rot vectors are accepted (/inside the universe)
             weights_vc = weights # No viewing cone specified. All weights are accepted
             bulk_temp_vc = bulk_temp
             bulk_dens_vc = bulk_dens
@@ -126,6 +136,7 @@ class Forward(object):
             R_vc = R[i_points] # Extract R points within diagnostic viewing cone
             z_vc = z[i_points] # Extract z points within diagnostic viewing cone
             v_vc = v[:,i_points] # Extract v vectors with origins within diagnostic viewing cone
+            v_rot_vc = v_rot[:,i_points] # Extract v_rot vectors with origins within diagnostic viewing cone
             weights_vc = weights[i_points] # Extract weights corresponding to R,z points within diagnostic viewing cone
             if bulk_dist=='' and (not calcProjVel):
                 bulk_temp_vc = bulk_temp[i_points]
@@ -162,7 +173,7 @@ class Forward(object):
             T_bulk = bulk_temp_vc # It must have been manually specified
             n_bulk = bulk_dens_vc # It must have been manually specified
 
-        spec_calc.reactant_b.sample_maxwellian_dist(T_bulk)
+        spec_calc.reactant_b.sample_maxwellian_dist(T_bulk, v_rot=v_rot_vc)
 
         spec_calc.weights = weights_vc * omega * n_bulk * (dphi/(2*np.pi)) / n_repeat
         #spec_calc.weights = weights_vc * n_bulk * (dphi/(2*np.pi)) / n_repeat

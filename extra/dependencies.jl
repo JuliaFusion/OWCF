@@ -47,13 +47,52 @@ using ProgressMeter
 using Distributions
 using VoronoiDelaunay
 import OrbitTomography: orbit_grid
+using Base.Iterators
 
 # Constants needed for dependencies
 const kB = 1.380649e-23 # Boltzmann constant, J/K
 const ϵ0 = 8.8541878128e-12 # Permittivity of free space
 
 """
-    getGCP(species_identifier)
+erf(x::Real)
+erf(x; resolution::Int64 = 1000, sigma=1/sqrt(2))
+
+This is the error function, defined as 
+
+erf(x) = (2/(sqrt(2*π)*σ)) ∫ exp(-t^2 / (2 σ^2)) dt
+
+where the lower integration limit is 0 and the upper integration limit is x. σ is set to 1/sqrt(2) by default, via 
+the keyword argument 'sigma'. This function is a quick approximation, since a sum is used instead of integration.
+The number of summation elements can be set via the 'resolution' keyword argument.
+"""
+function erf(x::Real; resolution::Int64=1000, sigma::Float64=1/sqrt(2))
+    if x<0.0
+        t_array = collect(range(x,stop=0.0,length=resolution))
+    else
+        t_array = collect(range(0.0,stop=x,length=resolution))
+    end
+    dt = x/resolution
+    return clamp((2/(sqrt(2*pi)*sigma))*sum(dt .*exp.((-1/(2*sigma^2)) .*(t_array).^2)), -1, 1) # Clamp polishes insufficient resolution issues
+end
+
+"""
+erfc(x::Real)
+erfc(x; resolution::Int64 = 1000)
+
+This is the complementary error function, defined as 
+
+erfc(x) = 1 - erf(x)
+
+This function is a quick approximation, since a sum is used instead of integration for erf(x).
+The number of summation elements can be set via the 'resolution' keyword argument.
+"""
+function erfc(x::Real; resolution::Int64=1000, sigma::Float64=1/sqrt(2))
+    return 1 - erf(x; resolution=resolution, sigma=sigma)
+end
+
+
+"""
+    getGCP(species_identifier::AbstractString)
 
 The same function as is provided by OWCF/misc/species_func.jl. However, since it's needed in certain functions below, which are also
 a part of extra/dependencies.jl, it needs to be defined here as well. Sometimes, it's more efficient to only load OWCF/misc/species_func.jl, 
@@ -95,26 +134,35 @@ function getSpeciesCharge(species_identifier::AbstractString)
 end
 
 """
-    debye_length(n_e, T_e, species_1, n_1, T_1, species_2, n_2, T_2)
+    debye_length(n_e::Real, T_e::Real, species_th_vec::Vector{String}, n_th:vec::Vector{T}, T_th_vec::Vector{T}) where T<:Real
+    debye_length(-||-; species_2::String=species_1, n_2::Real=n_1, T_2::Real=T_1)
 
-Compute the (exact) plasma debye length. Assume a two-species plasma.
-If one-species plasma, simply put 2==1 for n, T and species.
+Compute the (exact) plasma debye length. The inputs are:
+    - n_e: The electron density [m^⁻3]
+    - T_e: The electron temperature [keV]
+    - species_th_vec: A vector containing all thermal species string identifiers, e.g. ["D", "T", "3he"] [-]
+    - n_th_vec: A vector containing all thermal species densities. n_th_vec[i] is the density of species_th_vec[i] [m^-3]
+    - T_th_vec: A vector containing all thermal species temperatures. T_th_vec[i] is the temperature of species_th_vec[i] [keV]
+The outputs are:
+    - debye_length: The debye length [m]
 """
-function debye_length(n_e::Float64, T_e::Union{Float64,Int64}, species_1::String, n_1::Float64, T_1::Union{Float64,Int64}, species_2::String, n_2::Float64, T_2::Union{Float64,Int64})
+function debye_length(n_e::Float64, T_e::Real, species_th_vec::Vector{String}, n_th_vec::Vector{T} where {T<:Real}, T_th_vec::Vector{T} where {T<:Real})
     temp_e = T_e*1000*(GuidingCenterOrbits.e0)/kB
-    temp_1 = T_1*1000*(GuidingCenterOrbits.e0)/kB
-    temp_2 = T_2*1000*(GuidingCenterOrbits.e0)/kB
-    z_1 = getSpeciesEcu(species_1)
-    z_2 = getSpeciesEcu(species_2)
-    denom = (n_e/temp_e)+(z_1*z_1*n_1/temp_1)+(z_2*z_2*n_2/temp_2)
+    temp_th_vec = (1000*(GuidingCenterOrbits.e0)/kB) .*T_th_vec
+    Z_th_vec = getSpeciesEcu.(species_th_vec)
+    denom = (n_e/temp_e) + reduce(+, Z_th_vec .*Z_th_vec .*n_th_vec ./temp_th_vec)
     return sqrt((ϵ0*kB/(GuidingCenterOrbits.e0)^2)/denom)
 end
 
 """
-    gyro_radius(M,p)
+    gyro_radius(M::AbstractEquilibrium,p::GCParticle)
 
-Compute the gyro radius for guiding-center particle p, given the magnetic 
-equilibrium M. Output in meters. Take relativity into account.
+Compute the (relativistic) gyro radius for guiding-center particle p, given the magnetic 
+equilibrium M. Output in meters. Take relativity into account. The inputs are:
+    - M: An abstract equilibrium. Either from an .eqdsk file or an output file from OWCF/extra/compSolovev.jl [-]
+    - p: The guiding-center particle object for the particle species of interest, e.g. GCDeuteron [-]
+The output is:
+    - gyro_radius: The relativistically correct gyro radius [m]
 """
 function gyro_radius(M::AbstractEquilibrium,p::GCParticle)
     γ = GuidingCenterOrbits.lorentz_factor(p)
@@ -130,33 +178,47 @@ function gyro_radius(M::AbstractEquilibrium,p::GCParticle)
 end
 
 """
-    spitzer_slowdown_time(n_e, T_e, species_1, n_1, T_1, species_2, n_2, T_2)
-    spitzer_slowdown_time(-||-; plasma_model = :texas)
+    spitzer_slowdown_time(n_e, T_e, species_f, species_th_vec, n_th_vec, T_th_vec)
+    spitzer_slowdown_time(-||-; plasma_model = :texas, returnExtra = false)
 
-Compute the non-relativistic Spitzer slowing-down time. Assume a two-species plasma (1 and 2).
-By default, use the texas (University of Texas) model for the Coloumb logarithm.
+Compute the non-relativistic Spitzer slowing-down time for fast-ion species 'species_f', following the equation in the ITER Physics Basis (http://sites.apam.columbia.edu/fusion/IPB_Chap_5.pdf). 
+Assume multiple thermal species via the vector inputs. By default, use the texas (University of Texas) model for the Coloumb logarithm.
+if returnExtra, in addition to τ_s, return the coulomb logarithm as well as the Debye length. The inputs are: 
+    - n_e: The electron density [m^-3]
+    - T_e: The electron temperature [keV]
+    - species_f: The beam injection particle species, e.g. "D", "T" etc [-]
+    - species_th_vec: A vector containing all thermal species string identifiers, e.g. ["D", "T", "3he"] [-]
+    - n_th_vec: A vector containing all thermal species densities. n_th_vec[i] is the density of species_th_vec[i] [m^-3]
+    - T_th_vec: A vector containing all thermal species temperatures. T_th_vec[i] is the temperature of species_th_vec[i] [keV]
+The keyword arguments are:
+    - plasma_model: The model to use for the plasma parameter. Currently supported :salewski or :texas [-]
+    - returnExtra: If true, in addition to the Spitzer slowing-down time, the Coulomb logarithm and Debye length will be returned as well [-]
 """
-function spitzer_slowdown_time(n_e::Float64, T_e::Union{Float64,Int64}, species_1::String, n_1::Float64, T_1::Union{Int64,Float64}, species_2::String, n_2::Float64, T_2::Union{Float64,Int64}; plasma_model = :texas)
-    λ_D = debye_length(n_e, T_e, species_1, n_1, T_1, species_2, n_2, T_2)
-
+function spitzer_slowdown_time(n_e::Real, T_e::Real, species_f::String, species_th_vec::Vector{String}, n_th_vec::Vector{T} where {T<:Real}, T_th_vec::Vector{T} where {T<:Real}; plasma_model::Symbol = :texas, returnExtra::Bool = false)
     ϵ0 = 8.8541878128e-12 # Permittivity of free space
-    m_2 = getSpeciesMass(species_2)
-    z_1 = getSpeciesEcu(species_1)
-    z_2 = getSpeciesEcu(species_2)
-    m_e = (GuidingCenterOrbits.e_amu)*(GuidingCenterOrbits.mass_u)
+    m_f = getSpeciesMass(species_f) # The fast-ion species mass, kg
+    m_e = (GuidingCenterOrbits.e_amu)*(GuidingCenterOrbits.mass_u) # Electron mass, kg
+
+    λ_D = debye_length(n_e, T_e, species_th_vec, n_th_vec, T_th_vec)
 
     if plasma_model==:salewski
         Λ = 6*pi*n_e*λ_D^3 # From M. Salewski, A.H. Nielsen, Plasma Physics: lectures notes, 2021.
         Λ_c = Λ # Actually, this is Λ_c ≈ Λ, where Λ is the plasma parameter.
     elseif plasma_model==:texas
-        r_closest = (z_1*GuidingCenterOrbits.e0*z_2*GuidingCenterOrbits.e0)/(4*pi*ϵ0*T_e*GuidingCenterOrbits.e0*1000) # r_closest = (e_1*e_2)/(4*pi*ϵ0*T). Mean value of closest approach, University of Texas. Assume same termperature.
+        Z_th_vec = getSpeciesEcu.(species_th_vec) # Atomic charge number for all thermal plasma species
+        q_th_vec = (GuidingCenterOrbits.e0) .*Z_th_vec # Charge (in Coulombs) for all thermal plasma species
+        q2_avg = reduce(+,map(x-> x[1]*x[2],collect(Iterators.product(q_th_vec,q_th_vec))[:]))/(length(q_th_vec)^2) # The average of q_i*q_j for all species pairs (i,j)
+        r_closest = q2_avg/(4*pi*ϵ0*T_e*GuidingCenterOrbits.e0*1000) # r_closest = <q_i*q_j>/(4*pi*ϵ0*T). Mean value of closest approach, University of Texas. Assume same termperature.
         Λ_c = λ_D/r_closest
     else
         error("Currently supported models for the plasma parameter are :salewski and :texas. Please correct and re-try.")
     end
     coulomb_log = log(Λ_c)
-    A_D = (n_e*((GuidingCenterOrbits.e0)^4)*coulomb_log)/(2*pi*(ϵ0^2)*(m_2^2))
-    τ_s = (3*sqrt(2*pi)*((T_e*GuidingCenterOrbits.e0*1e3)^(3/2)))/(sqrt(m_e)*m_2*A_D)
+    A_D = (n_e*((GuidingCenterOrbits.e0)^4)*coulomb_log)/(2*pi*(ϵ0^2)*(m_f^2))
+    τ_s = (3*sqrt(2*pi)*((T_e*GuidingCenterOrbits.e0*1000)^(3/2)))/(sqrt(m_e)*m_f*A_D)
+    if returnExtra
+        return τ_s, coulomb_log, λ_D 
+    end
     return τ_s
 end
 
@@ -718,8 +780,8 @@ function h5to4D(filepath_distr::AbstractString; backwards::Bool = true, verbose:
 end
 
 """
-    jld2toh5(filepath_jld2)
-    jld2toh5(filepath_jld2; verbose=false)
+    jld2tohdf5(filepath_jld2)
+    jld2tohdf5(filepath_jld2; verbose=false)
 
 Convert a .jld2 file to a .hdf5 file.
 """
@@ -731,11 +793,22 @@ function jld2tohdf5(filepath_jld2::String; verbose::Bool=false)
     for key in keys(myfile_jld2)
         verbose && println("Writing data: "*key)
         data = myfile_jld2[key]
-        write(myfile_hdf5,key,data)
+        verbose && print("          ↳ Type: $(typeof(data))")
+        if typeof(data) <: Dict # If the data is a dictionary
+            verbose && println("   Not ok!")
+            @warn "Part of the data in "*filepath_jld2*" is a dictionary. The OWCF currently does not support saving dictionaries in .hdf5 file format. The "*key*" data has therefore been omitted."
+        elseif typeof(data) <: StepRangeLen
+            verbose && println("   Ok! (Type StepRangeLen converted to type Array via collect())")
+            data = collect(data)
+            write(myfile_hdf5,key,data)
+        else
+            verbose && println("   Ok!")
+            write(myfile_hdf5,key,data)
+        end
     end
     close(myfile_jld2)
     close(myfile_hdf5)
-    verbose && println("All .jld2 file data written to "*filepath_hdf5)
+    verbose && println("The .jld2 file has been re-written as a .hdf5 file at "*filepath_hdf5)
     return filepath_hdf5
 end
 
@@ -1465,7 +1538,7 @@ function ps2os_performance(M::AbstractEquilibrium,
                             wall::Boundary,
                             frdvols_cumsum_vector::AbstractVector,
                             subs::CartesianIndices{4,NTuple{4,Base.OneTo{Int64}}},
-                            nfast::Union{Int64,Float64},
+                            nfast::Real,
                             energy::AbstractVector,
                             pitch::AbstractVector,
                             R::AbstractVector,
@@ -2148,7 +2221,7 @@ counter-going orbits. Co-going orbits (co-passing, trapped, potato and stagnatio
 and counter-stagnation) will have σ=-1. The good_coords_pmRm vector contains coordinate indices for the mappable (pm,Rm) coordinates 
 (to avoid mapping invalid orbits).
 """
-function pmRm_2_μPϕ(M::AbstractEquilibrium, good_coords_pmRm::Vector{CartesianIndex{2}}, data::Array{Float64,2}, E::Union{Float64,Int64}, pm_array::AbstractVector, Rm_array::AbstractVector, FI_species::AbstractString; nμ::Int64=length(pm_array), nPϕ::Int64=length(Rm_array), isTopoMap::Bool=false, needJac::Bool=false, transform = x -> x, verbose::Bool=false, vverbose::Bool=false, debug::Bool=false)
+function pmRm_2_μPϕ(M::AbstractEquilibrium, good_coords_pmRm::Vector{CartesianIndex{2}}, data::Array{Float64,2}, E::Real, pm_array::AbstractVector, Rm_array::AbstractVector, FI_species::AbstractString; nμ::Int64=length(pm_array), nPϕ::Int64=length(Rm_array), isTopoMap::Bool=false, needJac::Bool=false, transform = x -> x, verbose::Bool=false, vverbose::Bool=false, debug::Bool=false)
 
     verbose && println("Transforming (pm,Rm) coordinates into (μ,Pϕ) coordinates... ")
     μ_values = Array{Float64}(undef, length(good_coords_pmRm))
@@ -2699,41 +2772,143 @@ function Ep2VparaVperp(E_array::Vector, p_array::Vector, Q::Matrix{Float64}; my_
 end
 
 """
-    slowing_down_function_core()
+_slowing_down_function_core(v_0, p_0, v_array, p_array, n_e, T_e, species_f, species_th_vec, n_th_vec, T_th_vec)
+_slowing_down_function_core(-||-; S0=1.0, g=(v-> v), returnExtra=false)
 
-Assume species_1 is thermal, species_2 is fast.
+Compute a neutral beam injection slowing-down distribution function, using the formulas in W.G.F. Core, Nucl. Fusion 33, 829 (1993)
+and J.D. Gaffey, J. Plasma Physics 16, 149-169, (1976).
+Function arguments:
+- v_0 - Injection speed [m/s]
+- p_0 - Injection pitch 
+- v_array - Speed grid points [m/s]
+- p_array - Pitch grid points
+- n_e - Electron density [m^-3]
+- T_e: The electron temperature [keV]
+- species_f: The (fast) beam particle species [-]
+- species_th_vec: A vector with all thermal particle species, e.g. ["D", "T"] [-]
+- n_th_vec: A vector with all thermal particle densities, e.g. [1.0e20, 2.0e20] [m^-3]
+- T_th_vec: A vector with all thermal particle temperatures, e.g. [7.0, 5.0] [keV]
+Keyword arguments:
+- S0 - Source amplitude at injection point
+- g - Function of speed (v). exp(-g(v)) governs speed diffusion above injection speed
+- dampen - If true, the slowing-down function will be damped below v_L (please see final eq. in W.G.F. Core, Nucl. Fusion 33, 829 (1993)) using the error function complement
+- v_tail_length - If specified, the slowing-down function will be dampened below (v_0 - v_tail_length)
+- returnExtra - If true, (in addition to f_SD) v_c, v_L, τ_s and α_0 will be returned
 
-THIS FUNCTION IS UNDER CONSTRUCTION
-THIS FUNCTION IS UNDER CONSTRUCTION
-THIS FUNCTION IS UNDER CONSTRUCTION
+This function should not be used directly, but always via the slowing_down_function() function, to avoid confusing between 
+energy (E) and speed (v) grid points input.
 """
-function slowing_down_function_core(v_array, p_array, n_e, T_e, species_1, n_1, T_1, species_2, n_2, T_2; S0::Float64=1.0, g=(v-> 0))
+function _slowing_down_function_core(v_0::Real, p_0::Real, v_array::Vector{T} where {T<:Real}, p_array::Vector{T} where {T<:Real}, n_e::Real, T_e::Real, species_f::String, species_th_vec::Vector{String}, n_th_vec::Vector{T} where {T<:Real}, T_th_vec::Vector{T} where {T<:Real}; S0::Float64=1.0, g=(v-> v), dampen::Bool=false, v_tail_length::Union{Nothing,Real}=nothing, returnExtra::Bool=false)
     m_e = (GuidingCenterOrbits.e_amu)*(GuidingCenterOrbits.mass_u) # Electron mass, kg
-    τ_s = spitzer_slowdown_time(n_e, T_e, species_1, n_1, T_1, species_2, n_2, T_2) # Spitzer slowing-down time, s
-    Z_1 = ((n_1*getSpeiesEcu(species_1)*getSpeciesMass(species_2))/(n_e*getSpeciesMass(species_1)))+((n_2*getSpeiesEcu(species_2)*getSpeciesMass(species_2))/(n_e*getSpeciesMass(species_2))) # Assume two ion species in plasma
-    E_e = T_e*1000*GuidingCenterOrbits.e0 # Thermal electron energy, J
-    v_e = (GuidingCenterOrbits.c0)*sqrt(1-(1/((E_e/(m_e*(GuidingCenterOrbits.c0)^2))+1)^2))# Thermal electron (relativistic) speed
-    v_c = (((3*sqrt(pi)*m_e*Z_1)/(4*getSpeciesMass(species_2)))^(1/3))*v_e # Cross-over speed
-    Z_2 = ((n_1*getSpeciesEcu(species_1)^2)/(n_e*Z_1))+((n_2*getSpeciesEcu(species_2)^2)/(n_e*Z_1)) # Assume two ion species in plasma
-    β = Z_2/(2*τ_s) # A Fokker-planck plasma parameter
-    alpha0 = β*(1-p0^2)/3 # Remember to a Heaviside function to alpha when computing in the below foor-loop
-    f_SD = zeros(length(v_array),length(p_array))
+    τ_s = spitzer_slowdown_time(n_e, T_e, species_f, species_th_vec, n_th_vec, T_th_vec) # Spitzer slowing-down time, s
+    Z_th_vec = getSpeciesEcu.(species_th_vec) # Atomic charge number for all thermal plasma ion species
+    M_th_vec = getSpeciesMass.(species_th_vec) # Mass for all thermal plasma ion species, kg
+    Z_1 = (getSpeciesMass(species_f)/n_e)*reduce(+, n_th_vec .*Z_th_vec .*Z_th_vec ./M_th_vec) # Slowing-down constant. 
+    E_e = T_e*1000*GuidingCenterOrbits.e0 # Thermal electron energy, keV -> J
+    v_e = (GuidingCenterOrbits.c0)*sqrt(1-(1/((E_e/(m_e*(GuidingCenterOrbits.c0)^2))+1)^2))# Thermal electron (relativistic) speed, m/s
+    v_c = (((3*sqrt(pi)*m_e*Z_1)/(4*getSpeciesMass(species_f)))^(1/3))*v_e # Cross-over speed, m/s
+    Z_2 = (1/n_e)*(1/Z_1)*reduce(+, n_th_vec .*Z_th_vec .*Z_th_vec) # Slowing-down constant
+    β = Z_2/2 # A Fokker-planck plasma parameter
+    α_0 = β*(1-p_0^2)/3 # W.G.F Core parameter
+    f_SD = zeros(length(v_array),length(p_array)) # Pre-allocate the slowing-down distribution function
     for (iv,v) in enumerate(v_array), (ip,p) in enumerate(p_array)
-        
+        α = (v > v_0 ? -1.0 : 1.0) * α_0 * log((1+(v_c/v)^3)/(1+(v_c/v_0)^3))
+        F_SD = (S0*τ_s/(v^3 + v_c^3))*exp(-(p-p_0)^2 /(4*α))/(2*sqrt(pi*α)) 
+        f_SD[iv,ip] = F_SD * exp(-(v > v_0 ? g(v) : 0)) # Heavyside function with g(v)
     end
-
+    if returnExtra || dampen
+        v_L = v_c * ((1+(v_c/v_0)^3)*exp((3/(4*β))*((1-abs(p_0))/(1+abs(p_0))))-1)^(-1/3)
+        if dampen
+            v_damp = isnothing(v_tail_length) ? v_L : (v_0 - v_tail_length) # If v_tail_length is specified, start damping below tail. If not, use v_L
+            sigma = (v_damp/10)/(2*sqrt(2*log(2))) # Based on the formula for FWHM for Gaussians
+            damp_factors = reshape(erfc.((-1) .*(v_array .- v_damp); sigma=sigma) ./2,(length(v_array),1)) # Factors range between 0 and 1
+            f_SD = damp_factors .*f_SD
+        end
+        if returnExtra
+            return f_SD, v_c, v_L, τ_s, α_0
+        end
+        return f_SD
+    else
+        return f_SD
+    end
 end
 
 """
-THIS FUNCTION IS UNDER CONSTRUCTION
-THIS FUNCTION IS UNDER CONSTRUCTION
-THIS FUNCTION IS UNDER CONSTRUCTION
-"""
-function slowing_down_function(;type=:core)
+# THIS FUNCTION IS CURRENTLY UNDER CONSTRUCTION!!
+# THIS FUNCTION IS CURRENTLY UNDER CONSTRUCTION!!
+# THIS FUNCTION IS CURRENTLY UNDER CONSTRUCTION!!
 
+slowing_down_function(E_0, p_0, E_array, p_array, n_e, T_e, species_f, species_th_vec, n_th_vec, T_th_vec)
+slowing_down_function(-||-; type=:core, returnExtra=false, kwargs...)
+
+Compute a neutral beam injection slowing-down distribution function. The inputs are 
+    - E_0: The beam injection energy [keV]
+    - p_0: The beam pitch [-]
+    - E_array: The energy grid points [keV]
+    - p_array: The pitch grid points [-]
+    - n_e: The electron density [m^-3]
+    - T_e: The electron temperature [keV]
+    - species_f: The (fast) beam particle species [-]
+    - species_th_vec: A vector with all thermal particle species, e.g. ["D", "T"] [-]
+    - n_th_vec: A vector with all thermal particle densities, e.g. [1.0e20, 2.0e20] [m^-3]
+    - T_th_vec: A vector with all thermal particle temperatures, e.g. [7.0, 5.0] [keV]
+The keyword arguments are:
+    - type: The type of slowing-down function you want to compute (currently, only :core is supported) [-]
+    - returnExtra: If true, extra outputs will be returned (please see below)
+    - E_tail_length: If specified, the slowing-down function will be dampened below (E0-E_tail_length) [keV]
+"""
+function slowing_down_function(E_0::Real, p_0::Real, E_array::Vector{T} where {T<:Real}, p_array::Vector{T} where {T<:Real}, n_e::Real, T_e::Real, species_f::String, species_th_vec::Vector{String}, n_th_vec::Vector{T} where {T<:Real}, T_th_vec::Vector{T} where {T<:Real}; type::Symbol=:core, returnExtra::Bool=false, E_tail_length::Union{Nothing,Real}=nothing, kwargs...)
+    m_f = getSpeciesMass(species_f) # Beam (fast) particle mass, kg
+    E2v_rel = (E-> (GuidingCenterOrbits.c0)*sqrt(1-(1/(((E*1000*GuidingCenterOrbits.e0)/(m_f*(GuidingCenterOrbits.c0)^2))+1)^2))) # A one-line function to transform from energy (keV) to relativistic speed (m/s)
+    v2E_rel = (v-> (m_f*(GuidingCenterOrbits.c0)^2)*(sqrt(1/(1-(v/(GuidingCenterOrbits.c0))^(2)))-1)) # A one-line function to transform from relativistic speed (m/s) to energy (keV)
+
+    # Determine v_tail_length from E_tail_length (if specified)
+    # SOMETHING DOES NOT WORK HERE! THE TAIL LOOKS WAY TOO LONG!!!
+    # THIS FUNCTION IS CURRENTLY UNDER CONSTRUCTION!!
+    # THIS FUNCTION IS CURRENTLY UNDER CONSTRUCTION!!
+    # THIS FUNCTION IS CURRENTLY UNDER CONSTRUCTION!!
+    v_tail_length = nothing
+    if !isnothing(E_tail_length)
+        v_tail_length = E2v_rel(E_tail_length)
+    end
+
+    # Use the specified type of slowing-down function
     if type==:core
-        return slowing_down_function_core()
+        my_SD_func = _slowing_down_function_core
     else
-        error("Slowing-down functions currently only support W.G.F. Core type. Please correct and re-try.")
+        error("slowing_down_function currently only supports W.G.F. Core type. Please correct and re-try.")
+    end
+
+    # If the source point is right on a grid point...
+    E_array_orig = deepcopy(E_array)
+    p_array_orig = deepcopy(p_array)
+    if E_0 in E_array_orig || p_0 in p_array_orig
+        if E_0 in E_array_orig
+            E_array = collect(range(minimum(E_array_orig),stop=maximum(E_array_orig), length=(length(E_array_orig)+1))) # Increase number of energy grid points by 1, to avoid having grid on E_0
+        end
+        if p_0 in p_array_orig
+            p_array = collect(range(minimum(p_array_orig),stop=maximum(p_array_orig), length=(length(p_array_orig)+1))) # Increase number of pitch grid points by 1, to avoid having grid on p_0
+        end
+    end
+    v_0 =  E2v_rel(E_0) # Convert energy source point to velocity (relativistically)
+    v_array = E2v_rel.(E_array) # Convert energy grid to velocity (relativistically)
+    if returnExtra # If extra output is desired... 
+        f_SD_vp, v_c, v_L, τ_s, α_0 = my_SD_func(v_0, p_0, v_array, p_array, n_e, T_e, species_f, species_th_vec, n_th_vec, T_th_vec; returnExtra=returnExtra, v_tail_length=v_tail_length, kwargs...)
+    else # If not...
+        f_SD_vp = my_SD_func(v_0, p_0, v_array, p_array, n_e, T_e, species_f, species_th_vec, n_th_vec, T_th_vec; v_tail_length=v_tail_length, kwargs...)
+    end
+    dvdE_array = [(1/sqrt(2*m_f*v2E_rel(v))) for v in v_array] # Compute Jacobian from v to E
+    f_SD = reshape(dvdE_array,(length(dvdE_array),1)) .*f_SD_vp # Transform f(v,p) to f(E,p)
+    if E_0 in E_array_orig || p_0 in p_array_orig # If there were any source points on grid
+        nodes = (E_array,p_array)
+        itp = Interpolations.interpolate(nodes,f_SD,Gridded(Linear()))
+        f_SD_orig = [itp(E,p) for E in E_array_orig, p in p_array_orig] # Interpolate onto original (E,p) grid (having avoided singularities when computing)
+    else
+        f_SD_orig = f_SD
+    end
+    if returnExtra
+        return f_SD_orig, v_c, v_L, τ_s, α_0 # Return critical velocity, lower-threshold velocity, Spitzer slowing-down time and α_0 parameter
+    else
+        return f_SD_orig # Return only slowing-down function in (E,p) coordinates
     end
 end
