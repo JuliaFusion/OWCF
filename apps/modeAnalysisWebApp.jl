@@ -46,7 +46,7 @@
 
 #### Other
 # Warning! Please note! For topological maps containing more than approximately 150 000 valid orbits (e.g. 20x100x100),
-# you should NOT use modeAnalysisWebApp.jl (or any other interactive app). As of OWCF version 1.0, the 
+# you should NOT use modeAnalysisWebApp.jl (or any other interactive app). As of OWCF version 1.2.1, the 
 # web interface simply becomes too slow. Please do instead plot resonances manually (in scratch.jl for example).
 # You do this by, e.g. for an (n,m)=(1,2) mode with ω=150 kHz, coding the following
 #
@@ -78,10 +78,10 @@
 #
 # Plots.heatmap(Rm_array,pm_array,resonance,legend=false,xlabel="Rm [m]", ylabel="pm", title="E: $(round(E,digits=3)) keV", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]))
 
-# Script written by Henrik Järleblad. Last maintained 2023-01-25. Which is also my birthday!
+# Script written by Henrik Järleblad. Last maintained 2024-06-25.
 ########################################################################################################
 
-## --------------------------------------------------------------------------
+#########################################################################################
 # Please specify the OWCF folder and let the app change directory to the 
 # OWCF folder when orbitsWebApp.jl is executed. This is to be able to load the
 # correct versions of the Julia packages as specified in the Project.toml and 
@@ -91,11 +91,11 @@ cd(folderpath_OWCF)
 using Pkg
 Pkg.activate(".")
 
-## --------------------------------------------------------------------------
+#########################################################################################
 # Must load JLD2 package first, to be able to check filepath_tm and filepath_W for 'extra_kw_args'
 using JLD2
 
-## --------------------------------------------------------------------------
+#########################################################################################
 # Inputs
 enable_COM = false # Set to false for large grids (>10x100x100 in (E,pm,Rm)). The computation time simply becomes too large. Or...
 if enable_COM
@@ -110,7 +110,6 @@ n_init = 1 # Toroidal mode number
 m_init = 2 # Poloidal mode number
 verbose = true
 port = 2424 # The port number hosting the web app. orbitsWebApp will be accessible via your web browser at the web address 'localhost:port' where you replace 'port' with the integer number you have specified
-
 # EXTRA KEYWORD ARGUMENTS BELOW (these will go into the orbit_grid() and get_orbit() functions from GuidingCenterOrbits.jl)
 myfile = jldopen(filepath_tm,false,false,false,IOStream)
 if haskey(myfile,"extra_kw_args")
@@ -118,16 +117,15 @@ if haskey(myfile,"extra_kw_args")
 else
     verbose && println("No extra keyword arguments for orbit integration found in topological map file. Assuming :toa, :limit_phi and :maxiter=0")
     extra_kw_args = Dict(:limit_phi => true, :max_tries => 0)
-    # limits the number of toroidal turns for orbits
-    # The orbit integration algorithm will try progressively smaller timesteps these number of times
+    # limit_phi: limits the number of toroidal turns for orbits
+    # max_tries: The orbit integration algorithm will try progressively smaller timesteps these number of times
 end
 close(myfile)
-
-if haskey(extra_kw_args, :maxiter)
+if haskey(extra_kw_args, :maxiter) # To allow compatibility with older OWCF files
     delete!(extra_kw_args, :maxiter)
 end
 
-## --------------------------------------------------------------------------
+#########################################################################################
 # Loading packages
 verbose && println("Loading packages... ")
 using Interact
@@ -141,9 +139,7 @@ using WebIO
 include(folderpath_OWCF*"misc/species_func.jl")
 include(folderpath_OWCF*"extra/dependencies.jl")
 
-#############################################################################
-
-## --------------------------------------------------------------------------
+#########################################################################################
 # Loading tokamak equilibrium
 verbose && println("Loading tokamak equilibrium... ")
 if ((split(filepath_equil,"."))[end] == "eqdsk") || ((split(filepath_equil,"."))[end] == "geqdsk") 
@@ -157,7 +153,7 @@ else # Otherwise, assume magnetic equilibrium is a saved .jld2 file
     jdotb = (M.sigma_B0)*(M.sigma_Ip)
 end
 
-## --------------------------------------------------------------------------
+#########################################################################################
 # Read the .jld2-file for displaying the topology of orbit space
 verbose && println("Loading topological map... ")
 myfile = jldopen(filepath_tm,false,false,false,IOStream)
@@ -173,7 +169,7 @@ else
 end
 close(myfile)
 
-## --------------------------------------------------------------------------
+#########################################################################################
 # Mapping topological map to (E,μ, Pϕ; σ)
 if enable_COM && !(isfile(filepath_tm_COM))
     verbose && println(">>>>>> Mapping topological map from (E,pm,Rm) to (E,μ,Pϕ;σ) <<<<<<... ")
@@ -193,7 +189,7 @@ else
     verbose && println("Switching (E,pm,Rm) -> (E,mu,Pphi;sigma) will not be possible.")
 end
 
-## --------------------------------------------------------------------------
+#########################################################################################
 # Mapping maps of the poloidal and toroidal transit times to (E,μ, Pϕ; σ), if available
 if enable_COM && !(isfile(filepath_tm_COM))
     verbose && println(">>>>>> Mapping poloidal transit times from (E,pm,Rm) to (E,μ,Pϕ;σ) <<<<<<... ")
@@ -216,7 +212,7 @@ elseif enable_COM && isfile(filepath_tm_COM)
 else
 end
 
-## --------------------------------------------------------------------------
+#########################################################################################
 # Safety-checking
 if enable_COM
     verbose && println("Checking that the (E,pm,Rm) -> (E,μ,Pϕ;σ) mapping yielded roughly the same μ- and Pϕ-grid points for topoMap, polTransTimes and torTransTimes... ")
@@ -237,36 +233,54 @@ if enable_COM
     end
 end
 
-## --------------------------------------------------------------------------
+#########################################################################################
 # Double-checking so nothing has NaNs in it
 if !(sum(isnan.(topoMap))==0)
-    topoMap = map(x-> isnan(x) ? 0.0 : x, topoMap)
-    @warn "Topological map in (E,pm,Rm) had NaNs in it! orbitsWebApp.jl automatically set them to 0.0."
+    topoMap = map(x-> isnan(x) ? 6.0 : x, topoMap)
+    @warn "Topological map in (E,pm,Rm) had NaNs in it! orbitsWebApp.jl automatically set them to 6.0 (incomplete)."
 end
 if enable_COM
     if !(sum(isnan.(topoMap_COM))==0)
-        topoMap_COM = map(x-> isnan(x) ? 0.0 : x, topoMap_COM)
-        @warn "Topological map in (E,μ,Pϕ;σ) had NaNs in it! orbitsWebApp.jl automatically set them to 0.0."
+        topoMap_COM = map(x-> isnan(x) ? 6.0 : x, topoMap_COM)
+        @warn "Topological map in (E,μ,Pϕ;σ) had NaNs in it! orbitsWebApp.jl automatically set them to 6.0 (incomplete)."
     end
 end
-if !(sum(isnan.(polTransTimes))==0)
-    polTransTimes = map(x-> isnan(x) ? 0.0 : x, polTransTimes)
-    @warn "Map of poloidal transit times in (E,pm,Rm) had NaNs in it! orbitsWebApp.jl automatically set them to 0.0."
-end
-if !(sum(isnan.(torTransTimes))==0)
-    torTransTimes = map(x-> isnan(x) ? 0.0 : x, torTransTimes)
-    @warn "Map of toroidal transit times in (E,pm,Rm) had NaNs in it! orbitsWebApp.jl automatically set them to 0.0."
-end
-if enable_COM
-    if !(sum(isnan.(polTransTimes_COM))==0)
-        polTransTimes_COM = map(x-> isnan(x) ? 0.0 : x, polTransTimes_COM)
-        @warn "Map of poloidal transit times in (E,μ,Pϕ;σ) had NaNs in it! orbitsWebApp.jl automatically set them to 0.0."
-    end
-    if !(sum(isnan.(torTransTimes_COM))==0)
-        torTransTimes_COM = map(x-> isnan(x) ? 0.0 : x, torTransTimes_COM)
-        @warn "Map of toroidal transit times in (E,μ,Pϕ;σ) had NaNs in it! orbitsWebApp.jl automatically set them to 0.0."
-    end
-end
+#if !(sum(isnan.(polTransTimes))==0)
+#    polTransTimes = map(x-> isnan(x) ? 0.0 : x, polTransTimes)
+#    @warn "Map of poloidal transit times in (E,pm,Rm) had NaNs in it! orbitsWebApp.jl automatically set them to 0.0."
+#end
+#if !(sum(isnan.(torTransTimes))==0)
+#    torTransTimes = map(x-> isnan(x) ? 0.0 : x, torTransTimes)
+#    @warn "Map of toroidal transit times in (E,pm,Rm) had NaNs in it! orbitsWebApp.jl automatically set them to 0.0."
+#end
+#if enable_COM
+#    if !(sum(isnan.(polTransTimes_COM))==0)
+#        polTransTimes_COM = map(x-> isnan(x) ? 0.0 : x, polTransTimes_COM)
+#        @warn "Map of poloidal transit times in (E,μ,Pϕ;σ) had NaNs in it! orbitsWebApp.jl automatically set them to 0.0."
+#    end
+#    if !(sum(isnan.(torTransTimes_COM))==0)
+#        torTransTimes_COM = map(x-> isnan(x) ? 0.0 : x, torTransTimes_COM)
+#        @warn "Map of toroidal transit times in (E,μ,Pϕ;σ) had NaNs in it! orbitsWebApp.jl automatically set them to 0.0."
+#    end
+#end
+
+#########################################################################################
+# Inverting poloidal and toroidal transit time data, to enable computation of resonance
+# Then multiply with 2*pi to get ω_ϕ and ω_θ
+verbose && println("Inverting poloidal and toroidal transit time data, to compute ω_θ and ω_ϕ, respectively... ")
+
+bad_coords = findall(x-> (x==9.0 || x==6.0 || x==7.0), topoMap) # Invalid, incomplete or lost orbits
+enable_COM && (bad_coords_COM = findall(x-> (x==9.0 || x==6.0 || x==7.0), topoMap_COM))
+
+polTransTimes[bad_coords] = NaN
+torTransTimes[bad_coords] = NaN
+enable_COM && (polTransTimes_COM[bad_coords_COM] = NaN)
+enable_COM && (torTransTimes_COM[bad_coords_COM] = NaN)
+
+ω_θ = map(x-> !isnan(x) ? 2*pi/x : x, polTransTimes)
+ω_ϕ = map(x-> !isnan(x) ? 2*pi/x : x, torTransTimes)
+enable_COM && (ω_θ_COM = map(x-> !isnan(x) ? 2*pi/x : x, polTransTimes_COM))
+enable_COM && (ω_ϕ_COM = map(x-> !isnan(x) ? 2*pi/x : x, torTransTimes_COM))
 
 #########################################################################################
 verbose && println("Computing flux function on 100x100 (R,z)-grid... ")
@@ -407,15 +421,15 @@ function app(req) # Start the Interact.jl app
         if (phase_space==:OS) || !enable_COM
             npm = length(pm_array)
             nRm = length(Rm_array)
-            resonance = -log10.(abs.((2*pi/(ω*1000)) .*ones(npm,nRm) - n .*torTransTimes[Eci,:,:] - m .*polTransTimes[Eci,:,:] - (2*pi/(ω_rot*1000)) .*ones(npm,nRm)))
+            resonance = -log10.(abs.((ω*1000) .*ones(npm,nRm) - n .*ω_ϕ[Eci,:,:] - m .*ω_θ[Eci,:,:] - (ω_rot*1000) .*ones(npm,nRm)))
             plt_res = Plots.heatmap(Rm_array,pm_array,resonance,xlabel="Rm [m]", ylabel="pm", title="E: $(round(E,digits=3)) keV", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), ylims=extrema(pm_array), xlims=extrema(Rm_array))
         else
             nμ = size(μ_matrix_tor,2) # tor or pol should not matter
             nPϕ = size(Pϕ_matrix_pol,2) # tor or pol should not matter
             if pm<0.0
-                resonance = -log10.abs(((2*pi/(ω*1000)) .*ones(nμ,nPϕ) - n .*torTransTimes_COM[Int64(Eci),:,:,1] - m .*polTransTimes_COM[Int64(Eci),:,:,1]) - (2*pi/(ω_rot*1000)) .*ones(nμ,nPϕ))
+                resonance = -log10.(abs.((ω*1000) .*ones(nμ,nPϕ) - n .*ω_ϕ_COM[Int64(Eci),:,:,1] - m .*ω_θ_COM[Int64(Eci),:,:,1] - (ω_rot*1000) .*ones(nμ,nPϕ)))
             else
-                resonance = -log10.abs(((2*pi/(ω*1000)) .*ones(nμ,nPϕ) - n .*torTransTimes_COM[Int64(Eci),:,:,2] - m .*polTransTimes_COM[Int64(Eci),:,:,2]) - (2*pi/(ω_rot*1000)) .*ones(nμ,nPϕ))
+                resonance = -log10.(abs.((ω*1000) .*ones(nμ,nPϕ) - n .*ω_ϕ_COM[Int64(Eci),:,:,2] - m .*ω_θ_COM[Int64(Eci),:,:,2] - (ω_rot*1000) .*ones(nμ,nPϕ)))
             end
 
             plt_res = Plots.heatmap(Pϕ_matrix_tor[Int64(Eci),:],μ_matrix_tor[Int64(Eci),:],resonance,legend=false,xlabel="Pϕ", ylabel="μ", title="E: $(round(E,digits=3)) keV", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), ylims=extrema(μ_matrix_tor[Int64(Eci),:]), xlims=extrema(Pϕ_matrix_tor[Int64(Eci),:]))

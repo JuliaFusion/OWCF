@@ -421,7 +421,7 @@ function app(req) # Here is where the app starts!
             if space==:EP # (E,p) plot
                 plt_topo = Plots.heatmap(E_array,p_array, F[:,:,Rci,zci]', fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), xlabel="E [keV]", ylabel="p [-]", title="f(E,p) at (R,z)", right_margin=3Plots.mm)
             else # :VEL => (v_para, v_perp) plot
-                vpara_array, vperp_array, F_VEL = Ep2VparaVperp(E_array, p_array, F[:,:,Rci,zci]; my_gcp=my_gcp, needJac=true, returnAbscissas=true)
+                F_VEL, vpara_array, vperp_array = Ep2VparaVperp(E_array, p_array, F[:,:,Rci,zci]; my_gcp=my_gcp, needJac=true, returnAbscissas=true)
                 plt_topo = Plots.heatmap(vpara_array, vperp_array, F_VEL', fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), xlabel="v_para [m/s]", ylabel="v_perp [m/s]", title="f(v_para,v_perp) at (R,z)", right_margin=3Plots.mm )
             end
         elseif study==:tpol && poltor
@@ -439,12 +439,12 @@ function app(req) # Here is where the app starts!
             min_pol, max_pol = extrema(pTT_microsecs[my_coords]) # Find minimum and maximum values
             min_OOM, max_OOM = (floor(log10(min_pol)),ceil(log10(max_pol))) # The orders of magnitude of the minimum and maximum values
             if space==:EP
-                x_array, y_array, z_matrix = E_array, p_array, pTT_microsecs
+                z_matrix, x_array, y_array,  = pTT_microsecs, E_array, p_array
                 title = "tau_pol(E,p) at (R,z) [microseconds] \n tau_pol($(round(E,sigdigits=3)),$(round(p,sigdigits=2)))=$(round(o.tau_p /(1.0e-6),sigdigits=3)) microseconds"
                 xlabel = "E [keV]"
                 ylabel = "p [-]"
             else
-                x_array, y_array, z_matrix = Ep2VparaVperp(E_array, p_array, pTT_microsecs; my_gcp=my_gcp, returnAbscissas=true)
+                z_matrix, x_array, y_array  = Ep2VparaVperp(E_array, p_array, pTT_microsecs; my_gcp=my_gcp, returnAbscissas=true)
                 title = "tau_pol(vpara,vperp) at (R,z) [microseconds] \n tau_pol($(round(p*sqrt(2*keV*E/my_gcp.m),sigdigits=3)),$(round(sqrt(1-p^2)*sqrt(2*keV*E/my_gcp.m),sigdigits=3)))=$(round(o.tau_p /(1.0e-6),sigdigits=3)) microseconds"
                 xlabel = "vpara [m/s]"
                 ylabel = "vperp [m/s]"
@@ -471,12 +471,12 @@ function app(req) # Here is where the app starts!
             min_pol, max_pol = extrema(tTT_microsecs[my_coords]) # Find minimum and maximum values
             min_OOM, max_OOM = (floor(log10(min_pol)),ceil(log10(max_pol))) # The orders of magnitude of the minimum and maximum values
             if space==:EP
-                x_array, y_array, z_matrix = E_array, p_array, tTT_microsecs
+                z_matrix, x_array, y_array = tTT_microsecs, E_array, p_array
                 title = "tau_tor(E,p) at (R,z) [microseconds] \n tau_tor($(round(E,sigdigits=3)),$(round(p,sigdigits=2)))=$(round(o.tau_t /(1.0e-6),sigdigits=3)) microseconds"
                 xlabel = "E [keV]"
                 ylabel = "p [-]"
             else
-                x_array, y_array, z_matrix = Ep2VparaVperp(E_array, p_array, tTT_microsecs; my_gcp=my_gcp, returnAbscissas=true)
+                z_matrix, x_array, y_array = Ep2VparaVperp(E_array, p_array, tTT_microsecs; my_gcp=my_gcp, returnAbscissas=true)
                 title = "tau_tor(vpara,vperp) at (R,z) [microseconds] \n tau_tor($(round(p*sqrt(2*keV*E/my_gcp.m),sigdigits=3)),$(round(sqrt(1-p^2)*sqrt(2*keV*E/my_gcp.m),sigdigits=3)))=$(round(o.tau_t /(1.0e-6),sigdigits=3)) microseconds"
                 xlabel = "vpara [m/s]"
                 ylabel = "vperp [m/s]"
@@ -518,7 +518,7 @@ function app(req) # Here is where the app starts!
                 p_array_ext = vcat(p_array,2*p_array[end]-p_array[end-1]) # Extend p_array by one dummy element
                 plt_topo = Plots.heatmap(E_array,p_array_ext,topoMap_ext',color=:Set1_9,legend=false,xlabel="E [keV]", ylabel="p [-]", title="(E,p) orbit topology at (R,z)", ylims=(minimum(p_array),maximum(p_array)))
             else
-                vpara_array, vperp_array, topoMap_raw_VEL = Ep2VparaVperp(E_array, p_array, topoMap_raw; my_gcp=my_gcp, isTopoMap=true, returnAbscissas=true)
+                topoMap_raw_VEL, vpara_array, vperp_array = Ep2VparaVperp(E_array, p_array, topoMap_raw; my_gcp=my_gcp, isTopoMap=true, returnAbscissas=true)
                 topoMap_ext_VEL = ones(size(topoMap_raw_VEL,1),size(topoMap_raw_VEL,2)+1) # We ensure 1.0 in data by using ones() function. Add one extra column
                 topoMap_ext_VEL[1:size(topoMap_raw_VEL,1),1:size(topoMap_raw_VEL,2)] .= topoMap_raw_VEL # put in the true topoMap to be plotted
                 topoMap_ext_VEL[end,end] = 9.0 # Get the 9.0. This is such an ugly solution (to acquire correct orbit type coloring)...
