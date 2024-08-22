@@ -297,14 +297,15 @@ T_T = TT_itp(rho_of_interest)
 # Test upgraded Debye length function
 λ_D = debye_length(n_e, T_e, ["T","D"], [n_T,n_D], [T_T, T_D])
 ###########################################################
+include("extra/dependencies.jl")
 E0_array = E_coarse[1:1:end-1] .+ diff(E_coarse)[1]/2
 p0_array = p_coarse[2:1:end-1]
 F_SD = zeros(length(E_coarse)*length(p_coarse),length(E0_array)*length(p0_array))
 i_SD = 1
-for E_0 in E0_array, p_0 in p0_array
+for E_0 in E0_array[30:50], p_0 in p0_array[10:15]
     #println("$(round(100*i_SD/(length(E_coarse)*length(p_coarse)),digits=3)) %")
-    f_SD = slowing_down_function(E_0, p_0, E_coarse, p_coarse, n_e, T_e, "T", n_T, T_T, "D", n_D, T_D; dampen=true)
-    println(extrema(f_SD))
+    f_SD = slowing_down_function(E_0, p_0, E_coarse, p_coarse, n_e, T_e, "D", ["T","D"], [n_T, n_D], [T_T, T_D]; dampen=true, E_tail_length=20.0)
+    #println(extrema(f_SD))
     dE = diff(E_coarse)[1]
     dp = diff(p_coarse)[1]
     f_SD = f_SD ./sum((dE*dp) .*f_SD) # Normalize the basis function so they integrate to 1.0
@@ -313,9 +314,11 @@ for E_0 in E0_array, p_0 in p0_array
 end
 ###########################################################
 for i in 1:size(F_SD,2)
-    f_SD = reshape(F_SD[:,i],(length(E_coarse),length(p_coarse)))
-    my_plt = Plots.heatmap(E_coarse,p_coarse,f_SD',fillcolor=cgrad([:white, :yellow, :orange, :red, :black]))
-    display(my_plt)
+    if mod(i,100)==0
+        f_SD = reshape(F_SD[:,i],(length(E_coarse),length(p_coarse)))
+        my_plt = Plots.heatmap(E_coarse,p_coarse,f_SD',fillcolor=cgrad([:white, :yellow, :orange, :red, :black]))
+        display(my_plt)
+    end
 end
 ###########################################################
 function testyMcTestface(x::T) where T<:Real
