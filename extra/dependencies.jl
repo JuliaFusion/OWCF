@@ -2820,7 +2820,10 @@ function _slowing_down_function_core(v_0::Real, p_0::Real, v_array::Vector{T} wh
         v_L = v_c * ((1+(v_c/v_0)^3)*exp((3/(4*β))*((1-abs(p_0))/(1+abs(p_0))))-1)^(-1/3)
         if dampen
             v_damp = isnothing(v_tail_length) ? v_L : (v_0 - v_tail_length) # If v_tail_length is specified, start damping below tail. If not, use v_L
-            sigma = (v_damp/10)/(2*sqrt(2*log(2))) # Based on the formula for FWHM for Gaussians
+            FWHM = isnothing(v_tail_length) ? (v_damp/10) : (v_tail_length/20) 
+            sigma = FWHM/(2*sqrt(2*log(2))) # Based on the formula for FWHM for Gaussians
+            print(v_damp); print("     "); println(v_tail_length)
+            #sigma = 4500.0
             damp_factors = reshape(erfc.((-1) .*(v_array .- v_damp); sigma=sigma) ./2,(length(v_array),1)) # Factors range between 0 and 1
             f_SD = damp_factors .*f_SD
         end
@@ -2864,6 +2867,8 @@ function slowing_down_function(E_0::Real, p_0::Real, E_array::Vector{T} where {T
 
     # Determine v_tail_length from E_tail_length (if specified)
     # SOMETHING DOES NOT WORK HERE! THE TAIL LOOKS WAY TOO LONG!!!
+    # I THINK IT IS IN THE COMPLEMENTORY ERROR FUNCTION AND THE SIGMA VARIABLE
+    # SIGMA WILL VARY DEPENDING ON E0, BUT IT SHOULDN'T!
     # THIS FUNCTION IS CURRENTLY UNDER CONSTRUCTION!!
     # THIS FUNCTION IS CURRENTLY UNDER CONSTRUCTION!!
     # THIS FUNCTION IS CURRENTLY UNDER CONSTRUCTION!!
