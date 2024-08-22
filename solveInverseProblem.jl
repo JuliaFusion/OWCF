@@ -302,9 +302,9 @@ E0_array = E_coarse[1:1:end-1] .+ diff(E_coarse)[1]/2
 p0_array = p_coarse[2:1:end-1]
 F_SD = zeros(length(E_coarse)*length(p_coarse),length(E0_array)*length(p0_array))
 i_SD = 1
-for E_0 in E0_array[30:50], p_0 in p0_array[10:15]
+for E_0 in E0_array, p_0 in p0_array
     #println("$(round(100*i_SD/(length(E_coarse)*length(p_coarse)),digits=3)) %")
-    f_SD = slowing_down_function(E_0, p_0, E_coarse, p_coarse, n_e, T_e, "D", ["T","D"], [n_T, n_D], [T_T, T_D]; dampen=true, E_tail_length=20.0)
+    f_SD = slowing_down_function(E_0, p_0, E_coarse, p_coarse, n_e, T_e, "D", ["T","D"], [n_T, n_D], [T_T, T_D]; dampen=true, E_tail_length=50.0)
     #println(extrema(f_SD))
     dE = diff(E_coarse)[1]
     dp = diff(p_coarse)[1]
@@ -313,13 +313,13 @@ for E_0 in E0_array[30:50], p_0 in p0_array[10:15]
     i_SD += 1
 end
 ###########################################################
-for i in 1:size(F_SD,2)
-    if mod(i,100)==0
-        f_SD = reshape(F_SD[:,i],(length(E_coarse),length(p_coarse)))
-        my_plt = Plots.heatmap(E_coarse,p_coarse,f_SD',fillcolor=cgrad([:white, :yellow, :orange, :red, :black]))
-        display(my_plt)
-    end
+anim = @animate for i in 1:100:size(F_SD,2)
+    f_SD = reshape(F_SD[:,i],(length(E_coarse),length(p_coarse)))
+    my_plt = Plots.heatmap(E_coarse,p_coarse,f_SD',fillcolor=cgrad([:white, :yellow, :orange, :red, :black]))
+    display(my_plt)
 end
+gif(anim,"test.gif",fps=2)
+rm("test.gif"; force=true)
 ###########################################################
 function testyMcTestface(x::T) where T<:Real
     return 2*x
@@ -329,7 +329,7 @@ end
 # hcat them back into a matrix
 F_SD_new = reduce(hcat,filter(col-> sum(col)!=0.0 && sum(isnan.(col))==0, eachcol(F_SD)))
 ###########################################################
-for i in 1:size(F_SD_new,2)
+for i in 1:100:size(F_SD_new,2)
     f_SD_new = reshape(F_SD_new[:,i],(length(E_coarse),length(p_coarse)))
     my_plt = Plots.heatmap(E_coarse,p_coarse,f_SD_new',fillcolor=cgrad([:white, :yellow, :orange, :red, :black]))
     display(my_plt)
@@ -493,6 +493,7 @@ for i=1:length(lambda_values)
     myplt_tot = Plots.plot(myplt,myplt1,layout=(1,2),size=(900,400))
     display(myplt_tot)  
 end
+#gif(anim,"test.gif",fps=2)
 ###########################################################
 # Redo the reconstruction. But for the synthetic case
 # For comparison and sanity check
