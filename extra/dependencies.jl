@@ -23,7 +23,7 @@
 #
 # Finally, please note that some functions in dependencies.jl might be under construction. Hence, the bad code.
 #
-# Written by H. Järleblad. Last updated 2024-04-26.
+# Written by H. Järleblad. Last updated 2024-08-22.
 ###################################################################################################
 
 println("Loading the Julia packages for the OWCF dependencies... ")
@@ -2792,13 +2792,13 @@ Keyword arguments:
 - S0 - Source amplitude at injection point
 - g - Function of speed (v). exp(-g(v)) governs speed diffusion above injection speed
 - dampen - If true, the slowing-down function will be damped below v_L (please see final eq. in W.G.F. Core, Nucl. Fusion 33, 829 (1993)) using the error function complement
-- v_tail_length - If specified, the slowing-down function will be dampened below (v_0 - v_tail_length)
+- v_damp - If specified, the slowing-down function (SDF) will be dampened below the speed of v_damp (in m/s). If not specified and 'dampen' is set to true, the SDF will be dampened below v_L (see function code).
 - returnExtra - If true, (in addition to f_SD) v_c, v_L, τ_s and α_0 will be returned
 
 This function should not be used directly, but always via the slowing_down_function() function, to avoid confusing between 
 energy (E) and speed (v) grid points input.
 """
-function _slowing_down_function_core(v_0::Real, p_0::Real, v_array::Vector{T} where {T<:Real}, p_array::Vector{T} where {T<:Real}, n_e::Real, T_e::Real, species_f::String, species_th_vec::Vector{String}, n_th_vec::Vector{T} where {T<:Real}, T_th_vec::Vector{T} where {T<:Real}; S0::Float64=1.0, g=(v-> v), dampen::Bool=false, v_tail_length::Union{Nothing,Real}=nothing, returnExtra::Bool=false)
+function _slowing_down_function_core(v_0::Real, p_0::Real, v_array::Vector{T} where {T<:Real}, p_array::Vector{T} where {T<:Real}, n_e::Real, T_e::Real, species_f::String, species_th_vec::Vector{String}, n_th_vec::Vector{T} where {T<:Real}, T_th_vec::Vector{T} where {T<:Real}; S0::Float64=1.0, g=(v-> v), dampen::Bool=false, v_damp::Union{Nothing,Real}=nothing, returnExtra::Bool=false)
     m_e = (GuidingCenterOrbits.e_amu)*(GuidingCenterOrbits.mass_u) # Electron mass, kg
     τ_s = spitzer_slowdown_time(n_e, T_e, species_f, species_th_vec, n_th_vec, T_th_vec) # Spitzer slowing-down time, s
     Z_th_vec = getSpeciesEcu.(species_th_vec) # Atomic charge number for all thermal plasma ion species
@@ -2818,12 +2818,10 @@ function _slowing_down_function_core(v_0::Real, p_0::Real, v_array::Vector{T} wh
     end
     if returnExtra || dampen
         v_L = v_c * ((1+(v_c/v_0)^3)*exp((3/(4*β))*((1-abs(p_0))/(1+abs(p_0))))-1)^(-1/3)
-        if dampen
-            v_damp = isnothing(v_tail_length) ? v_L : (v_0 - v_tail_length) # If v_tail_length is specified, start damping below tail. If not, use v_L
-            FWHM = isnothing(v_tail_length) ? (v_damp/10) : (v_tail_length/20) 
+        v_damp = isnothing(v_damp) ? v_L : v_damp # If v_damp is specified, use v_damp. If not, use v_L
+        if dampen && (v_damp>0.0)
+            FWHM = v_damp/10 
             sigma = FWHM/(2*sqrt(2*log(2))) # Based on the formula for FWHM for Gaussians
-            print(v_damp); print("     "); println(v_tail_length)
-            #sigma = 4500.0
             damp_factors = reshape(erfc.((-1) .*(v_array .- v_damp); sigma=sigma) ./2,(length(v_array),1)) # Factors range between 0 and 1
             f_SD = damp_factors .*f_SD
         end
@@ -2837,12 +2835,8 @@ function _slowing_down_function_core(v_0::Real, p_0::Real, v_array::Vector{T} wh
 end
 
 """
-# THIS FUNCTION IS CURRENTLY UNDER CONSTRUCTION!!
-# THIS FUNCTION IS CURRENTLY UNDER CONSTRUCTION!!
-# THIS FUNCTION IS CURRENTLY UNDER CONSTRUCTION!!
-
 slowing_down_function(E_0, p_0, E_array, p_array, n_e, T_e, species_f, species_th_vec, n_th_vec, T_th_vec)
-slowing_down_function(-||-; type=:core, returnExtra=false, kwargs...)
+slowing_down_function(-||-; type=:core, returnExtra=false, E_tail_length=nothing, kwargs...)
 
 Compute a neutral beam injection slowing-down distribution function. The inputs are 
     - E_0: The beam injection energy [keV]
@@ -2858,23 +2852,16 @@ Compute a neutral beam injection slowing-down distribution function. The inputs 
 The keyword arguments are:
     - type: The type of slowing-down function you want to compute (currently, only :core is supported) [-]
     - returnExtra: If true, extra outputs will be returned (please see below)
-    - E_tail_length: If specified, the slowing-down function will be dampened below (E0-E_tail_length) [keV]
+    - E_tail_length: If specified (Float or Int), the slowing-down function will be dampened below (E0-E_tail_length) [keV]
 """
 function slowing_down_function(E_0::Real, p_0::Real, E_array::Vector{T} where {T<:Real}, p_array::Vector{T} where {T<:Real}, n_e::Real, T_e::Real, species_f::String, species_th_vec::Vector{String}, n_th_vec::Vector{T} where {T<:Real}, T_th_vec::Vector{T} where {T<:Real}; type::Symbol=:core, returnExtra::Bool=false, E_tail_length::Union{Nothing,Real}=nothing, kwargs...)
     m_f = getSpeciesMass(species_f) # Beam (fast) particle mass, kg
     E2v_rel = (E-> (GuidingCenterOrbits.c0)*sqrt(1-(1/(((E*1000*GuidingCenterOrbits.e0)/(m_f*(GuidingCenterOrbits.c0)^2))+1)^2))) # A one-line function to transform from energy (keV) to relativistic speed (m/s)
     v2E_rel = (v-> (m_f*(GuidingCenterOrbits.c0)^2)*(sqrt(1/(1-(v/(GuidingCenterOrbits.c0))^(2)))-1)) # A one-line function to transform from relativistic speed (m/s) to energy (keV)
 
-    # Determine v_tail_length from E_tail_length (if specified)
-    # SOMETHING DOES NOT WORK HERE! THE TAIL LOOKS WAY TOO LONG!!!
-    # I THINK IT IS IN THE COMPLEMENTORY ERROR FUNCTION AND THE SIGMA VARIABLE
-    # SIGMA WILL VARY DEPENDING ON E0, BUT IT SHOULDN'T!
-    # THIS FUNCTION IS CURRENTLY UNDER CONSTRUCTION!!
-    # THIS FUNCTION IS CURRENTLY UNDER CONSTRUCTION!!
-    # THIS FUNCTION IS CURRENTLY UNDER CONSTRUCTION!!
-    v_tail_length = nothing
+    v_damp = nothing
     if !isnothing(E_tail_length)
-        v_tail_length = E2v_rel(E_tail_length)
+        v_damp = E2v_rel(clamp(E_0 - E_tail_length,0,Inf))
     end
 
     # Use the specified type of slowing-down function
@@ -2898,9 +2885,9 @@ function slowing_down_function(E_0::Real, p_0::Real, E_array::Vector{T} where {T
     v_0 =  E2v_rel(E_0) # Convert energy source point to velocity (relativistically)
     v_array = E2v_rel.(E_array) # Convert energy grid to velocity (relativistically)
     if returnExtra # If extra output is desired... 
-        f_SD_vp, v_c, v_L, τ_s, α_0 = my_SD_func(v_0, p_0, v_array, p_array, n_e, T_e, species_f, species_th_vec, n_th_vec, T_th_vec; returnExtra=returnExtra, v_tail_length=v_tail_length, kwargs...)
+        f_SD_vp, v_c, v_L, τ_s, α_0 = my_SD_func(v_0, p_0, v_array, p_array, n_e, T_e, species_f, species_th_vec, n_th_vec, T_th_vec; returnExtra=returnExtra, v_damp=v_damp, kwargs...)
     else # If not...
-        f_SD_vp = my_SD_func(v_0, p_0, v_array, p_array, n_e, T_e, species_f, species_th_vec, n_th_vec, T_th_vec; v_tail_length=v_tail_length, kwargs...)
+        f_SD_vp = my_SD_func(v_0, p_0, v_array, p_array, n_e, T_e, species_f, species_th_vec, n_th_vec, T_th_vec; v_damp=v_damp, kwargs...)
     end
     dvdE_array = [(1/sqrt(2*m_f*v2E_rel(v))) for v in v_array] # Compute Jacobian from v to E
     f_SD = reshape(dvdE_array,(length(dvdE_array),1)) .*f_SD_vp # Transform f(v,p) to f(E,p)
