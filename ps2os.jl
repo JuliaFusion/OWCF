@@ -290,7 +290,7 @@ else # Else, assume .jld2 file format
     end
     close(myfile)
 end
-p_array = reverse(p_array)
+
 verbose && print("For the input data, we have that")
 verbose && print("   $(round(E_array[1],sigdigits=5))<E<$(round(E_array[end],sigdigits=5))")
 verbose && print("   $(round(p_array[1],sigdigits=3))<p<$(round(p_array[end],sigdigits=3))")
