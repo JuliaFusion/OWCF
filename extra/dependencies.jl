@@ -471,11 +471,11 @@ function orbit_grid(M::AbstractEquilibrium, visualizeProgress::Bool, eo::Abstrac
     subs = CartesianIndices((nenergy,npitch,nr))
 
     if visualizeProgress
-        p = Progress(norbs)
+        prog = ProgressMeter.Progress(norbs)
         channel = RemoteChannel(()->Channel{Bool}(norbs), 1)
         orbs = fetch(@sync begin
             @async while take!(channel)
-                ProgressMeter.next!(p)
+                ProgressMeter.next!(prog)
             end
             @async begin
                 orbs = @distributed (vcat) for i=1:norbs
@@ -715,21 +715,6 @@ function flip_along_pm(W::AbstractArray; with_channels::Bool=false)
     end
 
     return Wres
-end
-
-"""
-    flip_along_p(F_EpRz)
-
-This function flips the elements of a 4D fast-ion distribution along the pitch axis.
-Assume the fast-ion distribution to be of the form (E,p,R,z)
-"""
-function flip_along_p(F_EpRz::AbstractArray)
-
-    F_EpRz_res = zeros(size(F_EpRz))
-    for pi in axes(F_EpRz,2)
-        F_EpRz_res[:,end+1-pi,:,:] .= F_EpRz[:,pi,:,:]
-    end
-    return F_EpRz_res
 end
 
 """
@@ -1273,19 +1258,18 @@ end
 
 """
 ps2os_streamlined(F_EpRz, energy, pitch, R, z, filepath_equil, og)
-ps2os_streamlined(-||-;numOsamples, verbose=false, distr_dim = [], flip_F_EpRz_pitch=false, GCP = GCDeuteron, distributed=true, nbatch = 1_000_000, clockwise_phi, kwargs...)
+ps2os_streamlined(-||-;numOsamples, verbose=false, distr_dim = [], sign_o_pitch_wrt_B=false, GCP = GCDeuteron, distributed=true, nbatch = 1_000_000, clockwise_phi, kwargs...)
 
 Continuation of the ps2os_streamlined function above. F_EpRz is f(E,p,R,z). Energy is a vector with the energy grid points (keV). Pitch is a vector with the pitch grid points.
-R is a vector with the major radius grid points (meters). z is a vector with the vertical coordinate grid points (meters). filepath_equial is a string pointing to the filepath 
+R is a vector with the major radius grid points (meters). z is a vector with the vertical coordinate grid points (meters). filepath_equil is a string pointing to the filepath 
 of a magnetic equilibrium file (either .eqdsk file or output from extra/compSolovev.jl). og is an orbit grid, computed with the orbit_grid() function (above). 
 numOsamples is a necessary keyword argument that sets the number of Monte-Carlo samples for the transformation. verbose is a bool switch that turns function print statements on/off.
 distr_dim is a list of exactly 4 elements. If specified, the fast-ion distribution will be interpolated to have this size in each of the 4 dimensions. For example, 
-distr_dim=[50,40,30,35] will lead to that f(E,p,R,z) has size 50x40x30x35. flip_F_EpRz_pitch is a bool switch that f(E,p,R,z)->f(E,-p,R,z). GCP is a guiding-centre particle 
-object (Please see GuidingCenterOrbits.jl/src/particles.jl). distributed is a bool switch for multi-core computations. nbatch is an integer that specifies the number of Monte-Carlo 
-samples that the algorithm will perform, between saving the progress. clockwise_phi is a bool switch for magnetic equilibria. Most magnetic equilibria have their 
-cylindrical coordinate phi-direction in the anti-clockwise direction, tokamak viewed from above. However, some don't. For these, set clockwise_phi to true.
+distr_dim=[50,40,30,35] will lead to that f(E,p,R,z) has size 50x40x30x35. sign_o_pitch_wrt_B is a bool switch that f(E,p,R,z)->f(E,-p,R,z). clockwise_phi is a bool switch for magnetic 
+equilibria. Most magnetic equilibria have their cylindrical coordinate phi-direction in the anti-clockwise direction, tokamak viewed from above. However, some don't. For these, 
+set clockwise_phi to true.
 """
-function ps2os_streamlined(F_EpRz::Array{Float64,4}, energy::AbstractVector, pitch::AbstractVector, R::AbstractVector, z::AbstractVector, filepath_equil::AbstractString, og::OrbitGrid; numOsamples::Int64, verbose::Bool=false, distr_dim = [], flip_F_EpRz_pitch::Bool=false, GCP = GCDeuteron, distributed::Bool=true, nbatch::Int64 = 1_000_000, clockwise_phi::Bool=false, kwargs...)
+function ps2os_streamlined(F_EpRz::Array{Float64,4}, energy::AbstractVector, pitch::AbstractVector, R::AbstractVector, z::AbstractVector, filepath_equil::AbstractString, og::OrbitGrid; numOsamples::Int64, verbose::Bool=false, distr_dim = [], sign_o_pitch_wrt_B::Bool=false, clockwise_phi::Bool=false, kwargs...)
 
     verbose && println("Loading the magnetic equilibrium... ")
     if ((split(filepath_equil,"."))[end] == "eqdsk") || ((split(filepath_equil,"."))[end] == "geqdsk")
@@ -1319,10 +1303,29 @@ function ps2os_streamlined(F_EpRz::Array{Float64,4}, energy::AbstractVector, pit
         z = zq
     end
 
-    # This operation will be necessary when working with old .h5-file distributions (16th April 2021 and earlier).
-    # This is because a (M.sigma*) multiplication operation was removed in the get_orbit() calls in the helper functions (etc).
-    if flip_F_EpRz_pitch
-        F_EpRz = flip_along_p(F_EpRz)
+    # This operation will be necessary if the loaded fast-ion distribution defines the sign of the pitch(p) w.r.t. the magnetic field (B)
+    # and NOT the plasma current (J). That is, if the following three statements can be simultaneously true:
+    #   1. p > 0
+    #   2. sign(dot(v,B))>0 
+    #   3. sign(dot(v,J))<0
+    # or, equivalently if the following three statements can be simultaneously true:
+    #   4. p < 0
+    #   5. sign(dot(v,B))<0 
+    #   6. sign(dot(v,J))>0.
+    # This is because the OWCF defines the pitch to be positive w.r.t. the plasma current. I.e.:
+    #   7. p > 0
+    #   8. sign(dot(v,B))<0 
+    #   9. sign(dot(v,J))>0
+    # or
+    #   10. p < 0
+    #   11. sign(dot(v,B))>0 
+    #   12. sign(dot(v,J))<0.
+    # In short, some codes define the sign of the pitch via equalities 1-6, while the OWCF uses equalities 7-12.
+    # This convention is not possible to deduce from the data structures alone, hence the information needs to be provided manually.
+    if sign_o_pitch_wrt_B && (sign(jdotb)<0)
+        verbose && println("sign_o_pitch_wrt_B is true and sign(dot(J,B))<0. Flipping pitch direction...")
+        F_EpRz = reverse(F_EpRz,dims=2)
+        pitch = -reverse(pitch) # 
     end
 
     return ps2os(M, wall, F_EpRz, energy, pitch, R, z, og; numOsamples=numOsamples, verbose=verbose, kwargs...)
@@ -1598,9 +1601,8 @@ function ps2os_performance(M::AbstractEquilibrium,
         dE_os_1 = abs((og.energy)[2]-(og.energy)[1])
 
         for i=numOsamples_sofar+1:numOsamples
-            if verbose
-                println("Sample number: $(i)")
-            end
+            verbose && print("")
+            verbose && print("Sample number: $(i)")
             # Sample
             p = rand()*frdvols_cumsum_vector[end]
             j = searchsortedfirst(frdvols_cumsum_vector,p,Base.Order.Forward)
@@ -1612,10 +1614,13 @@ function ps2os_performance(M::AbstractEquilibrium,
             z_sample = z[inds[4]] + r[4]*dz_vector[inds[4]]
 
             # CHECK IF IT'S A GOOD SAMPLE
+            verbose && print("   ($(round(E_sample,sigdigits=5)),$(round(p_sample,sigdigits=3)),$(round(R_sample,sigdigits=4)),$(round(z_sample,sigdigits=4)))")
             good_sample = checkIfGoodSample(E_sample, p_sample, R_sample, z_sample, energy, pitch, R, z)
-
+            verbose && print("   $(good_sample)")
             if good_sample
                 o = get_orbit(M,GCP(E_sample,p_sample,R_sample,z_sample); store_path=false, wall=wall, kwargs...)
+                verbose && print("   $(o.class)")
+                verbose && print("   $(o.coordinate.energy)")
                 if (o.coordinate.energy <= (maximum(og.energy)+dE_os_end/2) && o.coordinate.energy >= (minimum(og.energy)-dE_os_1/2)) # Make sure it's within the energy bounds (+one half grid cell)
                     F_os_i = bin_orbits(og,vec([o.coordinate]),weights=vec([1.0]))
                     class_distr_i = zeros(9)
@@ -1625,6 +1630,10 @@ function ps2os_performance(M::AbstractEquilibrium,
                     class_distr_i = zeros(9) # No orbit class
                 end
             else
+                verbose && print("   $(round(energy[1],sigdigits=5))<E<$(round(energy[end],sigdigits=5))")
+                verbose && print("   $(round(pitch[1],sigdigits=3))<p<$(round(pitch[end],sigdigits=3))")
+                verbose && print("   $(round(R[1],sigdigits=4))<R<$(round(R[end],sigdigits=4))")
+                verbose && print("   $(round(z[1],sigdigits=4))<z<$(round(z[end],sigdigits=4))")
                 F_os_i = zeros(length(og.counts))
                 class_distr_i = zeros(9) # No orbit class
             end
@@ -1640,14 +1649,13 @@ function ps2os_performance(M::AbstractEquilibrium,
                 write(myfile,"numOsamples",i)
                 close(myfile)
             end
+            verbose && println("")
         end
         result = result_sofar
         class_distr = class_distr_sofar
     end
 
-    if verbose
-        println("Number of good samples/All samples: $(sum(result)/numOsamples)")
-    end
+    verbose && println("Number of good samples/All samples: $(sum(result)/numOsamples)")
     rm("ps2os_progress.jld2", force=true) # As in ps2os(), remove the progress file that is no longer needed
 
     return result, class_distr, nfast
@@ -1668,11 +1676,11 @@ function sample_helper(M::AbstractEquilibrium, numOsamples::Int64, fr::AbstractA
 
     if numOsamples>0.0 # If there are actually a non-zero number of samples left to sample...
         if visualizeProgress
-            p = Progress(numOsamples) # Define the progress bar
+            prog = ProgressMeter.Progress(numOsamples) # Define the progress bar
             channel = RemoteChannel(()->Channel{Bool}(numOsamples),1) # Define the channel from which the progress bar draws data
             result = fetch(@sync begin # Start the distributed computational process, fetch result when done
                 @async while take!(channel) # An asynchronous process, with no need for sync, since it simply displays the progress bar
-                    ProgressMeter.next!(p)
+                    ProgressMeter.next!(prog)
                 end
 
                 @async begin # No internal syncronization needed here either, only external sync needed
@@ -1750,11 +1758,11 @@ function performance_helper(M::AbstractEquilibrium, numOsamples::Int64, frdvols_
 
     if numOsamples>0 # If there are actually a non-zero number of samples left to sample...
         if visualizeProgress
-            p = Progress(numOsamples) # Define the progress bar
+            prog = ProgressMeter.Progress(numOsamples) # Define the progress bar
             channel = RemoteChannel(()->Channel{Bool}(numOsamples),1) # Define the channel from which the progress bar draws data
             result = fetch(@sync begin # Start the distributed computational process, fetch result when done
                 @async while take!(channel) # An asynchronous process, with no need for sync, since it simply displays the progress bar
-                    ProgressMeter.next!(p)
+                    ProgressMeter.next!(prog)
                 end
 
                 @async begin # No internal syncronization needed here either, only external sync needed
