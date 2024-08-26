@@ -1536,6 +1536,7 @@ GCP - The guiding-center struct representing the fast-ion species
 saveProgress - If true, Monte-Carlo sampling process will be saved every nbatch samples
 nbatch - Compute the Monte-Carlo samples in batches, to optimize computation efficiency and enable subsequent progress saving
 verbose - If true, the function will talk a lot
+visualizeProgress - If true, a progress bar (or equivalent in the single-CPU core case) will be displayed during computations
 """
 function ps2os_performance(M::AbstractEquilibrium,
                             wall::Boundary,
@@ -1556,6 +1557,7 @@ function ps2os_performance(M::AbstractEquilibrium,
                             saveProgress::Bool=true,
                             nbatch::Int64 = 1_000_000,
                             verbose::Bool=false,
+                            visualizeProgress::Bool=false,
                             kwargs...)
     verbose && println("Pre-computing difference vectors... ")
     dE_vector = vcat(abs.(diff(energy)),abs(energy[end]-energy[end-1]))
@@ -1563,7 +1565,7 @@ function ps2os_performance(M::AbstractEquilibrium,
     dR_vector = vcat(abs.(diff(R)),abs(R[end]-R[end-1]))
     dz_vector = vcat(abs.(diff(z)),abs(z[end]-z[end-1]))
 
-    verbose && println("Going into the distributed part... ")
+    verbose && println("Starting Monte-Carlo computations... ")
     if distributed
         subdivide = false
         while numOsamples > nbatch
@@ -1601,8 +1603,8 @@ function ps2os_performance(M::AbstractEquilibrium,
         dE_os_1 = abs((og.energy)[2]-(og.energy)[1])
 
         for i=numOsamples_sofar+1:numOsamples
-            verbose && print("")
-            verbose && print("Sample number: $(i)")
+            visualizeProgress && print("")
+            visualizeProgress && print("Sample number: $(i)")
             # Sample
             p = rand()*frdvols_cumsum_vector[end]
             j = searchsortedfirst(frdvols_cumsum_vector,p,Base.Order.Forward)
@@ -1614,13 +1616,13 @@ function ps2os_performance(M::AbstractEquilibrium,
             z_sample = z[inds[4]] + r[4]*dz_vector[inds[4]]
 
             # CHECK IF IT'S A GOOD SAMPLE
-            verbose && print("   ($(round(E_sample,sigdigits=5)),$(round(p_sample,sigdigits=3)),$(round(R_sample,sigdigits=4)),$(round(z_sample,sigdigits=4)))")
+            visualizeProgress && print("   ($(round(E_sample,sigdigits=5)),$(round(p_sample,sigdigits=3)),$(round(R_sample,sigdigits=4)),$(round(z_sample,sigdigits=4)))")
             good_sample = checkIfGoodSample(E_sample, p_sample, R_sample, z_sample, energy, pitch, R, z)
-            verbose && print("   $(good_sample)")
+            visualizeProgress && print("   $(good_sample)")
             if good_sample
                 o = get_orbit(M,GCP(E_sample,p_sample,R_sample,z_sample); store_path=false, wall=wall, kwargs...)
-                verbose && print("   $(o.class)")
-                verbose && print("   $(o.coordinate.energy)")
+                visualizeProgress && print("   $(o.class)")
+                visualizeProgress && print("   $(o.coordinate.energy)")
                 if (o.coordinate.energy <= (maximum(og.energy)+dE_os_end/2) && o.coordinate.energy >= (minimum(og.energy)-dE_os_1/2)) # Make sure it's within the energy bounds (+one half grid cell)
                     F_os_i = bin_orbits(og,vec([o.coordinate]),weights=vec([1.0]))
                     class_distr_i = zeros(9)
@@ -1630,10 +1632,10 @@ function ps2os_performance(M::AbstractEquilibrium,
                     class_distr_i = zeros(9) # No orbit class
                 end
             else
-                verbose && print("   $(round(energy[1],sigdigits=5))<E<$(round(energy[end],sigdigits=5))")
-                verbose && print("   $(round(pitch[1],sigdigits=3))<p<$(round(pitch[end],sigdigits=3))")
-                verbose && print("   $(round(R[1],sigdigits=4))<R<$(round(R[end],sigdigits=4))")
-                verbose && print("   $(round(z[1],sigdigits=4))<z<$(round(z[end],sigdigits=4))")
+                visualizeProgress && print("   $(round(energy[1],sigdigits=5))<E<$(round(energy[end],sigdigits=5))")
+                visualizeProgress && print("   $(round(pitch[1],sigdigits=3))<p<$(round(pitch[end],sigdigits=3))")
+                visualizeProgress && print("   $(round(R[1],sigdigits=4))<R<$(round(R[end],sigdigits=4))")
+                visualizeProgress && print("   $(round(z[1],sigdigits=4))<z<$(round(z[end],sigdigits=4))")
                 F_os_i = zeros(length(og.counts))
                 class_distr_i = zeros(9) # No orbit class
             end
@@ -1649,7 +1651,7 @@ function ps2os_performance(M::AbstractEquilibrium,
                 write(myfile,"numOsamples",i)
                 close(myfile)
             end
-            verbose && println("")
+            visualizeProgress && println("")
         end
         result = result_sofar
         class_distr = class_distr_sofar
