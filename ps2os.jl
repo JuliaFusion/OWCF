@@ -65,7 +65,7 @@
 # Please note that in future versions of the OWCF, the user may use a toggle input to select other transformation methods
 # than simply Monte-Carlo methods. This has, however, not yet been incorporated into the OWCF.
 #
-# Script written by Henrik Järleblad. Last maintained 2022-08-26.
+# Script written by Henrik Järleblad. Last maintained 2024-08-26.
 ##################################################################################################################################
 
 ## --------------------------------------------------------------------------------------
@@ -101,7 +101,7 @@ if !(fileext_FI=="h5" || fileext_FI=="jld2" || fileext_FI=="hdf5")
 end
 
 ## --------------------------------------------------------------------------------------
-# Loading tokamak equilibrium
+# Loading tokamak equilibrium and format timepoint information
 ## --------------------------------------------------------------------------------------
 verbose && println("Loading tokamak equilibrium... ")
 if ((split(filepath_equil,"."))[end] == "eqdsk") || ((split(filepath_equil,"."))[end] == "geqdsk")
@@ -109,24 +109,26 @@ if ((split(filepath_equil,"."))[end] == "eqdsk") || ((split(filepath_equil,"."))
     jdotb = M.sigma # The sign of the dot product between the plasma current and the magnetic field
 
     # Extract timepoint information from .eqdsk/.geqdsk file
-    eqdsk_array = split(filepath_equil,".")
-    XX = (split(eqdsk_array[end-2],"-"))[end] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
-    YYYY = eqdsk_array[end-1] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
-    timepoint = XX*","*YYYY # Format XX,YYYY to avoid "." when including in filename of saved output
+    if isnothing(timepoint)
+        eqdsk_array = split(filepath_equil,".")
+        XX = (split(eqdsk_array[end-2],"-"))[end] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
+        YYYY = eqdsk_array[end-1] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
+        timepoint = XX*","*YYYY # Format XX,YYYY to avoid "." when including in filename of saved output
+    end
 else # Otherwise, assume magnetic equilibrium is a saved .jld2 file
     myfile = jldopen(filepath_equil,false,false,false,IOStream)
     M = myfile["S"]
     wall = myfile["wall"]
     close(myfile)
     jdotb = (M.sigma_B0)*(M.sigma_Ip)
-
-    if typeof(timepoint)==String && length(split(timepoint,","))==2
-        timepoint = timepoint
-    else
-        timepoint = "00,0000" # Unknown timepoint for magnetic equilibrium
-    end
 end
-
+if typeof(timepoint)==String
+    timepoint = replace(timepoint, "." => ",")
+elseif typeof(timepoint)==Float64
+    timepoint = replace("$(timepoint)","." => ",")
+else
+    timepoint = "00,0000" # Unknown timepoint for magnetic equilibrium
+end
 ## --------------------------------------------------------------------------------------
 verbose && println("Defining orbit-grid vectors... ")
 if useWeightsFile
@@ -191,7 +193,7 @@ println("Fast-ion species: "*FI_species)
 println("")
 println("Input file specified: ")
 println(filepath_EpRz)
-println("Timepoint: "*timepoint)
+print("Timepoint: "*timepoint); println(" seconds")
 println("")
 println("Number of monte-carlo samples: $(numOsamples)")
 println("Algorithm will save progress every $(nbatch) samples.")
@@ -213,8 +215,10 @@ else
     println("--- Radius maximum: [$(minimum(Rm_array)),$(maximum(Rm_array))] meters")
 end
 println("")
-if flip_F_EpRz_pitch
-    println("Input quantity will be mirrored in pitch before being sampled from.")
+if sign_o_pitch_wrt_B
+    println("Input quantity is assumed to have the sign of the pitch (v_||/v) defined w.r.t. the B-field.")
+    println("The OWCF defines the sign of the pitch w.r.t. the plasma current.")
+    println("sign(dot(B,J))=$(jdotb) and the quantity will be treated accordingly.")
     println("")
 end
 if interp
@@ -234,7 +238,7 @@ if include1Dto3D
     println("")
 end
 println("If you would like to change any settings, please edit the start_ps2os_template.jl file (or equivalent)")
-println("Written by Henrik Järleblad. Last maintained 2022-09-13.")
+println("Written by Henrik Järleblad. Last maintained 2024-08-26.")
 println("----------------------------------------------------------------------------------------")
 
 ## --------------------------------------------------------------------------------------
@@ -286,6 +290,13 @@ else # Else, assume .jld2 file format
     end
     close(myfile)
 end
+verbose && print("For the input data, we have that")
+verbose && print("   $(round(E_array[1],sigdigits=5))<E<$(round(E_array[end],sigdigits=5))")
+verbose && print("   $(round(p_array[1],sigdigits=3))<p<$(round(p_array[end],sigdigits=3))")
+verbose && print("   $(round(R_array[1],sigdigits=4))<R<$(round(R_array[end],sigdigits=4))")
+verbose && println("   $(round(z_array[1],sigdigits=4))<z<$(round(z_array[end],sigdigits=4))")
+verbose && println("Please check for inconsistencies. If needed, correct input data and re-try.")
+verbose && println("")
 
 ## --------------------------------------------------------------------------------------
 if interp
@@ -298,7 +309,7 @@ end
 ## --------------------------------------------------------------------------------------
 if trans_distr
     verbose && println("Going into ps2os_streamlined (performance=true manually set)... ")
-    F_os_raw, class_distr, nfast = ps2os_streamlined(F_EpRz, E_array_ps, p_array, R_array, z_array, filepath_equil, og; numOsamples=numOsamples, verbose=verbose, distr_dim=distr_dim, visualizeProgress=visualizeProgress, nbatch=nbatch, distributed=distributed, flip_F_EpRz_pitch=flip_F_EpRz_pitch, performance=true, GCP=getGCP(FI_species), extra_kw_args... )
+    F_os_raw, class_distr, nfast = ps2os_streamlined(F_EpRz, E_array_ps, p_array, R_array, z_array, filepath_equil, og; numOsamples=numOsamples, verbose=verbose, distr_dim=distr_dim, visualizeProgress=visualizeProgress, nbatch=nbatch, distributed=distributed, sign_o_pitch_wrt_B=sign_o_pitch_wrt_B, performance=true, GCP=getGCP(FI_species), extra_kw_args... )
 else
     if (@isdefined jacobian)
         verbose && println("Transforming a non-distribution quantity from (E,p,R,z) to (E,pm,Rm)... ")

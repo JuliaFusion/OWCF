@@ -16,11 +16,11 @@
 # filepath_equil - The path to the .eqdsk-file (or .geqdsk/.jld2-file) with the tokamak magnetic equilibrium and geometry - String
 # filepath_W - The path to the weights file to use as blueprint for the orbit grid. If desired. - String
 # filepath_OG - The path to the output file from calcOrbGrid.jl. If specified, ps2os.jl will use that as the (E,pm,Rm) grid points - String
-# flip_F_EpRz_pitch - If true, then the (E,p,R,z) quantity will be mirrored in pitch. Only put this Bool to true when working with old .h5-file distributions (16th April 2021 and earlier), or if you know what you are doing. - Bool
 # folderpath_o - Path to folder where you want your results. End with '/' (or '\' if Windows...) - String'
 # numOsamples - The number of orbit samples you want. The more, the better the transform. But takes longer to compute! - Int64
 # nbatch - The algorithm will save the progress every nbatch sample. Useful if the sampling gets cancelled unexpectedly - Int64
 # os_equidistant - If true, script assumes equidistant orbit grid. False not supported yet - Boolean
+# sign_o_pitch_wrt_B - If true, script assumes sign of pitch (v_||/v) of input quantity to be defined w.r.t the B-field, and not the plasma current (OWCF standard) - Boolean
 # timepoint - The timepoint of the tokamak shot for the magnetic equilibrium. Format XX,YYYY where XX are seconds and YYYY are decimals - String
 # tokamak - The tokamak for which the topological map is created - String
 # TRANSP_id - The TRANSP id to extract tokamak/equilibrium data from - String
@@ -98,12 +98,12 @@ end
     filepath_equil = "" #JET/g94701/g94701_0-50.7932.eqdsk  #JET/g96100/g96100_0-53.0012.eqdsk
     filepath_W = ""
     filepath_OG = ""
-    flip_F_EpRz_pitch = false # Should be set to false, unless you know what you are doing
     folderpath_o = "../OWCF_results/template/" # Output folder path. Finish with '/'
     folderpath_OWCF = $folderpath_OWCF # Set path to OWCF folder to same as main process (hence the '$')
     numOsamples = 12_000_000 # The total number of monte-carlo samples for the fast-ion distribution, if that is the (E,p,R,z) quantity
     nbatch = 100_000 # The algorithm will save the sampling progress every nbatch sample
     os_equidistant = true # False is not possible yet.
+    sign_o_pitch_wrt_B = false # Set to true, if sign(dot(J,B))<0 and the sign of the pitch of the input quantity at filepath_EpRz is defined w.r.t. to the B-field (and not the plasma current)
     timepoint = nothing # If unknown, just leave as nothing. The algorithm will try to figure it out automatically.
     tokamak = "" # If unknown, leave as ""
     TRANSP_id = "" # If unknown, leave as ""
