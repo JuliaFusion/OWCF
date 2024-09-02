@@ -2802,13 +2802,14 @@ Keyword arguments:
 - S0 - Source amplitude at injection point
 - g - Function of speed (v). exp(-g(v)) governs speed diffusion above injection speed
 - dampen - If true, the slowing-down function will be damped below v_L (please see final eq. in W.G.F. Core, Nucl. Fusion 33, 829 (1993)) using the error function complement
-- v_damp - If specified, the slowing-down function (SDF) will be dampened below the speed of v_damp (in m/s). If not specified and 'dampen' is set to true, the SDF will be dampened below v_L (see function code).
+- damp_type - If 'dampen' is set to true, damp_type specifies the type of damping. :linear and :erfc (complementory error function) currently supported
+- v_damp - If specified, the slowing-down function (SDF) will be dampened below the speed of v_damp (in m/s). If not specified, 'dampen' is set to true and 'damp_type' is set to :erfc, the SDF will be dampened below v_L (see function code).
 - returnExtra - If true, (in addition to f_SD) v_c, v_L, τ_s and α_0 will be returned
 
 This function should not be used directly, but always via the slowing_down_function() function, to avoid confusing between 
 energy (E) and speed (v) grid points input.
 """
-function _slowing_down_function_core(v_0::Real, p_0::Real, v_array::Vector{T} where {T<:Real}, p_array::Vector{T} where {T<:Real}, n_e::Real, T_e::Real, species_f::String, species_th_vec::Vector{String}, n_th_vec::Vector{T} where {T<:Real}, T_th_vec::Vector{T} where {T<:Real}; S0::Float64=1.0, g=(v-> v), dampen::Bool=false, v_damp::Union{Nothing,Real}=nothing, returnExtra::Bool=false)
+function _slowing_down_function_core(v_0::Real, p_0::Real, v_array::Vector{T} where {T<:Real}, p_array::Vector{T} where {T<:Real}, n_e::Real, T_e::Real, species_f::String, species_th_vec::Vector{String}, n_th_vec::Vector{T} where {T<:Real}, T_th_vec::Vector{T} where {T<:Real}; S0::Float64=1.0, g=(v-> v), dampen::Bool=false, damp_type::Symbol=:erfc, v_damp::Union{Nothing,Real}=nothing, returnExtra::Bool=false)
     m_e = (GuidingCenterOrbits.e_amu)*(GuidingCenterOrbits.mass_u) # Electron mass, kg
     τ_s = spitzer_slowdown_time(n_e, T_e, species_f, species_th_vec, n_th_vec, T_th_vec) # Spitzer slowing-down time, s
     Z_th_vec = getSpeciesEcu.(species_th_vec) # Atomic charge number for all thermal plasma ion species
@@ -2829,11 +2830,19 @@ function _slowing_down_function_core(v_0::Real, p_0::Real, v_array::Vector{T} wh
     if returnExtra || dampen
         v_L = v_c * ((1+(v_c/v_0)^3)*exp((3/(4*β))*((1-abs(p_0))/(1+abs(p_0))))-1)^(-1/3)
         v_damp = isnothing(v_damp) ? v_L : v_damp # If v_damp is specified, use v_damp. If not, use v_L
-        if dampen && (v_damp>0.0)
+        nv = length(v_array)
+        if damp_type==:erfc && (v_damp>0.0)
             FWHM = v_damp/10 
             sigma = FWHM/(2*sqrt(2*log(2))) # Based on the formula for FWHM for Gaussians
-            damp_factors = reshape(erfc.((-1) .*(v_array .- v_damp); sigma=sigma) ./2,(length(v_array),1)) # Factors range between 0 and 1
+            damp_factors = reshape(erfc.((-1) .*(v_array .- v_damp); sigma=sigma) ./2,(nv,1)) # Factors range between 0 and 1
             f_SD = damp_factors .*f_SD
+        elseif damp_type==:linear
+            damp_factors = reshape(collect(range(eps(),stop=1,length=nv)),(nv,1))
+            f_SD = damp_factors .*f_SD
+        else
+            if !(damp_type in [:erfc, :linear])
+                error("Unknown damp_type. Currently valid types are :erfc and :linear. Please correct and re-try.")
+            end
         end
         if returnExtra
             return f_SD, v_c, v_L, τ_s, α_0
