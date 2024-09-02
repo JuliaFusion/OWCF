@@ -127,7 +127,7 @@ class Reactant:
 
     # Convenience functions for sampling various distributions
 
-    def sample_maxwellian_dist(self, T, pitch_range=[-1,1], v_rot=np.array([0.0,0.0,0.0])):
+    def sample_maxwellian_dist(self, T, pitch_range=[-1,1], v_rot=np.reshape(np.array([0.0,0.0,0.0]),(3,1))):
         """ Sample reactant four-momenta from a Maxwellian distribution with a given temperature T
         (with uniform pitch distribution in a given range pitch_range). Units in keV.
 
