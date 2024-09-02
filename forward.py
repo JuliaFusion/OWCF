@@ -33,7 +33,7 @@ class Forward(object):
 
 
     def calc(self, E, p, R, z, weights, bulk_dist, Ed_bins, B_vec,
-            n_repeat=1, reaction='d-d', bulk_temp='', bulk_dens='', flr=False, v_rot=np.array([0.0,0.0,0.0]), prompt_gamma_energy=None):
+            n_repeat=1, reaction='d-d', bulk_temp='', bulk_dens='', flr=False, v_rot=np.reshape(np.array([0.0,0.0,0.0]),(3,1)), prompt_gamma_energy=None):
         """
         Calculate spectrum for fast ion(s) (specified by the N (E,p,R,z) points)
         reacting with the given bulk distribution, for a given viewing cone
@@ -84,18 +84,17 @@ class Forward(object):
                 if (not len(bulk_temp)==len(E)) or (not len(bulk_dens)==len(E)):
                     raise Exception("bulk_temp and/or bulk_dens was not equal in length to the E,p,R,z and weights input. Please correct and re-try.")
         # Repeat inputs, to prepare for gyro-angle sampling
-        E = E.repeat(n_repeat)
-        p = p.repeat(n_repeat)
+        E = E.repeat(n_repeat) # Repeat n_repeat number of times, for gyro-angle sampling
+        p = p.repeat(n_repeat) # ...
         R = R.repeat(n_repeat)
         z = z.repeat(n_repeat)
         weights = weights.repeat(n_repeat)
         B_vec = B_vec.repeat(n_repeat, axis=1)
-        if not np.sum(v_rot) == 0.0:
-            v_rot = v_rot.repeat(n_repeat, axis=1)
         if bulk_dist=='' and (not calcProjVel):
             bulk_temp = bulk_temp.repeat(n_repeat)
             bulk_dens = bulk_dens.repeat(n_repeat)
-        
+        if not (np.sum(v_rot) == 0.0):
+            v_rot = v_rot.repeat(n_repeat, axis=1) # Repeat n_repeat number of times, for gyro-angle sampling        
         spec_calc = spec.SpectrumCalculator(reaction=reaction)
         m = spec_calc.ma # The mass of the fast ion (in keV/c**2)
 
@@ -136,7 +135,9 @@ class Forward(object):
             R_vc = R[i_points] # Extract R points within diagnostic viewing cone
             z_vc = z[i_points] # Extract z points within diagnostic viewing cone
             v_vc = v[:,i_points] # Extract v vectors with origins within diagnostic viewing cone
-            v_rot_vc = v_rot[:,i_points] # Extract v_rot vectors with origins within diagnostic viewing cone
+            v_rot_vc = v_rot # Just for script functionality
+            if not (np.sum(v_rot) == 0.0):
+                v_rot_vc = v_rot[:,i_points] # Extract v_rot vectors with origins within diagnostic viewing cone
             weights_vc = weights[i_points] # Extract weights corresponding to R,z points within diagnostic viewing cone
             if bulk_dist=='' and (not calcProjVel):
                 bulk_temp_vc = bulk_temp[i_points]

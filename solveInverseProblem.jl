@@ -46,9 +46,9 @@ for i in eachindex(lines)
 end
 close(datafile)
 gi_KM14 = findall(x-> x>=7.75 && x<=9.5,Ed_array_S_KM14)
-Ed_array_S_KM14 = Ed_array_S_KM14[gi_KM14]
-S_exp_KM14 = spec_KM14[gi_KM14]
-err_exp_KM14 = spec_err_KM14[gi_KM14] 
+Ed_array_S_KM14_orig = Ed_array_S_KM14[gi_KM14]
+S_exp_KM14_orig = spec_KM14[gi_KM14]
+err_exp_KM14_orig = spec_err_KM14[gi_KM14] 
 ###########################################################
 # KM15
 filepath_KM15_data = "/home/henrikj/Documents/dissemination/papers/99971_2Drec_paper/data/KM15/99971_data_KM15_t=48.5_49.5s.dat"
@@ -67,9 +67,9 @@ for i in eachindex(lines)
 end
 close(datafile)
 gi_KM15 = findall(x-> x>=7.75 && x<=9.5,Ed_array_S_KM15)
-Ed_array_S_KM15 = Ed_array_S_KM15[gi_KM15]
-S_exp_KM15 = spec_KM15[gi_KM15]
-err_exp_KM15 = spec_err_KM15[gi_KM15] 
+Ed_array_S_KM15_orig = Ed_array_S_KM15[gi_KM15]
+S_exp_KM15_orig = spec_KM15[gi_KM15]
+err_exp_KM15_orig = spec_err_KM15[gi_KM15] 
 ###########################################################
 # MPRu
 using HDF5
@@ -79,21 +79,21 @@ spec_err_MPRu = read(myfile["erro_array"])
 spec_MPRu = read(myfile["spec_array"])
 close(myfile)
 gi_MPRu = findall(x-> x>=20.0 && x<=60.0,Ed_array_S_MPRu)
-Ed_array_S_MPRu = Ed_array_S_MPRu[gi_MPRu]
-S_exp_MPRu = spec_MPRu[gi_MPRu]
-err_exp_MPRu = spec_err_MPRu[gi_MPRu] 
+Ed_array_S_MPRu_orig = Ed_array_S_MPRu[gi_MPRu]
+S_exp_MPRu_orig = spec_MPRu[gi_MPRu]
+err_exp_MPRu_orig = spec_err_MPRu[gi_MPRu] 
 ###########################################################
-pltKM14nKM15 = Plots.scatter(Ed_array_S_KM14,S_exp_KM14; label="KM14",markershape=:diamond,markersize=4,markercolor=:green)
-pltKM14nKM15 = Plots.yerror!(Ed_array_S_KM14,S_exp_KM14; yerror=err_exp_KM14)
+pltKM14nKM15 = Plots.scatter(Ed_array_S_KM14_orig,S_exp_KM14_orig; label="KM14",markershape=:diamond,markersize=4,markercolor=:green)
+pltKM14nKM15 = Plots.yerror!(Ed_array_S_KM14_orig,S_exp_KM14_orig; yerror=err_exp_KM14_orig)
 pltKM14nKM15 = Plots.plot!(xlabel="Deposited energy [MeV]",ylabel="Counts",yaxis=:identity)
 pltKM14nKM15 = Plots.plot!(title="Experimental data",xtickfontsize=13,xguidefontsize=14)
 pltKM14nKM15 = Plots.plot!(ytickfontsize=13,yguidefontsize=14)
 pltKM14nKM15 = Plots.plot!(titlefontsize=15)
-pltKM14nKM15 = Plots.scatter!(Ed_array_S_KM15,S_exp_KM15; label="KM15",markershape=:diamond,markersize=4,markercolor=:red)
-pltKM14nKM15 = Plots.yerror!(Ed_array_S_KM15,S_exp_KM15; yerror=err_exp_KM15)
+pltKM14nKM15 = Plots.scatter!(Ed_array_S_KM15_orig,S_exp_KM15_orig; label="KM15",markershape=:diamond,markersize=4,markercolor=:red)
+pltKM14nKM15 = Plots.yerror!(Ed_array_S_KM15_orig,S_exp_KM15_orig; yerror=err_exp_KM15_orig)
 
-pltMPRu = Plots.scatter(Ed_array_S_MPRu,S_exp_MPRu; label="MPRu",markershape=:diamond,markersize=4,mc=:purple)
-pltMPRu = Plots.yerror!(Ed_array_S_MPRu,S_exp_MPRu; yerror=err_exp_MPRu)
+pltMPRu = Plots.scatter(Ed_array_S_MPRu_orig,S_exp_MPRu_orig; label="MPRu",markershape=:diamond,markersize=4,mc=:purple)
+pltMPRu = Plots.yerror!(Ed_array_S_MPRu_orig,S_exp_MPRu_orig; yerror=err_exp_MPRu_orig)
 pltMPRu = Plots.plot!(xlabel="Proton impact position [cm]",ylabel="Counts",yaxis=:identity)
 pltMPRu = Plots.plot!(title="Experimental data",xtickfontsize=13,xguidefontsize=14)
 pltMPRu = Plots.plot!(ytickfontsize=13,yguidefontsize=14)
@@ -103,7 +103,7 @@ pltMPRu = Plots.plot!(titlefontsize=15)
 using JLD2
 using HDF5
 using FileIO
-filepath_W = "/home/henrikj/Codes/OWCF_results/cycle31/13/weights/velWeights_JET_99971L72_at8,9s_KM14_T-d=n-4He.hdf5"
+filepath_W = "/home/henrikj/Codes/OWCF_results/cycle31/17/weights/velWeights_JET_99971L72_at8,9s_KM14_T-d=n-4He.hdf5"
 myfile = h5open(filepath_W,"r")
 W_KM14 = read(myfile["W"])
 Ed_array_W_KM14 = read(myfile["Ed_array"])
@@ -115,7 +115,7 @@ close(myfile)
 ###########################################################
 # Define coarse grid vectors. Compute interpolations of 
 # weight functions onto coarse grid.
-E_coarse = collect(range(minimum(E_array),stop=500.0,length=100))
+E_coarse = collect(range(minimum(E_array),stop=250.0,length=100))
 p_coarse = collect(range(extrema(p_array)...,length=35))
 using Interpolations
 nodes = (Ed_array_W_KM14, E_array, p_array)
@@ -123,13 +123,13 @@ nodes = (Ed_array_W_KM14, E_array, p_array)
 # Create interpolation object
 itp = interpolate(nodes, W_KM14, Gridded(Linear()))
 
-W_coarse_KM14 = zeros(length(Ed_array_S_KM14),length(E_coarse),length(p_coarse)) # Pre-allocate 4D array
+W_coarse_KM14 = zeros(length(Ed_array_S_KM14_orig),length(E_coarse),length(p_coarse)) # Pre-allocate 4D array
 numObadInds = 0
-for Edi=1:length(Ed_array_S_KM14)
+for Edi=1:length(Ed_array_S_KM14_orig)
     for Ei=1:length(E_coarse)
         for pi=1:length(p_coarse)
             try
-                W_coarse_KM14[Edi,Ei,pi] = itp(Ed_array_S_KM14[Edi],E_coarse[Ei],p_coarse[pi]) # Interpolate at 3D query point
+                W_coarse_KM14[Edi,Ei,pi] = itp(Ed_array_S_KM14_orig[Edi],E_coarse[Ei],p_coarse[pi]) # Interpolate at 3D query point
             catch
                 numObadInds += 1
                 debug && println("(Edi: $(Edi), Ei: $(Ei), pi: $(pi)) <--- Interpolation failed for this index") # Print if failed (should not happen)
@@ -137,10 +137,14 @@ for Edi=1:length(Ed_array_S_KM14)
         end
     end
 end
-W_2D_KM14_orig = reshape(W_coarse_KM14,(length(Ed_array_S_KM14),length(E_coarse)*length(p_coarse)))
+W_2D_KM14_orig = reshape(W_coarse_KM14,(length(Ed_array_S_KM14_orig),length(E_coarse)*length(p_coarse)))
+###########################################################
+for iEd in axes(W_coarse_KM14,1)
+    display(Plots.heatmap(E_coarse,p_coarse,W_coarse_KM14[iEd,:,:]'))
+end
 ###########################################################
 # Load the KM15 weight functions
-filepath_W_KM15 = "/home/henrikj/Codes/OWCF_results/cycle31/13/weights/velWeights_JET_99971L72_at8,9s_KM15_T-d=n-4He.hdf5"
+filepath_W_KM15 = "/home/henrikj/Codes/OWCF_results/cycle31/17/weights/velWeights_JET_99971L72_at8,9s_KM15_T-d=n-4He.hdf5"
 myfile = h5open(filepath_W_KM15,"r")
 W_KM15 = read(myfile["W"])
 W_KM15_raw = read(myfile["W_raw"])
@@ -152,13 +156,13 @@ close(myfile)
 # Do an equivalent interpolation for the KM15, as for the KM14
 nodes = (Ed_array_W_KM15, E_array, p_array)
 itp = interpolate(nodes, W_KM15, Gridded(Linear()))
-W_coarse_KM15 = zeros(length(Ed_array_S_KM15),length(E_coarse),length(p_coarse)) # Pre-allocate 4D array
+W_coarse_KM15 = zeros(length(Ed_array_S_KM15_orig),length(E_coarse),length(p_coarse)) # Pre-allocate 4D array
 numObadInds = 0
-for Edi=1:length(Ed_array_S_KM15)
+for Edi=1:length(Ed_array_S_KM15_orig)
     for Ei=1:length(E_coarse)
         for pi=1:length(p_coarse)
             try
-                W_coarse_KM15[Edi,Ei,pi] = itp(Ed_array_S_KM15[Edi],E_coarse[Ei],p_coarse[pi]) # Interpolate at 3D query point
+                W_coarse_KM15[Edi,Ei,pi] = itp(Ed_array_S_KM15_orig[Edi],E_coarse[Ei],p_coarse[pi]) # Interpolate at 3D query point
             catch
                 numObadInds += 1
                 debug && println("(Edi: $(Edi), Ei: $(Ei), pi: $(pi)) <--- Interpolation failed for this index") # Print if failed (should not happen)
@@ -166,7 +170,11 @@ for Edi=1:length(Ed_array_S_KM15)
         end
     end
 end
-W_2D_KM15_orig = reshape(W_coarse_KM15,(length(Ed_array_S_KM15),length(E_coarse)*length(p_coarse)))
+W_2D_KM15_orig = reshape(W_coarse_KM15,(length(Ed_array_S_KM15_orig),length(E_coarse)*length(p_coarse)))
+###########################################################
+for iEd in axes(W_coarse_KM15,1)
+    display(Plots.heatmap(E_coarse,p_coarse,W_coarse_KM15[iEd,:,:]'))
+end
 ###########################################################
 # Compute the MPRu weight functions by multiplying the KM15_raw weight functions with the MPRu instrumental response
 # Then, interpolate onto a nice grid
@@ -194,13 +202,13 @@ end
 
 nodes = (X_array_transf, E_array, p_array)
 itp = interpolate(nodes, W_MPRu_orig, Gridded(Linear()))
-W_coarse_MPRu = zeros(length(Ed_array_S_MPRu),length(E_coarse),length(p_coarse)) # Pre-allocate 4D array
+W_coarse_MPRu = zeros(length(Ed_array_S_MPRu_orig),length(E_coarse),length(p_coarse)) # Pre-allocate 4D array
 numObadInds = 0
-for Edi=1:length(Ed_array_S_MPRu)
+for Edi=1:length(Ed_array_S_MPRu_orig)
     for Ei=1:length(E_coarse)
         for pi=1:length(p_coarse)
             try
-                W_coarse_MPRu[Edi,Ei,pi] = itp(Ed_array_S_MPRu[Edi],E_coarse[Ei],p_coarse[pi]) # Interpolate at 3D query point
+                W_coarse_MPRu[Edi,Ei,pi] = itp(Ed_array_S_MPRu_orig[Edi],E_coarse[Ei],p_coarse[pi]) # Interpolate at 3D query point
             catch
                 numObadInds += 1
                 debug && println("(Xpos: $(Edi), Ei: $(Ei), pi: $(pi)) <--- Interpolation failed for this index") # Print if failed (should not happen)
@@ -208,7 +216,7 @@ for Edi=1:length(Ed_array_S_MPRu)
         end
     end
 end
-W_2D_MPRu_orig = reshape(W_coarse_MPRu,(length(Ed_array_S_MPRu),length(E_coarse)*length(p_coarse)))
+W_2D_MPRu_orig = reshape(W_coarse_MPRu,(length(Ed_array_S_MPRu_orig),length(E_coarse)*length(p_coarse)))
 ###########################################################
 for iEd in axes(W_coarse_MPRu,1)
     display(Plots.heatmap(E_coarse,p_coarse,W_coarse_MPRu[iEd,:,:]'))
@@ -238,24 +246,24 @@ Plots.heatmap(E_coarse,p_coarse,f_test',title="Ground truth")
 # Compute and plot synthetic signal
 f_1D = reshape(f_test,(length(E_coarse)*length(p_coarse),1))
 S_synth_KM14_clean = dropdims(W_2D_KM14_orig * f_1D,dims=2)
-Plots.plot(Ed_array_S_KM14,S_synth_KM14_clean)
+Plots.plot(Ed_array_S_KM14_orig,S_synth_KM14_clean)
 ###########################################################
 # Add noise to the signal. Superimpose it on signal plot
 k = 0.1
 b = 0.05
 include("extra/dependencies.jl")
 S_synth_KM14_noisy, err_synth_KM14 = add_noise(S_synth_KM14_clean, b; k=k)
-Plots.plot!(Ed_array_S_KM14,S_synth_KM14_noisy)
+Plots.plot!(Ed_array_S_KM14_orig,S_synth_KM14_noisy)
 ###########################################################
 S_synth_KM15_clean = dropdims(W_2D_KM15_orig * f_1D,dims=2)
-Plots.plot!(Ed_array_S_KM15, S_synth_KM15_clean)
+Plots.plot!(Ed_array_S_KM15_orig, S_synth_KM15_clean)
 S_synth_KM15_noisy, err_synth_KM15 = add_noise(S_synth_KM15_clean, b; k=k)
-Plots.plot!(Ed_array_S_KM15,S_synth_KM15_noisy)
+Plots.plot!(Ed_array_S_KM15_orig,S_synth_KM15_noisy)
 ###########################################################
 S_synth_MPRu_clean = dropdims(W_2D_MPRu_orig * f_1D,dims=2)
-Plots.plot(Ed_array_S_MPRu,S_synth_MPRu_clean)
+Plots.plot(Ed_array_S_MPRu_orig,S_synth_MPRu_clean)
 S_synth_MPRu_noisy, err_synth_MPRu = add_noise(S_synth_MPRu_clean, b; k=k)
-Plots.plot!(Ed_array_S_MPRu,S_synth_MPRu_noisy)
+Plots.plot!(Ed_array_S_MPRu_orig,S_synth_MPRu_noisy)
 ###########################################################
 # Remnant code from earlier version
 function nonunique2(x::AbstractArray{T}) where T
@@ -269,10 +277,56 @@ function nonunique2(x::AbstractArray{T}) where T
     duplicatevector
 end
 ###########################################################
-# Execute part of extra/getEpRzFIdistrFromTRANSP.jl
+using NetCDF
+"""
+read_ncdf(filepath; vars=nothing)
+
+# Function description here
+"""
+function read_ncdf(filepath::String; wanted_keys=nothing)
+
+    d = Dict()
+    d["err"] = 1
+    if isfile(filepath)
+        d["err"] = 0
+        NetCDF.open(filepath) do nc
+            cdf_variables = nc.vars
+            if !(wanted_keys==nothing)
+                for wanted_key in wanted_keys
+                    if wanted_key in keys(cdf_variables)
+                        values = NetCDF.readvar(nc,wanted_key)
+                        if () == size(values) # If the size of values is 0 (i.e. values is a scalar)
+                            d[wanted_key] = first(values) # Take the 'first' element, parse a float and store it in d with key 'wanted_key'
+                        else
+                            if typeof(values) <: Vector{NetCDF.ASCIIChar}
+                                values = reduce(*,map(x-> "$(x)",values)) # Concatenate all ASCII characters into one string
+                            end
+                            d[wanted_key] = values # Parse all elements in values as floats and store them as an array in d with key 'wanted_key'
+                        end
+                    end
+                end
+            else
+                for (key,_) in cdf_variables
+                    values = NetCDF.readvar(nc,key)
+                    if () == size(values) # If the size of values is 0 (i.e values is a scalar)
+                        d[key] = first(values) # Take the 'first' element, parse a float and store it in d with key 'wanted_key'
+                    else
+                        if typeof(values) <: Vector{NetCDF.ASCIIChar}
+                            values = reduce(*,map(x-> "$(x)",values)) # Concatenate all ASCII characters into one string
+                        end
+                        d[key] = values # Parse all elements in values as floats and store them as an array in d with key 'wanted_key'
+                    end
+                end
+            end
+        end
+    else
+        error("FILE DOES NOT EXIST: "*filepath)
+    end
+    return d
+end
 ###########################################################
 # Create SD basis functions
-using NetCDF
+include("extra/dependencies.jl")
 include("misc/temp_n_dens.jl")
 my_dict = read_ncdf("/home/henrikj/Data/JET/TRANSP/99971/L72/99971L72_fi_2.cdf",wanted_keys=["TIME"])
 t_mid = my_dict["TIME"]
@@ -304,7 +358,7 @@ F_SD = zeros(length(E_coarse)*length(p_coarse),length(E0_array)*length(p0_array)
 i_SD = 1
 for E_0 in E0_array, p_0 in p0_array
     #println("$(round(100*i_SD/(length(E_coarse)*length(p_coarse)),digits=3)) %")
-    f_SD = slowing_down_function(E_0, p_0, E_coarse, p_coarse, n_e, T_e, "D", ["T","D"], [n_T, n_D], [T_T, T_D]; dampen=true, E_tail_length=50.0)
+    f_SD = slowing_down_function(E_0, p_0, E_coarse, p_coarse, n_e, T_e, "D", ["T","D"], [n_T, n_D], [T_T, T_D]; dampen=true, damp_type=:linear)
     #println(extrema(f_SD))
     dE = diff(E_coarse)[1]
     dp = diff(p_coarse)[1]
@@ -350,25 +404,51 @@ W_SD_MPRu_orig = W_2D_MPRu_orig*F_SD_new
 # compared with the experimental data. If none of the signals are within an 
 # order of magnitude from the maximum of any of the experimental signals, 
 # the weight functions should be re-scaled as below
-W_2D_KM14 = (maximum(S_exp_KM14)/maximum(S_synth_KM14_clean)) .*W_SD_KM14_orig
-W_2D_KM15 = (maximum(S_exp_KM15)/maximum(S_synth_KM15_clean)) .*W_SD_KM15_orig
-W_2D_MPRu = (maximum(S_exp_MPRu)/maximum(S_synth_MPRu_clean)) .*W_SD_MPRu_orig
+W_2D_KM14_a = (maximum(S_exp_KM14_orig)/maximum(S_synth_KM14_clean)) .*W_SD_KM14_orig
+W_2D_KM15_a = (maximum(S_exp_KM15_orig)/maximum(S_synth_KM15_clean)) .*W_SD_KM15_orig
+W_2D_MPRu_a = (maximum(S_exp_MPRu_orig)/maximum(S_synth_MPRu_clean)) .*W_SD_MPRu_orig
 ###########################################################
 # Try using the non-rescaled weight functions on the experimental data
-W_2D_KM14 = W_SD_KM14_orig#W_2D_KM14_orig
-W_2D_KM15 = W_SD_KM15_orig#W_2D_KM15_orig
-W_2D_MPRu = W_SD_MPRu_orig#W_2D_MPRu_orig
+W_2D_KM14_a = W_SD_KM14_orig#W_2D_KM14_orig
+W_2D_KM15_a = W_SD_KM15_orig#W_2D_KM15_orig
+W_2D_MPRu_a = W_SD_MPRu_orig#W_2D_MPRu_orig
 ###########################################################
 # Prepare experimental data problem first
 noise_floor_factor = 1.0e-4
-noise_floor_KM14 = maximum(S_exp_KM14)*noise_floor_factor
-noise_floor_KM15 = maximum(S_exp_KM15)*noise_floor_factor
-noise_floor_MPRu = maximum(S_exp_MPRu)*noise_floor_factor
-replace!(x-> (x<noise_floor_KM14) ? noise_floor_KM14 : x, err_exp_KM14)
-replace!(x-> (x<noise_floor_KM15) ? noise_floor_KM15 : x, err_exp_KM15)
-replace!(x-> (x<noise_floor_MPRu) ? noise_floor_MPRu : x, err_exp_MPRu)
-W_hat = vcat(W_2D_KM14 ./err_exp_KM14, W_2D_KM15 ./err_exp_KM15) #W_hat = vcat(W_2D_KM14 ./err_exp_KM14, W_2D_KM15 ./err_exp_KM15, W_2D_MPRu ./err_exp_MPRu)
-s_hat = vcat(S_exp_KM14 ./err_exp_KM14, S_exp_KM15 ./err_exp_KM15)
+noise_floor_KM14 = maximum(S_exp_KM14_orig)*noise_floor_factor
+noise_floor_KM15 = maximum(S_exp_KM15_orig)*noise_floor_factor
+noise_floor_MPRu = maximum(S_exp_MPRu_orig)*noise_floor_factor
+err_exp_KM14_a = replace(x-> (x<noise_floor_KM14) ? noise_floor_KM14 : x, err_exp_KM14_orig)
+err_exp_KM15_a = replace(x-> (x<noise_floor_KM15) ? noise_floor_KM15 : x, err_exp_KM15_orig)
+err_exp_MPRu_a = replace(x-> (x<noise_floor_MPRu) ? noise_floor_MPRu : x, err_exp_MPRu_orig)
+###########################################################
+using Base.Sort
+
+function smallestn(a, n)
+  sort(a; alg=Sort.PartialQuickSort(n))[1:n]
+end
+###########################################################
+# Exclude unwanted measurement bins from reconstruction
+good_inds_KM14 = findall(x-> !(x>=8.16 && x<=8.56),Ed_array_S_KM14_orig)
+good_inds_KM15 = findall(x-> !(x>=8.36 && x<=8.76),Ed_array_S_KM15_orig)
+good_inds_MPRu = findall(x-> !(x>= 23.7 && x<= 27.7),Ed_array_S_MPRu_orig)
+zero_inds_MPRu = findall(x-> iszero(x), S_exp_MPRu_orig)
+good_inds_MPRu = filter(x-> !(x in zero_inds_MPRu), good_inds_MPRu)
+
+W_2D_KM14_b = W_2D_KM14_a[good_inds_KM14,:]
+W_2D_KM15_b = W_2D_KM15_a[good_inds_KM15,:]
+W_2D_MPRu_b = W_2D_MPRu_a[good_inds_MPRu,:]
+err_exp_KM14_b = err_exp_KM14_a[good_inds_KM14]
+err_exp_KM15_b = err_exp_KM15_a[good_inds_KM15]
+err_exp_MPRu_b = err_exp_MPRu_a[good_inds_MPRu]
+S_exp_KM14_a = S_exp_KM14_orig[good_inds_KM14]
+S_exp_KM15_a = S_exp_KM15_orig[good_inds_KM15]
+S_exp_MPRu_a = S_exp_MPRu_orig[good_inds_MPRu]
+# Put together one large weight matrix and measurement vector
+W_hat = vcat(W_2D_KM14_b ./err_exp_KM14_b, W_2D_KM15_b ./err_exp_KM15_b, W_2D_MPRu_b ./err_exp_MPRu_b) #W_hat = vcat(W_2D_KM14 ./err_exp_KM14, W_2D_KM15 ./err_exp_KM15, W_2D_MPRu ./err_exp_MPRu)
+s_hat = vcat(S_exp_KM14_a ./err_exp_KM14_b, S_exp_KM15_a ./err_exp_KM15_b, S_exp_MPRu_a ./err_exp_MPRu_b)
+###########################################################
+
 ###########################################################
 # Add 0th order Tikhonov
 L0 = zeros(size(F_SD_new,2),size(F_SD_new,2)) #L0 = zeros(length(f_1D),length(f_1D))
@@ -453,47 +533,63 @@ end
 ilm = argmax(gamma)
 Plots.plot(gamma)
 ###########################################################
-for i=1:length(lambda_values)
+plot_inds = 1:length(lambda_values) #23:27 # [24] #
+for i=plot_inds
     Sr = W_hh*F_sols[:,i]
     myplt = Plots.plot(Sr ./maximum(Sr),title="$(i): log10(λ)=$(log10(lambda_values[i]))",label="ŴF*")
     myplt = Plots.plot!(s_hh,label="hat(Ŝ)")
     display(myplt)
 end
-for i=1:length(lambda_values)
-    Sr_KM14 = W_2D_KM14*F_sols[:,i]
-    myplt = Plots.plot(Ed_array_S_KM14,Sr_KM14 ./maximum(Sr_KM14),title="$(i): log10(λ)=$(log10(lambda_values[i]))",label="WF*")
-    myplt = Plots.plot!(Ed_array_S_KM14,S_exp_KM14 ./maximum(S_exp_KM14),label="S")
+for i=plot_inds
+    Sr_KM14 = W_2D_KM14_b*F_sols[:,i]
+    myplt = Plots.plot(Ed_array_S_KM14_orig[good_inds_KM14],Sr_KM14 ./maximum(Sr_KM14),title="$(i): log10(λ)=$(log10(lambda_values[i]))",label="WF*")
+    myplt = Plots.scatter!(Ed_array_S_KM14_orig[good_inds_KM14],S_exp_KM14_a ./maximum(S_exp_KM14_a),label="S")
     display(myplt)
 end
-for i=1:length(lambda_values)
-    Sr_KM15 = W_2D_KM15*F_sols[:,i]
-    myplt = Plots.plot(Ed_array_S_KM15,Sr_KM15 ./maximum(Sr_KM15),title="$(i): log10(λ)=$(log10(lambda_values[i]))",label="WF*")
-    myplt = Plots.plot!(Ed_array_S_KM15,S_exp_KM15 ./maximum(S_exp_KM15),label="S")
+for i=plot_inds
+    Sr_KM15 = W_2D_KM15_b*F_sols[:,i]
+    myplt = Plots.plot(Ed_array_S_KM15_orig[good_inds_KM15],Sr_KM15 ./maximum(Sr_KM15),title="$(i): log10(λ)=$(log10(lambda_values[i]))",label="WF*")
+    myplt = Plots.scatter!(Ed_array_S_KM15_orig[good_inds_KM15],S_exp_KM15_a ./maximum(S_exp_KM15_a),label="S")
     display(myplt)
 end
-for i=1:length(lambda_values)
-    Sr_MPRu = W_2D_MPRu*F_sols[:,i]
-    myplt = Plots.plot(Ed_array_S_MPRu,Sr_MPRu ./maximum(Sr_MPRu),title="$(i): log10(λ)=$(log10(lambda_values[i]))",label="WF*")
-    myplt = Plots.plot!(Ed_array_S_MPRu,S_exp_MPRu ./maximum(S_exp_MPRu),label="S")
+for i=plot_inds
+    Sr_MPRu = W_2D_MPRu_b*F_sols[:,i]
+    myplt = Plots.plot(Ed_array_S_MPRu_orig[good_inds_MPRu],Sr_MPRu ./maximum(Sr_MPRu),title="$(i): log10(λ)=$(log10(lambda_values[i]))",label="WF*")
+    myplt = Plots.scatter!(Ed_array_S_MPRu_orig[good_inds_MPRu],S_exp_MPRu_a ./maximum(S_exp_MPRu_a),label="S")
     display(myplt)
 end
-for i=1:length(lambda_values)
+anim = @animate for i=plot_inds
     Fr_2D = reshape(F_SD_new*F_sols[:,i],length(E_coarse),length(p_coarse))#reshape(F_sols[:,i],size(f_test))
     gi = findall(x-> x<250.0,E_coarse)
     myplt = Plots.heatmap(E_coarse[gi],p_coarse,Fr_2D[gi,:]',title="$(i): log10(λ)=$(log10(lambda_values[i]))",fillcolor=cgrad([:white, :yellow, :orange, :red, :black]))
-    p0, pN = extrema(p_sols); diffP = abs(pN-p0)
-    x0, xN = extrema(x_sols); diffX = abs(xN-x0)
-    l_mag = sqrt((p_sols[i]-p0)*(p_sols[i]-p0)/(diffP*diffP)+(x_sols[i]-x0)*(x_sols[i]-x0)/(diffX*diffX))
-    myplt1 = Plots.plot([0,p_sols[i]],[0,x_sols[i]],color=:black,title="||L_n||=$(round(l_mag,sigdigits=4))",label="")
-    myplt1 = Plots.plot!(p_sols,x_sols,xlims=(minimum(p_sols)-0.05*diffP, maximum(p_sols)+0.05*diffP),ylims=(minimum(x_sols)-0.05*diffX, maximum(x_sols)+0.05*diffX),label="")
-    myplt1 = Plots.scatter!(myplt1, [p_sols[1]],[x_sols[1]],label="Start")
-    myplt1 = Plots.scatter!(myplt1, [p_sols[end]],[x_sols[end]],label="End")
-    myplt1 = Plots.scatter!(myplt1, [p_sols[ilm]],[x_sols[ilm]],label="gamma_max")
-    myplt1 = Plots.scatter!(myplt1, [p_sols[i]],[x_sols[i]],label="$(round(log10(lambda_values[i]),sigdigits=4))")
-    myplt_tot = Plots.plot(myplt,myplt1,layout=(1,2),size=(900,400))
-    display(myplt_tot)  
+    #p0, pN = extrema(p_sols); diffP = abs(pN-p0)
+    #x0, xN = extrema(x_sols); diffX = abs(xN-x0)
+    #l_mag = sqrt((p_sols[i]-p0)*(p_sols[i]-p0)/(diffP*diffP)+(x_sols[i]-x0)*(x_sols[i]-x0)/(diffX*diffX))
+    #myplt1 = Plots.plot([0,p_sols[i]],[0,x_sols[i]],color=:black,title="||L_n||=$(round(l_mag,sigdigits=4))",label="")
+    #myplt1 = Plots.plot!(p_sols,x_sols,xlims=(minimum(p_sols)-0.05*diffP, maximum(p_sols)+0.05*diffP),ylims=(minimum(x_sols)-0.05*diffX, maximum(x_sols)+0.05*diffX),label="")
+    #myplt1 = Plots.scatter!(myplt1, [p_sols[1]],[x_sols[1]],label="Start")
+    #myplt1 = Plots.scatter!(myplt1, [p_sols[end]],[x_sols[end]],label="End")
+    #myplt1 = Plots.scatter!(myplt1, [p_sols[ilm]],[x_sols[ilm]],label="gamma_max")
+    #myplt1 = Plots.scatter!(myplt1, [p_sols[i]],[x_sols[i]],label="$(round(log10(lambda_values[i]),sigdigits=4))")
+    #myplt_tot = Plots.plot(myplt,myplt1,layout=(1,2),size=(900,400))
+    #display(myplt_tot)  
+    display(myplt)
 end
-#gif(anim,"test.gif",fps=2)
+gif(anim,"test.gif",fps=2)
+###########################################################
+Ni = plot_inds[26]
+Fr_2D = reshape(F_SD_new*F_sols[:,Ni],length(E_coarse),length(p_coarse))#reshape(F_sols[:,i],size(f_test))
+gi = findall(x-> x<250.0,E_coarse)
+E_array_for_saving = E_coarse[gi]
+p_array_for_saving = p_coarse
+lambda_for_saving = lambda_values[Ni]
+F_2D_for_saving = Fr_2D[gi,:]
+myfile = jldopen("99971_rec_SD_withRot_c3.jld2",true,true,false,IOStream)
+write(myfile,"F",F_2D_for_saving)
+write(myfile,"E_array",E_array_for_saving)
+write(myfile,"p_array",p_array_for_saving)
+write(myfile,"lambda",lambda_for_saving)
+close(myfile)
 ###########################################################
 # Redo the reconstruction. But for the synthetic case
 # For comparison and sanity check
