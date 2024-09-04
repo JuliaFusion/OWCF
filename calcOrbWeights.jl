@@ -90,6 +90,9 @@ verbose && println("Loading Julia packages... ")
     pushfirst!(PyVector(pyimport("sys")."path"), "") # To add the forward, transp_dists, transp_output and vcone modules (scripts in current path)
 end
 
+# Test
+println("Hej!")
+
 ## ---------------------------------------------------------------------------------------------
 if !analyticalOWs
     reaction_full = deepcopy(reaction) # Make a fully independent copy of the fusion reaction variable
