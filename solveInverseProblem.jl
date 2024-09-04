@@ -372,8 +372,8 @@ anim = @animate for i in 1:100:size(F_SD,2)
     my_plt = Plots.heatmap(E_coarse,p_coarse,f_SD',fillcolor=cgrad([:white, :yellow, :orange, :red, :black]))
     display(my_plt)
 end
-gif(anim,"test.gif",fps=2)
-rm("test.gif"; force=true)
+#gif(anim,"test.gif",fps=2)
+#rm("test.gif"; force=true)
 ###########################################################
 function testyMcTestface(x::T) where T<:Real
     return 2*x
@@ -392,6 +392,15 @@ end
 W_SD_KM14_orig = W_2D_KM14_orig*F_SD_new
 W_SD_KM15_orig = W_2D_KM15_orig*F_SD_new
 W_SD_MPRu_orig = W_2D_MPRu_orig*F_SD_new
+###########################################################
+Plots.plot(Ed_array_S_KM14_orig, S_exp_KM14_orig)
+Plots.plot!(Ed_array_S_KM14_orig, 0.0005 .*W_2D_KM14_orig*f_1D)
+
+Plots.plot(Ed_array_S_KM15_orig, S_exp_KM15_orig)
+Plots.plot!(Ed_array_S_KM15_orig, 0.0010 .*W_2D_KM15_orig*f_1D)
+
+Plots.plot(Ed_array_S_KM15_orig, S_exp_KM15_orig)
+Plots.plot!(Ed_array_S_KM15_orig, 0.0010 .*W_2D_KM15_orig*f_1D)
 ###########################################################
 # Rescale weight functions, if necessary
 # In final OWCF version, code an intelligent check, to 
@@ -448,7 +457,7 @@ S_exp_MPRu_a = S_exp_MPRu_orig[good_inds_MPRu]
 W_hat = vcat(W_2D_KM14_b ./err_exp_KM14_b, W_2D_KM15_b ./err_exp_KM15_b, W_2D_MPRu_b ./err_exp_MPRu_b) #W_hat = vcat(W_2D_KM14 ./err_exp_KM14, W_2D_KM15 ./err_exp_KM15, W_2D_MPRu ./err_exp_MPRu)
 s_hat = vcat(S_exp_KM14_a ./err_exp_KM14_b, S_exp_KM15_a ./err_exp_KM15_b, S_exp_MPRu_a ./err_exp_MPRu_b)
 ###########################################################
-
+#Plots.plot(s_hat)
 ###########################################################
 # Add 0th order Tikhonov
 L0 = zeros(size(F_SD_new,2),size(F_SD_new,2)) #L0 = zeros(length(f_1D),length(f_1D))
@@ -535,8 +544,8 @@ Plots.plot(gamma)
 ###########################################################
 plot_inds = 1:length(lambda_values) #23:27 # [24] #
 for i=plot_inds
-    Sr = W_hh*F_sols[:,i]
-    myplt = Plots.plot(Sr ./maximum(Sr),title="$(i): log10(λ)=$(log10(lambda_values[i]))",label="ŴF*")
+    Sr = (Whm/shm) .*W_hh*F_sols[:,i]
+    myplt = Plots.plot(Sr,title="$(i): log10(λ)=$(log10(lambda_values[i]))",label="ŴF*")
     myplt = Plots.plot!(s_hh,label="hat(Ŝ)")
     display(myplt)
 end
@@ -562,18 +571,18 @@ anim = @animate for i=plot_inds
     Fr_2D = reshape(F_SD_new*F_sols[:,i],length(E_coarse),length(p_coarse))#reshape(F_sols[:,i],size(f_test))
     gi = findall(x-> x<250.0,E_coarse)
     myplt = Plots.heatmap(E_coarse[gi],p_coarse,Fr_2D[gi,:]',title="$(i): log10(λ)=$(log10(lambda_values[i]))",fillcolor=cgrad([:white, :yellow, :orange, :red, :black]))
-    #p0, pN = extrema(p_sols); diffP = abs(pN-p0)
-    #x0, xN = extrema(x_sols); diffX = abs(xN-x0)
-    #l_mag = sqrt((p_sols[i]-p0)*(p_sols[i]-p0)/(diffP*diffP)+(x_sols[i]-x0)*(x_sols[i]-x0)/(diffX*diffX))
-    #myplt1 = Plots.plot([0,p_sols[i]],[0,x_sols[i]],color=:black,title="||L_n||=$(round(l_mag,sigdigits=4))",label="")
-    #myplt1 = Plots.plot!(p_sols,x_sols,xlims=(minimum(p_sols)-0.05*diffP, maximum(p_sols)+0.05*diffP),ylims=(minimum(x_sols)-0.05*diffX, maximum(x_sols)+0.05*diffX),label="")
-    #myplt1 = Plots.scatter!(myplt1, [p_sols[1]],[x_sols[1]],label="Start")
-    #myplt1 = Plots.scatter!(myplt1, [p_sols[end]],[x_sols[end]],label="End")
-    #myplt1 = Plots.scatter!(myplt1, [p_sols[ilm]],[x_sols[ilm]],label="gamma_max")
-    #myplt1 = Plots.scatter!(myplt1, [p_sols[i]],[x_sols[i]],label="$(round(log10(lambda_values[i]),sigdigits=4))")
-    #myplt_tot = Plots.plot(myplt,myplt1,layout=(1,2),size=(900,400))
-    #display(myplt_tot)  
-    display(myplt)
+    p0, pN = extrema(p_sols); diffP = abs(pN-p0)
+    x0, xN = extrema(x_sols); diffX = abs(xN-x0)
+    l_mag = sqrt((p_sols[i]-p0)*(p_sols[i]-p0)/(diffP*diffP)+(x_sols[i]-x0)*(x_sols[i]-x0)/(diffX*diffX))
+    myplt1 = Plots.plot([0,p_sols[i]],[0,x_sols[i]],color=:black,title="||L_n||=$(round(l_mag,sigdigits=4))",label="")
+    myplt1 = Plots.plot!(p_sols,x_sols,xlims=(minimum(p_sols)-0.05*diffP, maximum(p_sols)+0.05*diffP),ylims=(minimum(x_sols)-0.05*diffX, maximum(x_sols)+0.05*diffX),label="")
+    myplt1 = Plots.scatter!(myplt1, [p_sols[1]],[x_sols[1]],label="Start")
+    myplt1 = Plots.scatter!(myplt1, [p_sols[end]],[x_sols[end]],label="End")
+    myplt1 = Plots.scatter!(myplt1, [p_sols[ilm]],[x_sols[ilm]],label="gamma_max")
+    myplt1 = Plots.scatter!(myplt1, [p_sols[i]],[x_sols[i]],label="$(round(log10(lambda_values[i]),sigdigits=4))")
+    myplt_tot = Plots.plot(myplt,myplt1,layout=(1,2),size=(900,400))
+    display(myplt_tot)  
+    #display(myplt)
 end
 gif(anim,"test.gif",fps=2)
 ###########################################################
