@@ -129,7 +129,7 @@ def get_reactivity(ma, mb, Pa, Pb, P1, reaction='d-d', extra_out=False):
     sigma = sigma_diff(Tcm, costheta, reaction=reaction)
 
     # Reactivity (m**3/sr/s)
-    sigmav = sigma * vrel_mag * jacobian
+    sigmav = sigma * vrel_mag * np.abs(jacobian) #!# Jacobian not necessarily positive!
 
     if extra_out:
         return sigmav, jacobian, costheta
