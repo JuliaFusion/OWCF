@@ -468,9 +468,39 @@ class SpectrumCalculator:
 
         return result
 
+    def _sample_u_exNucl(self, Pa, Pb):   #!# Here the magic happens. The sampling in the acceptance cone for the excited nuclei direction is made.
+        p_tot = Pa[1:] + Pb[1:]
+        ortho_e = np.ones(p_tot.shape) * 2**-0.5    #!# A direction which is as little aligned as possible to p_tot has to be picked. This is not 
+                                                    #!# much elegant, but works every time.
+        np.put_along_axis(ortho_e,np.argmax(p_tot,axis=0,keepdims=True),0,axis=0)   #!# See above comment.
+        e1, e2, e3 = tokapart.get_basis_vectors(p_tot, ortho_e)    #!# The tokapart function comes in handy. A minor change has been made to 
+                                                                   #!# make it more versatile and use whatever orthogonal direction to define the 
+                                                                   #!# 3D basis.
+
+        m1_sq,m2_sq = self.m1**2, self.m2**2
+        E_tot_sq = (Pa[0] + Pb[0])**2
+        p_tot_mag_sq = np.linalg.norm(p_tot, axis=0)**2
+        Mtot_sq = E_tot_sq - p_tot_mag_sq
+        Cm_sq = (Mtot_sq + m1_sq - m2_sq)**2
+
+        cos_csi_sq_min = (4*m1_sq*E_tot_sq-Cm_sq) / (4*m1_sq*p_tot_mag_sq)    #!# This comes from kinematics, so energy and momentum conservation.
+        if np.count_nonzero(cos_csi_sq_min>1) > 0:
+            raise Exception("Minimum cosine of csi is not mathematically defined!")
+        cos_csi_min = np.sqrt(cos_csi_sq_min,dtype=complex)    #!# N.B. Cast as complex.
+        cos_csi_min[np.abs(cos_csi_min.imag) > 0] = -1     #!# If the minimum of the squared cosine is negative, it means that every angle is acceptable! 
+        
+        cos_csi = np.random.uniform(cos_csi_min.real,1,cos_csi_min.size)   #!# The cosine of csi is finally sampled in the proper region of its domain. 
+        phi = np.random.rand(cos_csi.size)*2*np.pi    #!# The scattering is assumed isotropic in the azimuthal angle, and accounts for downward direction
+        f_o_b = np.random.choice([+1,-1], cos_csi.size)    #!# Forward or backward? This boolean-like quantity assign the same proability to either of the directions
+
+        sin_csi = (1-cos_csi**2)**0.5
+        u_exc = sin_csi*np.sin(phi)*e1 + f_o_b*cos_csi*e2 + sin_csi*np.cos(phi)*e3 #!# The direction versor is built, and later normalized to 1 just to be sure
+
+        return u_exc / np.linalg.norm(u_exc, ord=2, axis=0), 2*np.pi*(1 - cos_csi_min.real) / 4/np.pi
+
     def _make_spec_hist(self, P1, bins, bin_width, weights, normalize):
 
-        E1 = P1[0] - self.m1    # kinetic energy (keV)
+        E1 = P1[0] - np.sqrt(relkin.mult_four_vectors(P1,P1),dtype=complex).real #!# had to be changed so that it is valid for the 2-step photons as well
 
         # How to bin events
         if bins is None:
