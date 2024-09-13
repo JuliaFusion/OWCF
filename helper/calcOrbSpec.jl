@@ -24,6 +24,7 @@ include(folderpath_OWCF*"misc/temp_n_dens.jl") # Load 'analytical' thermal speci
     calcOrbSpec(-||-; o_interp_length=500, thermal_temp=3.0, thermal_dens=1.0e19, prompt_gamma_energy=nothing, debug=false)
 
 Calculate the expected diagnostic spectrum of one orbit. The inputs are as follows
+- analyticCalc - boolean variable for fully analytical spectrum estimation. By default it is set to false for now.
 - M - An axisymmetric equilibrium from the Equilibrium.jl Julia package. It is used to utilize its magnetic field.
 - o - The orbit for which to compute the expected synthetic spectrum. It is an Orbit struct from GuidingCenterOrbits.jl/orbit.jl.
 - nfast - The number of fast ions on the orbit. Usually set to 1, by default.
@@ -38,7 +39,7 @@ Keyword arguments include
 - thermal_dens - An input variable with the thermal species density profile that the user has specified. It allows for no profile at all, as well as a single value on-axis (in m^-3)
 - debug - A boolean debug input variable. If set to true, the function will run in debug-mode.
 """
-function calcOrbSpec(M::AbstractEquilibrium, o::Orbit{Float64, EPRCoordinate{Float64}}, nfast::Float64, forward::PyObject, thermal_dist::Union{PyObject,AbstractString}, Ed_bins::AbstractArray, reaction::AbstractString; o_interp_length=500, product_state::AbstractString="GS", thermal_temp::Union{Nothing,Float64,Int64,Interpolations.Extrapolation,Interpolations.FilledExtrapolation}=3.0, thermal_dens::Union{Nothing,Float64,Int64,Interpolations.Extrapolation,Interpolations.FilledExtrapolation}=1.0e19, debug::Bool=false)
+function calcOrbSpec(M::AbstractEquilibrium, o::Orbit{Float64, EPRCoordinate{Float64}}, nfast::Float64, forward::PyObject, thermal_dist::Union{PyObject,AbstractString}, Ed_bins::AbstractArray, reaction::AbstractString; analyticCalc::Bool=false, o_interp_length=500, product_state::AbstractString="GS", thermal_temp::Union{Nothing,Float64,Int64,Interpolations.Extrapolation,Interpolations.FilledExtrapolation}=3.0, thermal_dens::Union{Nothing,Float64,Int64,Interpolations.Extrapolation,Interpolations.FilledExtrapolation}=1.0e19, debug::Bool=false)
 
     # Ensure that every orbit has o_interp_length number of EpRz points to serve as input to the spectrum calculator
     # We can assume that the EpRz points are equally distant in time, because this is ensured by GuidingCenterOrbits.get_orbit()

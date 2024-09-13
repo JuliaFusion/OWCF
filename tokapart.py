@@ -74,12 +74,17 @@ def get_EP(v_par, v_perp, m):
 
 def get_basis_vectors(B,ortho_e = np.array([[1],[0],[0]])):
     """
-    Construct a set of orthogonal basis vectors that aligns with
+    Construct a set of orthogonal basis vectors that aligns with 
     a given magnetic field vector 'B' (or a (3,N) array of N vectors).
 
-    The components of the basis vectors are evaluated in cylindrical coordinates.
+    ortho_e is a preferred orthogonal direction to the magnetic field. 
+    Default to the cylindrical coordinate R direction.
 
-    (The unit of 'B' is not important, only its direction is used by the function.)
+    The components of the basis vectors are evaluated in cylindrical 
+    coordinates.
+
+    (The unit of 'B' is not important, only its direction is used by 
+    the function.)
     """
 
     if np.ndim(B) == 1:
