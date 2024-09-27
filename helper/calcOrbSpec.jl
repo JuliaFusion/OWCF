@@ -24,7 +24,7 @@ include(folderpath_OWCF*"misc/temp_n_dens.jl") # Load 'analytical' thermal speci
     calcOrbSpec(-||-; o_interp_length=500, thermal_temp=3.0, thermal_dens=1.0e19, prompt_gamma_energy=nothing, debug=false)
 
 Calculate the expected diagnostic spectrum of one orbit. The inputs are as follows
-- analyticCalc - boolean variable for fully analytical spectrum estimation. By default it is set to false for now.
+- analyticCalc - boolean variable for fully analytical spectrum estimation. By default it is set to false
 - M - An axisymmetric equilibrium from the Equilibrium.jl Julia package. It is used to utilize its magnetic field.
 - o - The orbit for which to compute the expected synthetic spectrum. It is an Orbit struct from GuidingCenterOrbits.jl/orbit.jl.
 - nfast - The number of fast ions on the orbit. Usually set to 1, by default.
