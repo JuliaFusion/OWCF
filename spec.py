@@ -55,6 +55,20 @@ class Particle:
             self.long_name = 'helium-4'
             self.u = constants.m4He
             self.q = 2*(constants.e)
+        elif name == '12c_gs': #!#
+            self.long_name = 'carbon-12-gs'
+            self.u = constants.m12C
+            self.q = 6*(constants.e)
+        elif name == '12c_1l': #!#
+            self.long_name = 'carbon-12-1l'
+            self.u = constants.m12C + 4439.82/constants.u_keV
+            self.q = 6*(constants.e)
+            self.E_g = 4438.94 # emitted gamma-ray energy (see Valentini25NF)
+        elif name == '12c_2l': #!#
+            self.long_name = 'carbon-12-2l'
+            self.u = constants.m12C + 7654.07/constants.u_keV
+            self.q = 6*(constants.e)
+            self.E_g = 3213.79 # emitted gamma-ray energy (see Valentini25NF)
         elif name == 'proj': # In this case, the Particle class is simply used as a data placeholder to enable the workflow of forward.py 
             self.long_name = 'projection'
             self.u = 0.0
@@ -233,11 +247,12 @@ class SpectrumCalculator:
     (if None, each event gets a random direction).
     """
 
-    def __init__(self, reaction='d-d', B_dir=[0,1,0], n_samples=1e6):
+    def __init__(self, reaction='d-d', product_state='GS', B_dir=[0,1,0], n_samples=1e6): #!#
 
         self._B_dir = B_dir
         self._n_samples = int(n_samples)
         self.reaction = reaction
+        self.product_state = product_state.lower() #!#        
         self.weights = None
 
         # 4*pi emission by default
@@ -279,6 +294,11 @@ class SpectrumCalculator:
             # 3He(d,p)4He reaction
             self.product_1 = 'p' # Since the proton is a charged particle, as of now, only an energy spectrum for 4*pi emission can be returned
             self.product_2 = '4he'
+
+        elif all(p in [a,b] for p in ['4he','9be']): #!#
+            # 9Be(4He,12C)n reaction
+            self.product_1 = '12c_'+self.product_state
+            self.product_2 = 'n'
 
         elif b == 'proj': # In this case, the SpectrumCalculator class is just being used to fascilitate the computation of projected velocities in forward.py
             self.product_1 = 'n' # Then the products don't matter
@@ -403,27 +423,84 @@ class SpectrumCalculator:
         # Emission directions
         if self.u1 is None:
             u1 = sampler.sample_sphere(self.n_samples)   # random emission directions
-        else:
-            u1 = np.array(self.u1)
+        elif self.product_state == 'GS': #!#
+            u1 = np.asarray(self.u1) / np.linalg.norm(self.u1, ord=2, axis=0) # norm=1 is forced, since it has to be a unit vector
             if u1.ndim == 1:
                 u1 = np.array(u1).reshape(3,1)   # same emission direction for all particles
+        else:   #!# If it's the case of a 2-step gamma reaction, a dedicated function is called to sample the excited nuclei direction. 
+                #!# In this case, N.B. that 'u1' is swapped with the new direction array 'u_decay_g' so that the code works in both 1- and
+                #!# 2-step cases with the same workflow. 'u1' becomes the random direction of the nuclei, while 'u_decay_g' the direction of
+                #!# the gamma to the detector.
+            u1, fourpi_fraction = self._sample_u_exNucl(Pa, Pb)    #!# The fraction of domain for the extracted scattering angle is needed as
+                                                                   #!# an additional weight factor, which is multiplied to the rest later.
+            if self.u1.shape[1] == 1:
+                u_decay_g = self.u1 / np.linalg.norm(self.u1, ord=2, axis=0)
+                if u_decay_g.ndim == 1:
+                    u_decay_g = np.array(u_decay_g).reshape(3,1)   # same emission direction for all particles
+            else:
+                u_decay_g = self.u1 / np.linalg.norm(self.u1, ord=2, axis=0)
+
+            self.weights *= fourpi_fraction #!# Additional sampling happens within a restricted domain, which is different depending on the
+                                            #!# energy of the CM. Therefore, an array with values in [0,1] is factored in with the rest of the 
+                                            #!# weights.
 
         # Compute product energies
-        P1 = relscatt.two_body_event(Pa, Pb, self.m1, self.m2, u1)
-
+        P1= relscatt.two_body_event(Pa, Pb, self.m1, self.m2, u1)
+        
         # Compute reactivity
-        sigmav = relscatt.get_reactivity(self.ma, self.mb, Pa, Pb, P1, reaction=self.reaction)
+        sigmav = relscatt.get_reactivity(self.ma, self.mb, Pa, Pb, P1, 
+                                         reaction=self.reaction, product_state=self.product_state)   #!#
 
         # Bin all events
-        weights_tot = self.weights * sigmav
+        weights_tot = self.weights * sigmav        
+
+        #!# If a relativistic Doppler shift has to be added on top
+        if self.product_state != 'GS':
+            beta_1 = P1[1:] / P1[0]
+            gamma_1 = (1 - np.sum(beta_1**2,axis=0))**-0.5
+            E_s = self.product_1.E_g  #!# energy at source
+            E_r = E_s / gamma_1 / (1 - np.sum(beta_1*u_decay_g,axis=0)) #!# energy at receiver
+
+            P1 = relkin.four_vector(E_r, E_r*u_decay_g)    #!# P1 variable now refers to a different quantity completely! We leave the excited nucleus alone
+                                                            #!# and only care about the gamma from here on.
 
         result = self._make_spec_hist(P1, bins, bin_width, weights_tot, normalize)
 
         return result
 
+    def _sample_u_exNucl(self, Pa, Pb):   #!# Here the magic happens. The sampling in the acceptance cone for the excited nuclei direction is made.
+        p_tot = Pa[1:] + Pb[1:]
+        ortho_e = np.ones(p_tot.shape) * 2**-0.5    #!# A direction which is as little aligned as possible to p_tot has to be picked. This is not 
+                                                    #!# much elegant, but works every time.
+        np.put_along_axis(ortho_e,np.argmax(p_tot,axis=0,keepdims=True),0,axis=0)   #!# See above comment.
+        e1, e2, e3 = tokapart.get_basis_vectors(p_tot, ortho_e)    #!# The tokapart function comes in handy. A minor change has been made to 
+                                                                   #!# make it more versatile and use whatever orthogonal direction to define the 
+                                                                   #!# 3D basis.
+
+        m1_sq,m2_sq = self.m1**2, self.m2**2
+        E_tot_sq = (Pa[0] + Pb[0])**2
+        p_tot_mag_sq = np.linalg.norm(p_tot, axis=0)**2
+        Mtot_sq = E_tot_sq - p_tot_mag_sq
+        Cm_sq = (Mtot_sq + m1_sq - m2_sq)**2
+
+        cos_csi_sq_min = (4*m1_sq*E_tot_sq-Cm_sq) / (4*m1_sq*p_tot_mag_sq)    #!# This comes from kinematics, so energy and momentum conservation.
+        if np.count_nonzero(cos_csi_sq_min>1) > 0: #!# just a sanity check, it should not be possible
+            raise Exception("Minimum cosine of csi is ill-defined!")
+        cos_csi_min = np.sqrt(cos_csi_sq_min,dtype=complex)    #!# N.B. Cast as complex.
+        cos_csi_min[np.abs(cos_csi_min.imag) > 0] = -1     #!# If the minimum of the squared cosine is negative, it means that every angle is acceptable! 
+        
+        cos_csi = np.random.uniform(cos_csi_min.real,1,cos_csi_min.size)   #!# The cosine of csi is finally sampled in the proper region of its domain. 
+        phi = np.random.rand(cos_csi.size)*2*np.pi    #!# The scattering is assumed isotropic in the azimuthal angle, and accounts for downward direction
+        f_o_b = np.random.choice([+1,-1], cos_csi.size)    #!# Forward or backward? This boolean-like quantity assign the same proability to either of the directions
+
+        sin_csi = (1-cos_csi**2)**0.5
+        u_exc = sin_csi*np.sin(phi)*e1 + f_o_b*cos_csi*e2 + sin_csi*np.cos(phi)*e3 #!# The direction versor is built, and later normalized to 1 just to be sure
+
+        return u_exc / np.linalg.norm(u_exc, ord=2, axis=0), 2*np.pi*(1 - cos_csi_min.real) / 4/np.pi
+
     def _make_spec_hist(self, P1, bins, bin_width, weights, normalize):
 
-        E1 = P1[0] - self.m1    # kinetic energy (keV)
+        E1 = P1[0] - np.sqrt(relkin.mult_four_vectors(P1,P1),dtype=complex).real #! kinetic energy (keV).  This expression is valid for the 2-step photons as well
 
         # How to bin events
         if bins is None:

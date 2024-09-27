@@ -115,6 +115,25 @@ if emittedParticleHasCharge
     diagnostic_filepath = ""
 end
 
+emittedParticleIsExcited = false #!#
+RHEEP = ["4He-9Be", "4He-10B"] #!# 'reaction has excited emitted particle'
+if reaction in RHEPWC #!#
+    emittedParticleIsExcited = true #!#
+    if product_state === nothing
+        product_state = "GS"
+    end
+    if product_state === "GS" #!#
+        error("Please specify the excited state for the intermediate product, and re-try!") #!#
+    end
+end #!#
+
+if emittedParticleIsExcited #!#
+    verbose && println("") #!#
+    verbose && println("The emitted "*getEmittedParticle(reaction_full)*" particle of the "*reaction_full*" reaction is on an excited state!") #!#
+    verbose && println("The OWCF will calculate the spectrum of those gamma-rays emitted from de-excitation towards the specified detector.") #!#
+    verbose && println("") #!#
+end #!#
+
 ## ---------------------------------------------------------------------------------------------
 # Determine filepath_thermal_distr file extension
 fileext_thermal = (split(filepath_thermal_distr,"."))[end] # Assume last part after final '.' is the file extension
@@ -562,7 +581,7 @@ for iii=1:iiimax
                 end
                 @async begin
                     W = @distributed (+) for i=1:norbs
-                        spec = calcOrbSpec(M, og_orbs[i], F_os[i], py"forwardmodel", py"thermal_dist", py"Ed_bin_edges", reaction; thermal_temp=thermal_temp, thermal_dens=thermal_dens) # Calculate the diagnostic energy spectrum for the orbit
+                        spec = calcOrbSpec(M, og_orbs[i], F_os[i], py"forwardmodel", py"thermal_dist", py"Ed_bin_edges", reaction; product_state=product_state, thermal_temp=thermal_temp, thermal_dens=thermal_dens) # Calculate the diagnostic energy spectrum for the orbit
                         rows = append!(collect(1:length(spec)),length(spec)) # To be able to tell the sparse framework about the real size of the weight matrix
                         cols = append!(i .*ones(Int64, length(spec)), norbs) # To be able to tell the sparse framework about the real size of the weight matrix
 
@@ -579,7 +598,7 @@ for iii=1:iiimax
             end)
         else
             Wtot = @distributed (+) for i=1:norbs
-                spec = calcOrbSpec(M, og_orbs[i], F_os[i], py"forwardmodel", py"thermal_dist", py"Ed_bin_edges", reaction; thermal_temp=thermal_temp, thermal_dens=thermal_dens) # Calculate the diagnostic energy spectrum for the orbit
+                spec = calcOrbSpec(M, og_orbs[i], F_os[i], py"forwardmodel", py"thermal_dist", py"Ed_bin_edges", reaction; product_state=product_state, thermal_temp=thermal_temp, thermal_dens=thermal_dens) # Calculate the diagnostic energy spectrum for the orbit
                 rows = append!(collect(1:length(spec)),length(spec)) # Please see similar line earlier in the script
                 cols = append!(i .*ones(Int64, length(spec)), norbs) # Please see similar line earlier in the script
 
@@ -595,7 +614,7 @@ for iii=1:iiimax
             # WRITE CODE TO DEBUG QUANTITIES OF INTEREST
 
         else
-            spec = calcOrbSpec(M, og_orbs[1], F_os[1], py"forwardmodel", py"thermal_dist", py"Ed_bin_edges", reaction; thermal_temp=thermal_temp, thermal_dens=thermal_dens) # Calculate the diagnostic energy spectrum for the orbit
+            spec = calcOrbSpec(M, og_orbs[1], F_os[1], py"forwardmodel", py"thermal_dist", py"Ed_bin_edges", reaction; product_state=product_state, thermal_temp=thermal_temp, thermal_dens=thermal_dens) # Calculate the diagnostic energy spectrum for the orbit
             rows = append!(collect(1:length(spec)),length(spec)) # # Please see similar line earlier in the script
             cols = append!(1 .*ones(Int64, length(spec)), norbs) # # Please see similar line earlier in the script
 
@@ -611,7 +630,7 @@ for iii=1:iiimax
 
             else
                 verbose && println("Calculating spectra for orbit $(i) of $(norbs)... ")
-                local spec = calcOrbSpec(M, og_orbs[i], F_os[i], py"forwardmodel", py"thermal_dist", py"Ed_bin_edges", reaction; thermal_temp=thermal_temp, thermal_dens=thermal_dens) # Calculate the diagnostic energy spectrum for the orbit
+                local spec = calcOrbSpec(M, og_orbs[i], F_os[i], py"forwardmodel", py"thermal_dist", py"Ed_bin_edges", reaction; product_state=product_state, thermal_temp=thermal_temp, thermal_dens=thermal_dens) # Calculate the diagnostic energy spectrum for the orbit
                 local rows = append!(collect(1:length(spec)),length(spec)) # Please see similar line earlier in the script
                 local cols = append!(i .*ones(Int64, length(spec)), norbs) # Please see similar line earlier in the script
 

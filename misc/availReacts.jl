@@ -89,6 +89,12 @@ function checkReaction(reaction_full::String; verbose::Bool=false, projVelocity:
         return "D","3He"
     end
 
+    #!# Account for the possibility of faulty user input. 9Be(4He,12C)n is correct. 
+    if lowercase(thermal_reactant)=="9be" && lowercase(fast_reactant)=="4he" && ((lowercase(emitted_particle)=="12c" && lowercase(product_nucleus)=="n") || (lowercase(emitted_particle)=="n" && lowercase(product_nucleus)=="12c"))
+        verbose && println("Accepted nuclear reaction: "*reaction_full)
+        return "9Be","4He"
+    end    
+
     # No valid reaction detected
     error("Reaction "*reaction_full*" is not a valid fusion reaction available in the current version of the OWCF. Please re-specify and re-try.")
 

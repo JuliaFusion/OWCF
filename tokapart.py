@@ -72,14 +72,19 @@ def get_EP(v_par, v_perp, m):
     return E, p
 
 
-def get_basis_vectors(B):
+def get_basis_vectors(B,ortho_e = np.array([[1],[0],[0]])):
     """
-    Construct a set of orthogonal basis vectors that aligns with
+    Construct a set of orthogonal basis vectors that aligns with 
     a given magnetic field vector 'B' (or a (3,N) array of N vectors).
 
-    The components of the basis vectors are evaluated in cylindrical coordinates.
+    ortho_e is a preferred orthogonal direction to the magnetic field. 
+    Default to the cylindrical coordinate R direction.
 
-    (The unit of 'B' is not important, only its direction is used by the function.)
+    The components of the basis vectors are evaluated in cylindrical 
+    coordinates.
+
+    (The unit of 'B' is not important, only its direction is used by 
+    the function.)
     """
 
     if np.ndim(B) == 1:
@@ -89,12 +94,14 @@ def get_basis_vectors(B):
     B_norm = np.linalg.norm(B, ord=2, axis=0)
     b = B/B_norm
 
-    # Radial basis vector in cylindrical coordinates
-    R_hat   = np.array([1,0,0]).reshape(3,1)    # reshape needed for broadcasting to work
+    #!# cosine of csi, the angle in between b and preferred orthogonal direction ortho_e.
+    #!# Both are assumed to be expressed in cylindrical coordinates, 
+    #!# shaped as (3,N) arrays, and normalized to 1.
+    cos_csi = np.sum(b*ortho_e, axis=0)
 
     # Construct basis vectors that align with B
     # (only works if the phi component of B is non-zero)
-    e1 = R_hat - b[0]*b
+    e1 = ortho_e - cos_csi*b
     e1 = e1 / np.linalg.norm(e1, ord=2, axis=0)
     e2 = b
     e3 = np.cross(e1,e2, axis=0)

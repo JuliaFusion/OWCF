@@ -33,7 +33,7 @@ class Forward(object):
 
 
     def calc(self, E, p, R, z, weights, bulk_dist, Ed_bins, B_vec,
-            n_repeat=1, reaction='d-d', bulk_temp='', bulk_dens='', flr=False, v_rot=np.reshape(np.array([0.0,0.0,0.0]),(3,1)), prompt_gamma_energy=None):
+            n_repeat=1, product_state='GS', reaction='d-d', bulk_temp='', bulk_dens='', flr=False, v_rot=np.reshape(np.array([0.0,0.0,0.0]),(3,1)), prompt_gamma_energy=None):
         """
         Calculate spectrum for fast ion(s) (specified by the N (E,p,R,z) points)
         reacting with the given bulk distribution, for a given viewing cone
@@ -49,6 +49,8 @@ class Forward(object):
         vector at all of the N (E,p,R,z) points.
 
         n_repeat is the number of gyro angles sampled for each energy-pitch value.
+
+        product_state is the string defining the nuclear energy level for the product
 
         reaction is the fusion reaction to simulate ('D-D', 'D-T' etc). The species the the left of the '-' is always the 
         thermal species and the species to the right of the '-' is always the fast ion. However, as can be seen in the code,
@@ -95,7 +97,7 @@ class Forward(object):
             bulk_dens = bulk_dens.repeat(n_repeat)
         if not (np.sum(v_rot) == 0.0):
             v_rot = v_rot.repeat(n_repeat, axis=1) # Repeat n_repeat number of times, for gyro-angle sampling        
-        spec_calc = spec.SpectrumCalculator(reaction=reaction)
+        spec_calc = spec.SpectrumCalculator(reaction=reaction,product_state=product_state)
         m = spec_calc.ma # The mass of the fast ion (in keV/c**2)
 
         # Expand to gyro-radius points, if FLR effects are to be included
