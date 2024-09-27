@@ -252,7 +252,7 @@ class SpectrumCalculator:
         self._B_dir = B_dir
         self._n_samples = int(n_samples)
         self.reaction = reaction
-        self.product_state = product_state #!#        
+        self.product_state = product_state.lower() #!#        
         self.weights = None
 
         # 4*pi emission by default
@@ -424,21 +424,21 @@ class SpectrumCalculator:
         if self.u1 is None:
             u1 = sampler.sample_sphere(self.n_samples)   # random emission directions
         elif self.product_state == 'GS': #!#
-            u1 = np.asarray(self.u1) / np.linalg.norm(self.u1, ord=2, axis=0)
+            u1 = np.asarray(self.u1) / np.linalg.norm(self.u1, ord=2, axis=0) # norm=1 is forced, since it has to be a unit vector
             if u1.ndim == 1:
                 u1 = np.array(u1).reshape(3,1)   # same emission direction for all particles
         else:   #!# If it's the case of a 2-step gamma reaction, a dedicated function is called to sample the excited nuclei direction. 
-                #!# In this case, N.B. that 'u1' is swapped with the new direction array 'u_prompt_g' so that the code works in both 1- and
-                #!# 2-step cases with the same workflow. 'u1' becomes the random direction of the nuclei, while 'u_prompt_g' the direction of
+                #!# In this case, N.B. that 'u1' is swapped with the new direction array 'u_decay_g' so that the code works in both 1- and
+                #!# 2-step cases with the same workflow. 'u1' becomes the random direction of the nuclei, while 'u_decay_g' the direction of
                 #!# the gamma to the detector.
             u1, fourpi_fraction = self._sample_u_exNucl(Pa, Pb)    #!# The fraction of domain for the extracted scattering angle is needed as
                                                                    #!# an additional weight factor, which is multiplied to the rest later.
             if self.u1.shape[1] == 1:
-                u_prompt_g = self.u1 / np.linalg.norm(self.u1, ord=2, axis=0)
-                if u_prompt_g.ndim == 1:
-                    u_prompt_g = np.array(u_prompt_g).reshape(3,1)   # same emission direction for all particles
+                u_decay_g = self.u1 / np.linalg.norm(self.u1, ord=2, axis=0)
+                if u_decay_g.ndim == 1:
+                    u_decay_g = np.array(u_decay_g).reshape(3,1)   # same emission direction for all particles
             else:
-                u_prompt_g = self.u1 / np.linalg.norm(self.u1, ord=2, axis=0)
+                u_decay_g = self.u1 / np.linalg.norm(self.u1, ord=2, axis=0)
 
             self.weights *= fourpi_fraction #!# Additional sampling happens within a restricted domain, which is different depending on the
                                             #!# energy of the CM. Therefore, an array with values in [0,1] is factored in with the rest of the 
@@ -459,9 +459,9 @@ class SpectrumCalculator:
             beta_1 = P1[1:] / P1[0]
             gamma_1 = (1 - np.sum(beta_1**2,axis=0))**-0.5
             E_s = self.product_1.E_g  #!# energy at source
-            E_r = E_s / gamma_1 / (1 - np.sum(beta_1*u_prompt_g,axis=0)) #!# energy at receiver
+            E_r = E_s / gamma_1 / (1 - np.sum(beta_1*u_decay_g,axis=0)) #!# energy at receiver
 
-            P1 = relkin.four_vector(E_r, E_r*u_prompt_g)    #!# P1 variable now refers to a different quantity completely! We leave the excited nucleus alone
+            P1 = relkin.four_vector(E_r, E_r*u_decay_g)    #!# P1 variable now refers to a different quantity completely! We leave the excited nucleus alone
                                                             #!# and only care about the gamma from here on.
 
         result = self._make_spec_hist(P1, bins, bin_width, weights_tot, normalize)
@@ -484,8 +484,8 @@ class SpectrumCalculator:
         Cm_sq = (Mtot_sq + m1_sq - m2_sq)**2
 
         cos_csi_sq_min = (4*m1_sq*E_tot_sq-Cm_sq) / (4*m1_sq*p_tot_mag_sq)    #!# This comes from kinematics, so energy and momentum conservation.
-        if np.count_nonzero(cos_csi_sq_min>1) > 0:
-            raise Exception("Minimum cosine of csi is not mathematically defined!")
+        if np.count_nonzero(cos_csi_sq_min>1) > 0: #!# just a sanity check, it should not be possible
+            raise Exception("Minimum cosine of csi is ill-defined!")
         cos_csi_min = np.sqrt(cos_csi_sq_min,dtype=complex)    #!# N.B. Cast as complex.
         cos_csi_min[np.abs(cos_csi_min.imag) > 0] = -1     #!# If the minimum of the squared cosine is negative, it means that every angle is acceptable! 
         
@@ -500,7 +500,7 @@ class SpectrumCalculator:
 
     def _make_spec_hist(self, P1, bins, bin_width, weights, normalize):
 
-        E1 = P1[0] - np.sqrt(relkin.mult_four_vectors(P1,P1),dtype=complex).real #!# had to be changed so that it is valid for the 2-step photons as well
+        E1 = P1[0] - np.sqrt(relkin.mult_four_vectors(P1,P1),dtype=complex).real #! kinetic energy (keV).  This expression is valid for the 2-step photons as well
 
         # How to bin events
         if bins is None:
