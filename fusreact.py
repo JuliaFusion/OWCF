@@ -6,6 +6,8 @@ import os
 import numpy as np
 import scipy.interpolate as interp
 from scipy.special import legendre
+import pandas as pd
+from scipy.interpolate import RegularGridInterpolator
 
 import constants
 
@@ -20,6 +22,9 @@ dd_coeff_endf[0,:] = dd_coeff_endf[0,:]/2000
 # Number of coefficients in the expansion
 n_dd_coeff = dd_coeff_endf.shape[0] - 1
 
+# Also load necessary data for alpha-9Be reactions
+alpha9Be_1L_dataframe = pd.read_csv('fit_data/AlphaBe9_1L.txt', header=None)
+alpha9Be_2L_dataframe = pd.read_csv('fit_data/AlphaBe9_2L.txt', header=None)
 
 def sigma_tot(E, reaction='d-d'):
     """
@@ -173,7 +178,7 @@ def sigma_tot(E, reaction='d-d'):
     return sigma * 1e-31     # m**2
 
 
-def sigma_diff(E, costheta, reaction='d-d', anisotropic=True):
+def sigma_diff(E, costheta, reaction='d-d', product_state='GS', anisotropic=True):
     """
     Returns the differential fusion cross section (in m**2/sr) for a vector of CM energies (in keV).
     """
@@ -219,7 +224,50 @@ def sigma_diff(E, costheta, reaction='d-d', anisotropic=True):
         sigma = sigma_tot(Ecm, reaction=reaction) * W / C
         #sigma = sigma_tot(Ecm, reaction=reaction) / (4*np.pi)
         #sigma = 1.0
+    elif all(p in [a,b] for p in ['4he','9be']) and product_state == '1L': 
+        # 9Be(4He,ng)12C reaction. Cross-sectional patchwork provided by Massimo Nocente.
+        # 1->0 transition of 12C
+        df = alpha9Be_1L_dataframe
 
+        # First extract quantities of interest from the dataframe
+        dims = tuple(map(int,df[0][0].split(' '))) # tuple of relevant dimensions
+        energies = np.asarray( df[0][1].split('   '), dtype=np.float64 ).ravel() # energies of CM in MeV
+        cosines = df[0][2:].str.split('\t', expand=True).to_numpy(dtype=np.float64)[:,0].ravel() # cosine values of scattering angle in CM frame 
+        diff_cross = df[0][2:].str.split('\t', expand=True).to_numpy(dtype=np.float64)[:,1:] # corresponding differential cross section values in mb/sr
+
+        if not anisotropic: # sigma_tot = INT( 2*pi*diff_cross * dcos ), across all angles
+            diff_cross = np.tile( np.einsum('ij,i->j',diff_cross,np.convolve(np.diff(cosines),[0.5,0.5])) / 2, (cosines.size,1) ) 
+
+        # Define linear interpolator, given the patchwork
+        # N.B: if the later inputted energy exceeds the upper limit, the interpolator returns zero values, across all angles, yet no warnings 
+        interp = RegularGridInterpolator((energies,cosines), diff_cross.transpose(), bounds_error=False, fill_value=0)
+
+        # Interpolate over requested values; zero values will give no contribution to the spectra
+        E /= 1000 # MeV
+        sigma = interp((E,-1*costheta)) * 1e-31 # m**2/sr; the -1 factor is due to the carbon-12 being followed, and not the neutron (for which we have the emission probability, technically)
+
+    elif all(p in [a,b] for p in ['4he','9be']) and product_state == '2L': 
+        # 9Be(4He,ng)12C reaction. Cross-sectional patchwork provided by Massimo Nocente.
+        # 2->1 transition of 12C
+        df = alpha9Be_2L_dataframe
+
+        # First extract quantities of interest from the dataframe
+        dims = tuple(map(int,df[0][0].split(' '))) # tuple of relevant dimensions
+        energies = np.asarray( df[0][1].split('   '), dtype=np.float64 ).ravel() # energies of CM in MeV
+        cosines = df[0][2:].str.split('\t', expand=True).to_numpy(dtype=np.float64)[:,0].ravel() # cosine values of scattering angle in CM frame 
+        diff_cross = df[0][2:].str.split('\t', expand=True).to_numpy(dtype=np.float64)[:,1:] # corresponding differential cross section values in mb/sr
+
+        if not anisotropic: # sigma_tot = INT( 2*pi*diff_cross * dcos ), across all angles
+            diff_cross = np.tile( np.einsum('ij,i->j',diff_cross,np.convolve(np.diff(cosines),[0.5,0.5])) / 2, (cosines.size,1) ) 
+
+        # Define linear interpolator, given the patchwork
+        # N.B: if the later inputted energy exceeds the upper limit, the interpolator returns zero values, across all angles, yet no warnings 
+        interp = RegularGridInterpolator((energies,cosines), diff_cross.transpose(), bounds_error=False, fill_value=0)
+
+        # Interpolate over requested values; zero values will give no contribution to the spectra
+        E /= 1000 # MeV
+        sigma = interp((E,-1*costheta)) * 1e-31 # m**2/sr; the -1 factor is due to the carbon-12 being followed, and not the neutron (for which we have the emission probability, technically)
+        
     else:
         # Assume that the other cross sections are isotropic
         sigma = sigma_tot(E, reaction=reaction)/(4*np.pi)

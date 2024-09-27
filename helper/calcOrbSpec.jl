@@ -24,6 +24,7 @@ include(folderpath_OWCF*"misc/temp_n_dens.jl") # Load 'analytical' thermal speci
     calcOrbSpec(-||-; o_interp_length=500, thermal_temp=3.0, thermal_dens=1.0e19, prompt_gamma_energy=nothing, debug=false)
 
 Calculate the expected diagnostic spectrum of one orbit. The inputs are as follows
+- analyticCalc - boolean variable for fully analytical spectrum estimation. By default it is set to false
 - M - An axisymmetric equilibrium from the Equilibrium.jl Julia package. It is used to utilize its magnetic field.
 - o - The orbit for which to compute the expected synthetic spectrum. It is an Orbit struct from GuidingCenterOrbits.jl/orbit.jl.
 - nfast - The number of fast ions on the orbit. Usually set to 1, by default.
@@ -33,12 +34,12 @@ Calculate the expected diagnostic spectrum of one orbit. The inputs are as follo
 - reaction - The reactants of the considered fusion reaction. Format is 'a-b' where a is the thermal species, and b is the fast-ion species
 Keyword arguments include
 - o_interp_length - The number of time points onto which the orbit trajectory will be interpolated. Equidistant points in time are used
+- product_state - can be GS, 1L, 2L, etc. Default to Ground State #!#
 - thermal_temp - An input variable with the thermal species temperature profile that the user has specified. It allows for no profile at all, as well as a single value on-axis (in keV)
 - thermal_dens - An input variable with the thermal species density profile that the user has specified. It allows for no profile at all, as well as a single value on-axis (in m^-3)
-- prompt_gamma_energy - The center-of-mass nominal gamma-ray birth energy. This comes into effect if two-step fusion reactions that emit a gamma ray are computed. E.g. 9Be(4He,ng)12C where 'g' is the gamma ray. Specified in keV. Please see e.g. OWCF/templates/start_calcOW_template.jl for further info.
 - debug - A boolean debug input variable. If set to true, the function will run in debug-mode.
 """
-function calcOrbSpec(M::AbstractEquilibrium, o::Orbit{Float64, EPRCoordinate{Float64}}, nfast::Float64, forward::PyObject, thermal_dist::Union{PyObject,AbstractString}, Ed_bins::AbstractArray, reaction::AbstractString; o_interp_length=500, thermal_temp::Union{Nothing,Float64,Int64,Interpolations.Extrapolation,Interpolations.FilledExtrapolation}=3.0, thermal_dens::Union{Nothing,Float64,Int64,Interpolations.Extrapolation,Interpolations.FilledExtrapolation}=1.0e19, prompt_gamma_energy::Union{Nothing,Float64,Int64}=nothing, debug::Bool=false)
+function calcOrbSpec(M::AbstractEquilibrium, o::Orbit{Float64, EPRCoordinate{Float64}}, nfast::Float64, forward::PyObject, thermal_dist::Union{PyObject,AbstractString}, Ed_bins::AbstractArray, reaction::AbstractString; analyticCalc::Bool=false, o_interp_length=500, product_state::AbstractString="GS", thermal_temp::Union{Nothing,Float64,Int64,Interpolations.Extrapolation,Interpolations.FilledExtrapolation}=3.0, thermal_dens::Union{Nothing,Float64,Int64,Interpolations.Extrapolation,Interpolations.FilledExtrapolation}=1.0e19, debug::Bool=false)
 
     # Ensure that every orbit has o_interp_length number of EpRz points to serve as input to the spectrum calculator
     # We can assume that the EpRz points are equally distant in time, because this is ensured by GuidingCenterOrbits.get_orbit()
@@ -102,12 +103,26 @@ function calcOrbSpec(M::AbstractEquilibrium, o::Orbit{Float64, EPRCoordinate{Flo
         return thermal_temp_interp, o_R
     end
 
-    py"""
-    forward = $forward # Convert the Forward Python object from Julia to Python.
-    # Please note, the '$' symbol is used below to convert objects from Julia to Python. Even Julia PyObjects
-    spec = forward.calc($o_energy, $o_pitch, $o_R, $o_z, $o_w, $thermal_dist, $Ed_bins, $o_B, n_repeat=50, reaction=$reaction, bulk_temp=$thermal_temp_interp, bulk_dens=$thermal_dens_interp, prompt_gamma_energy=$prompt_gamma_energy) # Please see the forward.py script, for further specifications
-    """
-    return vec(py"spec")
+    if analyticCalc #!# analyticCalc.jl(...,product_state='GS')
+        #!# call LOS file 
+        #!# compute analytical spectra on the intersected points
+        #!# return spectrum
+    else 
+        spec = zeros(length(Ed_bins)-1)
+        stats = 1
+        if product_state !== "GS"
+            stats = 100
+        end
+        for i=1:stats
+            py"""
+            forward = $forward # Convert the Forward Python object from Julia to Python.
+            # Please note, the '$' symbol is used below to convert objects from Julia to Python. Even Julia PyObjects
+            spectrum = forward.calc($o_energy, $o_pitch, $o_R, $o_z, $o_w, $thermal_dist, $Ed_bins, $o_B, n_repeat=50, product_state=$product_state, reaction=$reaction, bulk_temp=$thermal_temp_interp, bulk_dens=$thermal_dens_interp) # Please see the forward.py script, for further specifications
+            """
+            spec += vec(py"spectrum")
+        end
+        return spec ./ stats
+    end
 end
 
 """

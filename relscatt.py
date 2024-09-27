@@ -84,7 +84,7 @@ def dalitz_sample(Mtot, m1, m2, m3):
     """
 
 
-def get_reactivity(ma, mb, Pa, Pb, P1, reaction='d-d', extra_out=False):
+def get_reactivity(ma, mb, Pa, Pb, P1, reaction='d-d', product_state='GS', extra_out=False):
     """
     Calculate the reactivity (m**3/sr/s) for a reaction with
     given four-momenta (keV/c) for the reactants ('Pa' and 'Pb') and the
@@ -126,10 +126,10 @@ def get_reactivity(ma, mb, Pa, Pb, P1, reaction='d-d', extra_out=False):
 
     costheta = np.sum(P1_cm[1:]*u_rel, axis=0) / p1cm_mag      # cosine of emission angle of particle 1 in the CMS
 
-    sigma = sigma_diff(Tcm, costheta, reaction=reaction)
+    sigma = sigma_diff(Tcm, costheta, reaction=reaction, product_state=product_state)
 
     # Reactivity (m**3/sr/s)
-    sigmav = sigma * vrel_mag * jacobian
+    sigmav = sigma * vrel_mag * np.abs(jacobian)
 
     if extra_out:
         return sigmav, jacobian, costheta
