@@ -406,8 +406,8 @@ Plots.plot!(Ed_array_S_KM15_orig, 0.0010 .*W_2D_KM15_orig*f_1D)
 # In final OWCF version, code an intelligent check, to 
 # determine if re-scaling is necessary
 # It could be a flag like: 
-# (caar_W = true) && (typical_N_FI = 1.0e19)
-# 'caar_W' stands for check and auto-rescale weights
+# (car_W = true) && (typical_N_FI = 1.0e19)
+# 'car_W' stands for check and rescale weights
 # A sample of Maxwellians will then be created. They each have 'typical_N_FI'
 # as the value of their zeroth moment. Their signals will be computed and 
 # compared with the experimental data. If none of the signals are within an 
