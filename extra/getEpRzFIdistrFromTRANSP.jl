@@ -174,16 +174,15 @@ end
 
 """
 read_nubeam(filepath, mygrid)
-- with example of non-default keyword arguments:
-read_nubeam(filepath, mygrid; e_range=(5.0,500.0), p_range=(-0.75,0.75), btipsign=1, species=2, verbose=true, plotting=true)
+read_nubeam(-||-; e_range=nothing, p_range=nothing, btipsign=-1, species=1, verbose=false, plotting=false, vverbose=false, save_plots=false)
 
 Read the TRANSP NUBEAM-generated data in the .cdf-file 'filepath'. Use 'mygrid' to interpolate the fast-ion data onto.
 NUBEAM-generated fast-ion distributions are given on an irrregular grid spiraling outwards from the magnetic axis. read_nubeam() will 
 interpolate that data onto a regular (E,p,R,z) grid.
 
 - If 'e_range' and/or 'p_range' are not specified, use TRANSP-data ranges by default. e_range should be specified in keV. If specified, only use TRANSP-data 
-within the 'e_range'/'p_range' ranges to create the fast-ion distribution f(E,p,R,z).
-- If 'btipsign' is not specified, assume -1 by default. 'btipsign' is the sign of the dot-product between the magnetic field and the plasma current.
+within the 'e_range'/'p_range' ranges to create the fast-ion distribution f(E,p,R,z). - Union{Nothing,Tuple{Float64,Float64}}
+- If 'btipsign' is not specified, assume 1 by default. 'btipsign' is the sign of the dot-product between the magnetic field and the plasma current.
 - If 'species' is not specified, assume 1 by default. 'species' is the integer index of the fast-ion species in the TRANSP .cdf-file. Usually the first
 fast-ion species '1' is wanted.
 - If 'verbose' is not specified, assume false by default. If 'verbose' is set to true, read_nubeam() will talk a lot!
@@ -193,7 +192,7 @@ to enable verification that read_nubeam() is working correctly.
 - If 'save_plots' is not specified, assume false by default. If 'save_plots' is set to true (and 'plotting' is set to true), the safety-check plots will be saved in .png format in your working directory.
 Original function written in Python by Luke Stagner as part of FIDASIM.
 """
-function read_nubeam(filepath::String, mygrid::grid; e_range::Union{Nothing,Tuple{Float64,Float64}}=nothing, p_range::Union{Nothing,Tuple{Float64,Float64}}=nothing, btipsign::Int64=-1, species::Int64=1, verbose::Bool = false, plotting::Bool = false, vverbose::Bool = false, save_plots::Bool = false)
+function read_nubeam(filepath::String, mygrid::grid; e_range::Union{Nothing,Tuple{Float64,Float64}}=nothing, p_range::Union{Nothing,Tuple{Float64,Float64}}=nothing, btipsign::Int64=1, species::Int64=1, verbose::Bool = false, plotting::Bool = false, vverbose::Bool = false, save_plots::Bool = false)
     
     verbose && println("Loading data from TRANSP .cdf file... ")
     species_var = "SPECIES_$(species)" # The fast-ion species identification pattern for TRANSP data

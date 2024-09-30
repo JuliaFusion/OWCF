@@ -378,10 +378,11 @@ if emittedParticleHasCharge && !analytical2DWs
     println("The resulting energy distribution for "*getEmittedParticle(reaction_full)*" from the plasma as a whole will be computed.")
 end
 println("")
+print("---> Finite Larmor radius (FLR) effects included? ")
 if flr_effects
-    println("---> Finite Larmor radius (FLR) effects included? Yes!")
+    println("Yes!")
 else
-    println("---> Finite Larmor radius (FLR) effects included? No.")
+    println("No.")
 end
 println("")
 if !(diagnostic_name=="")
@@ -398,11 +399,16 @@ else
     println("instrumental_response_filepath not specified. Diagnostic response not included.")
 end
 println("")
+print("---> Plasma rotation included? ")
 if plasma_rot
-    println("Plasma rotation included. Plasma rotation vector at (R,z) is (in m/s): ")
+    println("Yes!")
+    print("Plasma rotation vector at (R,z) is (in m/s): ")
     println(round.(reshape(plasma_rot_at_Rz,(1,3)),sigdigits=4))
     println("")
+else
+    println("No.")
 end
+println("")
 if !(filepath_thermal_distr=="")
     println("Thermal distribution file specified: "*filepath_thermal_distr)
 elseif (filepath_thermal_distr=="") && !analytical2DWs

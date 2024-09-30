@@ -168,13 +168,13 @@ function gyro_radius(M::AbstractEquilibrium,p::GCParticle)
     γ = GuidingCenterOrbits.lorentz_factor(p)
     Babs = norm(Bfield(M, p.r, p.z)) # Magnetic field magnitude. Tesla
     m = p.m # Mass of particle
-    KE = p.energy # Kinetic energy. keV
+    KE = (γ-1)*p.energy # Relativistic kinetic energy. keV
     mc2 = m*GuidingCenterOrbits.c0*GuidingCenterOrbits.c0 # Rest energy. Joule
     KE_j = GuidingCenterOrbits.e0*KE*1e3 # Kinetic energy. Joule
     p_rel2 = ((KE_j + mc2)^2 - mc2^2)/(GuidingCenterOrbits.c0*GuidingCenterOrbits.c0) # Relativistic momentum
     p_perp2 = p_rel2*(1-p.pitch^2) # Square of relativistic perpendicular momentum
 
-    return sqrt(p_perp2) / (abs(GuidingCenterOrbits.e0*p.q)*Babs)
+    return sqrt(p_perp2) / (abs(GuidingCenterOrbits.e0*p.q)*Babs*γ)
 end
 
 """
@@ -223,8 +223,8 @@ function spitzer_slowdown_time(n_e::Real, T_e::Real, species_f::String, species_
 end
 
 """
-    add_noise(S,0.05)
-    add_noise(-||-; k=0.15)
+    add_noise(S, b)
+    add_noise(-||-; k=0.1)
 
 A function that adds noise to a signal in a consistent way. The function adds both background noise as well as
 noise to the signal itself. The level of the background noise and the signal noise is determined by the b
