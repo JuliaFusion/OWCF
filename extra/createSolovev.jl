@@ -1,5 +1,5 @@
 ################################ compSolovev.jl ######################################################
-# This script will compute a Solov'ev magnetic equilibrium given the inputs. If no wall is specified
+# This script will create a Solov'ev magnetic equilibrium given the inputs. If no wall is specified
 # (nothing), the script will assume the wall to be given by the Equilibrium.boundary() function (please 
 # see the solovev.jl file of the Equilibrium.jl package, likely located at C:/Users/[your name]/.julia/
 # packages/Equilibrium/) or type 'using Pkg; Pkg.add("https://github.com/JuliaFusion/Equilibrium.jl"); 
