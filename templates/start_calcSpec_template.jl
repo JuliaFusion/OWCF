@@ -134,7 +134,7 @@ end
     filepath_equil = "" # for example "g94701_0-50.7932.eqdsk" or "g96100_0-53.0012.eqdsk"
     filepath_FI_distr = "" # for example "96100J01_fi_1.cdf", "c12_2_FI_distribution_800x50x43x49(+1).h5" or "c15_3_FI_distribution_101x52x45x47.jld2"
     filepath_FI_TRANSP_shot = "" # As an example, if filepath_thermal_distr=="96100J01.cdf" then this variable should be "96100J01_fi_1.cdf". If filepath_FI_distr=="96100J01_fi_1.cdf", then filepath_FI_TRANSP_shot==filepath_FI_distr.
-    filepath_thermal_distr = "" # for example "96100J01.cdf", "c21_3_thermal_profiles.jld2" or ""
+    filepath_thermal_distr = "" # for example "96100J01.cdf", "my_custom_thermal_profiles.jld2" or ""
     filepath_TRANSP_shot = "" # As an example, if filepath_FI_distr=="96100J01_fi_1.cdf" then this variable should be "96100J01.cdf". If filepath_thermal_distr=="96100J01.cdf", then filepath_TRANSP_shot==filepath_thermal_distr.
     folderpath_o = "../OWCF_results/template/" # Output folder path. Finish with '/'
     folderpath_OWCF = $folderpath_OWCF # Set path to OWCF folder to same as main process (hence the '$')
