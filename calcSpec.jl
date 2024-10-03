@@ -318,14 +318,16 @@ if fileext_FI=="cdf"
     YYYY = TIME_array[2]
     timepoint = XX*","*YYYY # Format XX,YYYY to avoid "." when including in filename of saved output
 end
-if fileext_FI_TRANSP_shot=="cdf"
-    # If the user has specified a TRANSP .cdf file with pertaining NUBEAM fast-ion distribution data...
-    # Load the time, and overwrite timepoint. TRANSP time data superseeds .eqdsk time data
-    TIME = round((ncread(filepath_FI_TRANSP_shot,"TIME"))[1],digits=4)
-    TIME_array = split("$(TIME)",".") # Will be on format XX.YYYY
-    XX = TIME_array[1]
-    YYYY = TIME_array[2]
-    timepoint = XX*","*YYYY # Format XX,YYYY to avoid "." when including in filename of saved output
+fileext_FI=="cdf" || fileext_thermal=="cdf"
+    if fileext_FI_TRANSP_shot=="cdf"
+        # If the user has specified a TRANSP .cdf file with pertaining NUBEAM fast-ion distribution data...
+        # Load the time, and overwrite timepoint. TRANSP time data superseeds .eqdsk time data
+        TIME = round((ncread(filepath_FI_TRANSP_shot,"TIME"))[1],digits=4)
+        TIME_array = split("$(TIME)",".") # Will be on format XX.YYYY
+        XX = TIME_array[1]
+        YYYY = TIME_array[2]
+        timepoint = XX*","*YYYY # Format XX,YYYY to avoid "." when including in filename of saved output
+    end
 end
 
 ## ---------------------------------------------------------------------------------------------
