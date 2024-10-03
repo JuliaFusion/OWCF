@@ -76,7 +76,7 @@ include(folderpath_OWCF*"/misc/load_TRANSP_interp_object.jl")
 Input T_axis should be in keV. If input ρ_pol >= 1.0, then 0.0 will be returned (vacuum SOL assumed).
 SOL = scrape-off layer.
 """
-function getAnalyticalTemp(T_axis::Float64, ρ_pol::Float64)
+function getAnalyticalTemp(T_axis::T, ρ_pol::T) where {T<:Real}
 
     if ρ_pol >= 1.0
         return 0.0 # Consider temperature to be zero outside LCFS
@@ -95,7 +95,7 @@ end
 Input n_axis should be in m^-3. If input ρ_pol >= 1.0, then 0.0 will be retured (vacuum SOL assumed).
 SOL = scrape-off layer.
 """
-function getAnalyticalDens(n_axis::Float64, ρ_pol::Float64)
+function getAnalyticalDens(n_axis::T, ρ_pol::T) where {T<:Real}
 
     if ρ_pol >= 1.0
         return 0.0
