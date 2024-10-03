@@ -143,7 +143,7 @@ if constant_Rz
             X = [E,p]
             F_Ep[iE,ip] = inv(2*pi) * (det(Sigmam)^(-1/2)) * exp(-0.5*transpose(X .- X_peak)*inv(Sigmam)*(X .- X_peak)) # The 2D Gaussian formula
         end
-        verbose && println("Setting all values below $(round(floor_level*maximum(F_EpRz),sigdigits=4)) to 0 in the Gaussian FI distribution... ")
+        verbose && println("Setting all values below $(round(floor_level*maximum(F_Ep),sigdigits=4)) to 0 in the Gaussian FI distribution... ")
         F_Ep = map(x-> x<floor_level*maximum(F_Ep) ? 0.0 : x, F_Ep) # Set everything below floor_level*maximum(F_Ep) to 0.0, to avoid extremely small, unstable values.
     elseif distribution_type==:collisional
         verbose && println("Creating NBI collision-physics distribution function... ")
@@ -250,6 +250,7 @@ else # If !constant_Rz
         X_peak = [peak_E, peak_p, peak_R, peak_z] # The mean (peak) of the Gaussian
         F_EpRz = zeros(length(E_array),length(p_array),length(R_array),length(z_array)) # The pre-allocated fast-ion distribution
         progress_length = reduce(*,[length(E_array),length(p_array),length(R_array),length(z_array)]) # The product of all (E,p,R,z) vector lengths
+        global progress # Declare global scope
         progress = 1
         for (iE,E) in enumerate(E_array), (ip,p) in enumerate(p_array), (iR,R) in enumerate(R_array), (iz,z) in enumerate(z_array)
             X = [E,p,R,z]
@@ -304,9 +305,11 @@ myfile = jldopen(folderpath_out*"FI_distr_$(distribution_type)_$(nE)x$(np)x$(nR)
 write(myfile,"F_EpRz",F_EpRz)
 write(myfile,"E_array",E_array)
 write(myfile,"p_array",p_array)
-write(myfile,"R_array",R_array)
-write(myfile,"z_array",z_array)
 write(myfile,"constant_Rz",constant_Rz)
+if !constant_Rz
+    write(myfile,"R_array",R_array)
+    write(myfile,"z_array",z_array)
+end
 write(myfile,"distribution_type","$(distribution_type)")
 write(myfile,"ntot",tot_N_FI)
 if distribution_type==:gaussian
