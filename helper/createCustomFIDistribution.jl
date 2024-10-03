@@ -20,35 +20,35 @@
 # if distribution_type == :gaussian, elseif distribution_type == :collisional etc.
 
 # Start of general inputs
-constant_Rz = false # Set to true, if the FI distribution should be computed as constant in (R,z) position space
+constant_Rz = true # Set to true, if the FI distribution should be computed as constant in (R,z) position space
 distribution_type = :gaussian # Currently supported options include :gaussian, :collisional and :custom
 folderpath_OWCF = "" # /path/to/the/directory/of/the/OWCF/
 folderpath_out = "" # /path/to/where/you/want/your/output/file/to/be/saved.jld2
-max_E = 0.0 # keV. The maximum of the energy grid points
-max_p = 0.0 # -. The maximum of the pitch grid points
-max_R = 0.0 # m. The maximum of the R grid points
-max_z = 0.0 # m. The maximum of the z grid points
-min_E = 0.0 # keV. The minimum of the energy grid points
-min_p = 0.0 # -. The minimum of the pitch grid points
-min_R = 0.0 # m. The minimum of the R grid points
-min_z = 0.0 # m. The minimum of the z grid points
-nE = 0 # Number of grid points in energy (E)
-np = 0 # Number of grid points in pitch (p)
-nR = 0 # Number of grid points in major radius (R). PLEASE NOTE! Even if constant_Rz is set to true, this needs to be specified!
-nz = 0 # Number of grid points in vertical coordinate (z). PLEASE NOTE! Even if constant_Rz is set to true, this needs to be specified!
-save_plots = false # If true, (E,p) and (R,z) plots of the computed FI distribution will be saved in .png file format. For post-analysis.
-tot_N_FI = 0.0 # The total number of fast ions in the plasma. Obtained when integrating over all of (E,p,R,z) space
-verbose = false # If true, the script will talk a lot!
+max_E = 250.0 # keV. The maximum of the energy grid points
+max_p = 1.0 # -. The maximum of the pitch grid points
+max_R = 3.9 # m. The maximum of the R grid points
+max_z = 2.0 # m. The maximum of the z grid points
+min_E = 1.0 # keV. The minimum of the energy grid points
+min_p = -1.0 # -. The minimum of the pitch grid points
+min_R = 1.8 # m. The minimum of the R grid points
+min_z = -2.0 # m. The minimum of the z grid points
+nE = 100 # Number of grid points in energy (E)
+np = 50 # Number of grid points in pitch (p)
+nR = 20 # Number of grid points in major radius (R). PLEASE NOTE! Even if constant_Rz is set to true, this needs to be specified!
+nz = 20 # Number of grid points in vertical coordinate (z). PLEASE NOTE! Even if constant_Rz is set to true, this needs to be specified!
+save_plots = true # If true, (E,p) and (R,z) plots of the computed FI distribution will be saved in .png file format. For post-analysis.
+tot_N_FI = 1.0e19 # The total number of fast ions in the plasma. Obtained when integrating over all of (E,p,R,z) space
+verbose = true # If true, the script will talk a lot!
 # End of general inputs
 
 # Start of specific inputs
 if distribution_type == :gaussian # If you would like a gaussian FI distribution, please specify...
     floor_level = 1.0e-3 # Below floor_level*maximum(f_Gaussian), the FI distribution will be manually set to 0
-    peak_E = 0.0 # keV. The energy (E) coordinate of the peak of the gaussian 
-    peak_p = 0.0 # -. The pitch (E) coordinate of the peak of the gaussian 
+    peak_E = 50.0 # keV. The energy (E) coordinate of the peak of the gaussian 
+    peak_p = 0.5 # -. The pitch (E) coordinate of the peak of the gaussian 
     peak_R = 0.0 # m. The major radius (R) coordinate of the peak of the gaussian. If constant_Rz==true, this does not matter
     peak_z = 0.0 # m. The vertical coordinate (z) coordinate of the peak of the gaussian. If constant_Rz==true, this does not matter
-    Sigma = [0.0, 0.0, 0.0, 0.0] # The values of Sigma for the Gaussian distribution (1/(4*pi^2)) * (det(Sigma)^(-1/2)) * exp(-0.5*transpose(X-X_peak)*(Sigma^(-1))*(X-X_peak))
+    Sigma = [50.0, 0.05, 0.0, 0.0] # The values of Sigma for the Gaussian distribution (1/(4*pi^2)) * (det(Sigma)^(-1/2)) * exp(-0.5*transpose(X-X_peak)*(Sigma^(-1))*(X-X_peak))
 elseif distribution_type == :collisional # If you would like a collision-physics FI distribution, please specify...
     assume_Ti_equalTo_Te = false # Should Ti=Te be assumed?
     assume_ni_equalTo_ne = false # Should ni=ne be assumed?
@@ -130,6 +130,10 @@ end
 E_array = collect(range(min_E,stop=max_E,length=nE)); dE = diff(E_array)[1]
 p_array = collect(range(min_p,stop=max_p,length=np)); dp = diff(p_array)[1]
 verbose && println("Created (E,p) grid points. dE=$(dE) keV. dp=$(dp).")
+# Create the (R,z) grid
+R_array = collect(range(min_R,stop=max_R,length=nR)); dR = diff(R_array)[1]
+z_array = collect(range(min_z,stop=max_z,length=nz)); dz = diff(z_array)[1]
+verbose && println("Created (R,z) grid points. dR=$(dR) m. dz=$(dz) m.")
 
 # Two different approaches, depending on if constant_Rz
 if constant_Rz
@@ -240,10 +244,6 @@ if constant_Rz
     F_Ep = tot_N_FI .*F_Ep ./ sum((dE*dp) .*F_Ep) # Re-normalize so that F_Ep integrate to tot_N_FI
     F_EpRz = repeat(F_Ep,1,1,nR,nz) # Make F_EpRz equal to F_Ep for all (R,z) grid points
 else # If !constant_Rz
-    # Create the (R,z) grid
-    R_array = collect(range(min_R,stop=max_R,length=nR)); dR = diff(R_array)[1]
-    z_array = collect(range(min_z,stop=max_z,length=nz)); dz = diff(z_array)[1]
-    verbose && println("Created (R,z) grid points. dR=$(dR) m. dz=$(dz) m.")
     if distribution_type==:gaussian
         verbose && println("Creating (E,p,R,z) Gaussian FI distribution... ")
         Sigmam = diagm(Sigma) # Only the correlation lengths in (E,p) matter, because of constant_Rz. diagm(x) creates a matrix with x as diagonal 
@@ -306,10 +306,8 @@ write(myfile,"F_EpRz",F_EpRz)
 write(myfile,"E_array",E_array)
 write(myfile,"p_array",p_array)
 write(myfile,"constant_Rz",constant_Rz)
-if !constant_Rz
-    write(myfile,"R_array",R_array)
-    write(myfile,"z_array",z_array)
-end
+write(myfile,"R_array",R_array)
+write(myfile,"z_array",z_array)
 write(myfile,"distribution_type","$(distribution_type)")
 write(myfile,"ntot",tot_N_FI)
 if distribution_type==:gaussian
