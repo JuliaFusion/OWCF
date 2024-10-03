@@ -300,7 +300,7 @@ if save_plots # If plots should be saved of the computed distribution function..
 end
 
 # Save results
-myfile = jldopen(folderpath_out*"FI_distr_$(distribution_type)_$(nE)x$(np)x$(nR)x$(nz)_"*date_and_time,true,true,false,IOStream)
+myfile = jldopen(folderpath_out*"FI_distr_$(distribution_type)_$(nE)x$(np)x$(nR)x$(nz)_"*date_and_time*".jld2",true,true,false,IOStream)
 write(myfile,"F_EpRz",F_EpRz)
 write(myfile,"E_array",E_array)
 write(myfile,"p_array",p_array)
@@ -339,4 +339,4 @@ elseif distribution_type==:collisional
 else
 end
 close(myfile)
-println("~~~createCustomFIDistribution.jl completed~successfully!~~~")
+println("~~~createCustomFIDistribution.jl completed successfully!~~~")
