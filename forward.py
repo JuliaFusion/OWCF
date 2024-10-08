@@ -123,7 +123,7 @@ class Forward(object):
             weights_vc = weights # No viewing cone specified. All weights are accepted
             bulk_temp_vc = bulk_temp
             bulk_dens_vc = bulk_dens
-            #B_vec_vc = B_vec # No viewing cone specified. All magnetic field vectors are accepted
+            B_vec_vc = B_vec # No viewing cone specified. All magnetic field vectors are accepted
             omega = 4*np.pi # Spherical emission, in all directions
             dphi = 2*np.pi # All toroidal angles are included
         else:
@@ -144,7 +144,7 @@ class Forward(object):
             if bulk_dist=='' and (not calcProjVel):
                 bulk_temp_vc = bulk_temp[i_points]
                 bulk_dens_vc = bulk_dens[i_points]
-            #B_vec_vc = B_vec[:,i_points] # Extract magnetic field vectors corresponding to R,z points within diagnostic viewing cone
+            B_vec_vc = B_vec[:,i_points] # Extract magnetic field vectors corresponding to R,z points within diagnostic viewing cone
             omega = self.viewing_cone.OMEGA[i_voxels] # Only specific solid angles, in steradian
             dphi = self.viewing_cone.dPHI # What is the incremental toroidal angle that one diagnostic viewing cone voxel occupies?
             u1 = self.viewing_cone.U[:,i_voxels] # What is the emission direction of the viewing cone?
@@ -165,10 +165,12 @@ class Forward(object):
                 return np.histogram(proj_speeds, bins=Ed_bins, weights=spec_weights)[0] # Bin all projected velocities
 
 
-        # Compute spectrum
+        # Set necessary spectrum computation variable values
         spec_calc.n_samples = len(weights_vc) # The actual number of samples to be counted towards the MC simulation
-        spec_calc.reactant_a.v = v_vc
+        spec_calc.reactant_a.v = v_vc # The fast ion velocities (inside the viewing cone)
+        spec_calc.B_dir = B_vec_vc # The exact magnetic field at all points of interest
 
+        # Set bulk temperature and density
         if not bulk_dist=='': # If there is a bulk distribution specified
             T_bulk = bulk_dist.get_temperature(R_vc, z_vc) # Load its bulk temperature for the R,z points
             n_bulk = bulk_dist.get_density(R_vc, z_vc) # Load its density for the R,z points

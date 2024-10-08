@@ -64,13 +64,13 @@ Pkg.activate(".")
 
 ## --------------------------------------------------------------------------
 # Required inputs
-B0 = 1.6 # Magnetic field on-axis. Tesla
-R0 = 0.894 # Major radius position of magnetic axis. Meters
-ϵ = 0.274/R0 # Inverse aspect ratio
-δ = 0.49 # Triangularity
-κ = 1.8 # Plasma elongation
-α = -2.4 # Constant relating beta regime. This must be chosen freely. -0.155 works for ITER and results in a β-value of 0.05
-qstar = 3.5 # Kink safety factor
+B0 = 0.0 # Magnetic field on-axis. Tesla
+R0 = 0.0 # Major radius position of magnetic axis. Meters
+ϵ = 0.0/R0 # Inverse aspect ratio, a/R0 where a is the radial (R) distance from the magnetic axis to the separatrix
+δ = 0.0 # Triangularity
+κ = 0.0 # Plasma elongation
+α = 0.0 # Constant relating beta regime. This must be chosen freely. -0.155 works for ITER and results in a β-value of 0.05
+qstar = 0.0 # Kink safety factor. qstar = ϵB0/avg(B_pol) where the average of the poloidal magnetic field B_pol is at the separatrix 
 filepath_wall = ""
 folderpath_o = ""
 verbose = true
@@ -107,7 +107,7 @@ else
     close(myfile)
     verbose && println("Success!")
     verbose && println("Creating wall from data... ")
-    wall = Equilibrium.boundary(R_array, z_array)
+    wall = Equilibrium.Boundary(R_array, z_array)
 end
 
 ## --------------------------------------------------------------------------
@@ -126,3 +126,5 @@ myfile = jldopen(filepath_output,true,true,false,IOStream)
 write(myfile,"S",S)
 write(myfile,"wall",wall)
 close(myfile)
+verbose && println("Saved output file at "*filepath_output)
+println("~~~createSolovev.jl completed successfully!~~~")

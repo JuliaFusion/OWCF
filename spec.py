@@ -94,7 +94,7 @@ class Reactant:
     def __init__(self, name, n_samples=0, B_dir=[0,1,0]):
 
         self.particle = Particle(name)
-        self.B_dir = B_dir
+        self._B_dir = B_dir
 
         # Initialize without MC sample
         self.P = None
