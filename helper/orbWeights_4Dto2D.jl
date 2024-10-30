@@ -32,7 +32,7 @@
 # You should delete the orbWeights4D file once you're done with it. These files are massive and take
 # up an unnessecary amount of space, in general. Or save it externally on a USB memory etc.
 
-# Script written by Henrik Järleblad. Last maintained 2022-09-09.
+# Script written by Henrik Järleblad. Last maintained 2024-10-30.
 ###################################################################################################
 
 verbose && println("Loading Julia packages... ")
@@ -51,7 +51,13 @@ end
 
 verbose && println("Loading orbit weight function and orbit-space grid arrays... ")
 myfile = jldopen(filepath_W,false,false,false,IOStream)
-Wtot = myfile["Wtot"]
+if haskey(myfile,"Wtot")
+    Wtot = myfile["Wtot"]
+elseif haskey(myfile,"W")
+    Wtot = myfile["W"]
+else
+    error("Unknown file key for weight functions!")
+end
 E_array = myfile["E_array"]
 pm_array = myfile["pm_array"]
 Rm_array = myfile["Rm_array"]
@@ -195,7 +201,7 @@ while isfile(filepath_output*".jld2") # To take care of not overwriting files. A
 end
 global filepath_output = filepath_output*".jld2"
 myfile = jldopen(filepath_output,true,true,false,IOStream)
-write(myfile,"Wtot", Wtot2D)
+write(myfile,"W", Wtot2D)
 write(myfile,"E_array",E_array)
 write(myfile,"pm_array",pm_array)
 write(myfile,"Rm_array",Rm_array)
