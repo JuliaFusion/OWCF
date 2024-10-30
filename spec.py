@@ -55,6 +55,10 @@ class Particle:
             self.long_name = 'helium-4'
             self.u = constants.m4He
             self.q = 2*(constants.e)
+        elif name == '9be':
+            self.long_name = 'beryllium-9'
+            self.u = constants.m9Be   
+            self.q = 4*(constants.e)
         elif name == '12c_gs': #!#
             self.long_name = 'carbon-12-gs'
             self.u = constants.m12C

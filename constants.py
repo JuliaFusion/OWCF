@@ -51,3 +51,13 @@ m9Be = m9Be - 4*me        # u
 # (from NNDC Nuclear Wallet cards. Atomic binding energy neglected)
 m12C = 12*u_keV / u_keV
 m12C = m12C - 6*me        # u
+
+# 13-C mass
+# (from NNDC Nuclear Wallet cards. Atomic binding energy neglected)
+m13C = (13*u_keV + 3125.00888) / u_keV
+m13C = m13C - 6*me        # u
+
+# 10-B mass
+# (from NNDC Nuclear Wallet cards. Atomic binding energy neglected)
+m10B = (10*u_keV + 12050.609 ) / u_keV
+m10B = m10B - 5*me        # u
