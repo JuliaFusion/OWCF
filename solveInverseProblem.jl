@@ -110,6 +110,8 @@ Ed_array_W_KM14 = read(myfile["Ed_array"])
 Ed_array_W_KM14 = Ed_array_W_KM14 ./(1000.0) # keV to MeV
 E_array = read(myfile["E_array"])
 p_array = read(myfile["p_array"])
+R_of_interest = read(myfile["R"])
+z_of_interest = read(myfile["z"])
 En_array_W_KM14 = read(myfile["Ed_array_raw"])
 close(myfile)
 ###########################################################
@@ -223,6 +225,8 @@ for iEd in axes(W_coarse_MPRu,1)
 end
 ###########################################################
 # Compute test Maxwellian fast-ion distribution
+# Compute test Maxwellian fast-ion distribution
+# Compute test Maxwellian fast-ion distribution
 E0 = 200.0 # keV 
 δE = 50
 p0 = 0.5 # -
@@ -239,6 +243,30 @@ maximum(f_test)
 f_test = (1.0e19/sum(diff(E_coarse)[1]*diff(p_coarse)[1] .*f_test)) .*f_test
 f_test = map(x-> x<0.001*maximum(f_test) ? 0.0 : x, f_test)
 maximum(f_test)
+###########################################################
+# OR, load f_test as the TRANSP distribution, and interpolate onto grid of interest
+# OR, load f_test as the TRANSP distribution, and interpolate onto grid of interest
+# OR, load f_test as the TRANSP distribution, and interpolate onto grid of interest
+include("/home/henrikj/Codes/OWCF/misc/convert_units.jl")
+myfile = jldopen("/home/henrikj/Data/JET/TRANSP/99971/L72/99971L72_fi_2.jld2",false,false,false,IOStream)
+F_EpRz_TRANSP = myfile["F_ps"]
+E_array_TRANSP = myfile["energy"]
+p_array_TRANSP = myfile["pitch"]
+R_array_TRANSP = myfile["R"]
+z_array_TRANSP = myfile["z"]
+close(myfile)
+iR_TRANSP = argmin(abs.(R_array_TRANSP .- 100*R_of_interest))
+iz_TRANSP = argmin(abs.(z_array_TRANSP .- 100*z_of_interest))
+f_test_orig = unit_conversion_factor("cm^-3","m^-3") .*F_EpRz_TRANSP[:,:,iR_TRANSP,iz_TRANSP] # TRANSP distribution is in cm^-3. Convert to m^-3
+nodes_TRANSP = (E_array_TRANSP,p_array_TRANSP)
+itp = Interpolations.interpolate(nodes_TRANSP,f_test_orig,Gridded(Linear()))
+etp = Interpolations.extrapolate(itp,Interpolations.Flat())
+f_test = zeros(length(E_coarse),length(p_coarse))
+for (iE,E) in enumerate(E_coarse)
+    for (ip,p) in enumerate(p_coarse)
+        f_test[iE,ip] = etp(E,p)
+    end
+end
 ###########################################################
 # Plot test distribution (Maxwellian)
 Plots.heatmap(E_coarse,p_coarse,f_test',title="Ground truth")
@@ -355,19 +383,29 @@ include("extra/dependencies.jl")
 E0_array = E_coarse[1:1:end-1] .+ diff(E_coarse)[1]/2
 p0_array = p_coarse[2:1:end-1]
 F_SD = zeros(length(E_coarse)*length(p_coarse),length(E0_array)*length(p0_array))
+F_SD_c_inds = CartesianIndices((length(E0_array),length(p0_array)))
 i_SD = 1
-for E_0 in E0_array, p_0 in p0_array
+E_oi = 250.0
+iE_oi = argmin(abs.(E0_array .- E_oi))
+p_oi = 0.0
+ip_oi = argmin(abs.(p0_array .- p_oi))
+for (ic,c) in enumerate(F_SD_c_inds)
+    iE = c[1]; ip = c[2]; E_0 = E0_array[iE]; p_0 = p0_array[ip]
     #println("$(round(100*i_SD/(length(E_coarse)*length(p_coarse)),digits=3)) %")
-    f_SD = slowing_down_function(E_0, p_0, E_coarse, p_coarse, n_e, T_e, "D", ["T","D"], [n_T, n_D], [T_T, T_D]; dampen=true, damp_type=:linear)
+    f_SD = slowing_down_function(E_0, p_0, E_coarse, p_coarse, n_e, T_e, "D", ["T","D"], [n_T, n_D], [T_T, T_D]; dampen=true, damp_type=:erfc, sigma=2.0)
     #println(extrema(f_SD))
     dE = diff(E_coarse)[1]
     dp = diff(p_coarse)[1]
     f_SD = f_SD ./sum((dE*dp) .*f_SD) # Normalize the basis function so they integrate to 1.0
-    F_SD[:,i_SD] .= reshape(f_SD,(length(E_coarse)*length(p_coarse),1))
+    F_SD[:,ic] .= reshape(f_SD,(length(E_coarse)*length(p_coarse),1))
     i_SD += 1
+    if iE==iE_oi && ip==ip_oi
+        my_plt = Plots.heatmap(E_coarse,p_coarse,f_SD',fillcolor=cgrad([:white, :yellow, :orange, :red, :black]))
+        display(my_plt)
+    end
 end
 ###########################################################
-anim = @animate for i in 1:100:size(F_SD,2)
+anim = @animate for i in 1:25:size(F_SD,2)
     f_SD = reshape(F_SD[:,i],(length(E_coarse),length(p_coarse)))
     my_plt = Plots.heatmap(E_coarse,p_coarse,f_SD',fillcolor=cgrad([:white, :yellow, :orange, :red, :black]))
     display(my_plt)
@@ -383,24 +421,24 @@ end
 # hcat them back into a matrix
 F_SD_new = reduce(hcat,filter(col-> sum(col)!=0.0 && sum(isnan.(col))==0, eachcol(F_SD)))
 ###########################################################
-for i in 1:100:size(F_SD_new,2)
+for i in 1:50:size(F_SD_new,2)
     f_SD_new = reshape(F_SD_new[:,i],(length(E_coarse),length(p_coarse)))
     my_plt = Plots.heatmap(E_coarse,p_coarse,f_SD_new',fillcolor=cgrad([:white, :yellow, :orange, :red, :black]))
     display(my_plt)
 end
 ###########################################################
-W_SD_KM14_orig = W_2D_KM14_orig*F_SD_new
-W_SD_KM15_orig = W_2D_KM15_orig*F_SD_new
-W_SD_MPRu_orig = W_2D_MPRu_orig*F_SD_new
-###########################################################
-Plots.plot(Ed_array_S_KM14_orig, S_exp_KM14_orig)
-Plots.plot!(Ed_array_S_KM14_orig, 0.0005 .*W_2D_KM14_orig*f_1D)
-
-Plots.plot(Ed_array_S_KM15_orig, S_exp_KM15_orig)
-Plots.plot!(Ed_array_S_KM15_orig, 0.0010 .*W_2D_KM15_orig*f_1D)
-
-Plots.plot(Ed_array_S_KM15_orig, S_exp_KM15_orig)
-Plots.plot!(Ed_array_S_KM15_orig, 0.0010 .*W_2D_KM15_orig*f_1D)
+SD_prior = true
+if !SD_prior
+    # Without SD prior
+    W_SD_KM14_orig = W_2D_KM14_orig
+    W_SD_KM15_orig = W_2D_KM15_orig
+    W_SD_MPRu_orig = W_2D_MPRu_orig
+else
+    # With SD prior
+    W_SD_KM14_orig = W_2D_KM14_orig*F_SD_new
+    W_SD_KM15_orig = W_2D_KM15_orig*F_SD_new
+    W_SD_MPRu_orig = W_2D_MPRu_orig*F_SD_new
+end
 ###########################################################
 # Rescale weight functions, if necessary
 # In final OWCF version, code an intelligent check, to 
@@ -413,14 +451,15 @@ Plots.plot!(Ed_array_S_KM15_orig, 0.0010 .*W_2D_KM15_orig*f_1D)
 # compared with the experimental data. If none of the signals are within an 
 # order of magnitude from the maximum of any of the experimental signals, 
 # the weight functions should be re-scaled as below
-W_2D_KM14_a = (maximum(S_exp_KM14_orig)/maximum(S_synth_KM14_clean)) .*W_SD_KM14_orig
-W_2D_KM15_a = (maximum(S_exp_KM15_orig)/maximum(S_synth_KM15_clean)) .*W_SD_KM15_orig
-W_2D_MPRu_a = (maximum(S_exp_MPRu_orig)/maximum(S_synth_MPRu_clean)) .*W_SD_MPRu_orig
+rescale_func = maximum # mean
+W_2D_KM14_a = (rescale_func(S_exp_KM14_orig)/rescale_func(S_synth_KM14_clean)) .*W_SD_KM14_orig
+W_2D_KM15_a = (rescale_func(S_exp_KM15_orig)/rescale_func(S_synth_KM15_clean)) .*W_SD_KM15_orig
+W_2D_MPRu_a = (rescale_func(S_exp_MPRu_orig)/rescale_func(S_synth_MPRu_clean)) .*W_SD_MPRu_orig
 ###########################################################
 # Try using the non-rescaled weight functions on the experimental data
-W_2D_KM14_a = W_SD_KM14_orig#W_2D_KM14_orig
-W_2D_KM15_a = W_SD_KM15_orig#W_2D_KM15_orig
-W_2D_MPRu_a = W_SD_MPRu_orig#W_2D_MPRu_orig
+#W_2D_KM14_a = W_SD_KM14_orig#W_2D_KM14_orig
+#W_2D_KM15_a = W_SD_KM15_orig#W_2D_KM15_orig
+#W_2D_MPRu_a = W_SD_MPRu_orig#W_2D_MPRu_orig
 ###########################################################
 # Prepare experimental data problem first
 noise_floor_factor = 1.0e-4
@@ -457,12 +496,10 @@ S_exp_MPRu_a = S_exp_MPRu_orig[good_inds_MPRu]
 W_hat = vcat(W_2D_KM14_b ./err_exp_KM14_b, W_2D_KM15_b ./err_exp_KM15_b, W_2D_MPRu_b ./err_exp_MPRu_b) #W_hat = vcat(W_2D_KM14 ./err_exp_KM14, W_2D_KM15 ./err_exp_KM15, W_2D_MPRu ./err_exp_MPRu)
 s_hat = vcat(S_exp_KM14_a ./err_exp_KM14_b, S_exp_KM15_a ./err_exp_KM15_b, S_exp_MPRu_a ./err_exp_MPRu_b)
 ###########################################################
-#Plots.plot(s_hat)
-###########################################################
 # Add 0th order Tikhonov
-L0 = zeros(size(F_SD_new,2),size(F_SD_new,2)) #L0 = zeros(length(f_1D),length(f_1D))
-for i=1:size(F_SD_new,2)#length(f_1D)
-    for j=1:size(F_SD_new,2)#length(f_1D)
+L0 = zeros(size(W_hat,2),size(W_hat,2)) #L0 = zeros(length(f_1D),length(f_1D))
+for i=1:size(W_hat,2)#length(f_1D)
+    for j=1:size(W_hat,2)#length(f_1D)
         if i==j
             L0[i,j] = 1.0
         end
@@ -470,19 +507,19 @@ for i=1:size(F_SD_new,2)#length(f_1D)
 end
 ###########################################################
 # Add 1st order Tikhonov
-L1 = zeros(length(f_1D),length(f_1D))
-for i=1:length(f_1D)
-    for j=1:length(f_1D)
-        if (i-j)==1
-            L1[i,j] = 1.0
-        end
-        if (i-j)==-1
-            L1[i,j] = -1.0
-        end
-    end
-end
-L1[1,:] .= 0.0
-L1[:,end] .= 0.0
+#L1 = zeros(length(W_hat),length(W_hat))
+#for i=1:length(W_hat)
+#    for j=1:length(W_hat)
+#        if (i-j)==1
+#            L1[i,j] = 1.0
+#        end
+#        if (i-j)==-1
+#            L1[i,j] = -1.0
+#        end
+#    end
+#end
+#L1[1,:] .= 0.0
+#L1[:,end] .= 0.0
 #spy(L1)
 ###########################################################
 #Normalize everything
@@ -491,12 +528,12 @@ W_hh = W_hat ./Whm
 shm = maximum(s_hat)
 s_hh = s_hat ./shm
 L_orig = L0
-f0 = zeros(size(F_SD_new,2))#zeros(size(L_orig,1))
+f0 = zeros(size(W_hat,2))#zeros(size(L_orig,1))
 ###########################################################
 # SOLVE THE EXPERIMENTAL DATA PROBLEM
 using SCS, Convex
 using LinearAlgebra
-lambda_values = 10 .^(range(-3,stop=3.0,length=50))
+lambda_values = 10 .^(range(-3,stop=3.0,length=20))
 x_sols = zeros(length(lambda_values))
 p_sols = zeros(length(lambda_values))
 F_sols = zeros(length(f0),length(lambda_values))
@@ -505,7 +542,7 @@ for (il,lambda) in enumerate(lambda_values)
     L = lambda*L_orig
     x = Convex.Variable(length(f0))
 
-    problem = Convex.minimize(Convex.sumsquares(vcat(W_hh,L) * x - vcat(s_hh,f0)), [x >= 0])
+    problem = Convex.minimize(Convex.sumsquares(vcat(W_hh,L) * x - vcat(s_hh,f0)), [x >= 0]) # FOR SD PRIOR, THIS SHOULD BE F_SD_new*x >= 0 !!!
 
     solve!(problem, SCS.Optimizer)
 
@@ -542,35 +579,31 @@ end
 ilm = argmax(gamma)
 Plots.plot(gamma)
 ###########################################################
-plot_inds = 1:length(lambda_values) #23:27 # [24] #
-for i=plot_inds
-    Sr = (Whm/shm) .*W_hh*F_sols[:,i]
-    myplt = Plots.plot(Sr,title="$(i): log10(λ)=$(log10(lambda_values[i]))",label="ŴF*")
-    myplt = Plots.plot!(s_hh,label="hat(Ŝ)")
-    display(myplt)
-end
-for i=plot_inds
-    Sr_KM14 = W_2D_KM14_b*F_sols[:,i]
-    myplt = Plots.plot(Ed_array_S_KM14_orig[good_inds_KM14],Sr_KM14 ./maximum(Sr_KM14),title="$(i): log10(λ)=$(log10(lambda_values[i]))",label="WF*")
-    myplt = Plots.scatter!(Ed_array_S_KM14_orig[good_inds_KM14],S_exp_KM14_a ./maximum(S_exp_KM14_a),label="S")
-    display(myplt)
-end
-for i=plot_inds
-    Sr_KM15 = W_2D_KM15_b*F_sols[:,i]
-    myplt = Plots.plot(Ed_array_S_KM15_orig[good_inds_KM15],Sr_KM15 ./maximum(Sr_KM15),title="$(i): log10(λ)=$(log10(lambda_values[i]))",label="WF*")
-    myplt = Plots.scatter!(Ed_array_S_KM15_orig[good_inds_KM15],S_exp_KM15_a ./maximum(S_exp_KM15_a),label="S")
-    display(myplt)
-end
-for i=plot_inds
-    Sr_MPRu = W_2D_MPRu_b*F_sols[:,i]
-    myplt = Plots.plot(Ed_array_S_MPRu_orig[good_inds_MPRu],Sr_MPRu ./maximum(Sr_MPRu),title="$(i): log10(λ)=$(log10(lambda_values[i]))",label="WF*")
-    myplt = Plots.scatter!(Ed_array_S_MPRu_orig[good_inds_MPRu],S_exp_MPRu_a ./maximum(S_exp_MPRu_a),label="S")
-    display(myplt)
-end
+plot_inds = 1:length(lambda_values) #15:33 # [24] #
 anim = @animate for i=plot_inds
-    Fr_2D = reshape(F_SD_new*F_sols[:,i],length(E_coarse),length(p_coarse))#reshape(F_sols[:,i],size(f_test))
+    Sr_KM14 = W_2D_KM14_b*F_sols[:,i]
+    myplt_KM14 = Plots.plot(Ed_array_S_KM14_orig[good_inds_KM14], Sr_KM14,title="$(i): log10(λ)=$(round(log10(lambda_values[i]),sigdigits=4))",label="WF*")
+    myplt_KM14 = Plots.scatter!(myplt_KM14, Ed_array_S_KM14_orig,S_exp_KM14_orig ,label="S")
+    Sr_KM15 = W_2D_KM15_b*F_sols[:,i]
+    myplt_KM15 = Plots.plot(Ed_array_S_KM15_orig[good_inds_KM15], Sr_KM15,title="$(i): log10(λ)=$(round(log10(lambda_values[i]),sigdigits=4))",label="WF*")
+    myplt_KM15 = Plots.scatter!(myplt_KM15, Ed_array_S_KM15_orig,S_exp_KM15_orig ,label="S")
+    Sr_MPRu = W_2D_MPRu_b*F_sols[:,i]
+    myplt_MPRu = Plots.plot(Ed_array_S_MPRu_orig[good_inds_MPRu],Sr_MPRu ,title="$(i): log10(λ)=$(round(log10(lambda_values[i]),sigdigits=4))",label="WF*")
+    myplt_MPRu = Plots.scatter!(myplt_MPRu, Ed_array_S_MPRu_orig,S_exp_MPRu_orig ,label="S")
+    myplt_tot_1 = Plots.plot(myplt_KM14, myplt_KM15, myplt_MPRu, layout=(1,3))
+
+    if SD_prior
+        Fr_2D = reshape(F_SD_new*F_sols[:,i],length(E_coarse),length(p_coarse))#reshape(F_sols[:,i],size(f_test))
+    else
+        Fr_2D = reshape(F_sols[:,i],length(E_coarse),length(p_coarse))
+    end
+
+    normf_max_Fr_2D = floor(log10(maximum(Fr_2D)))
+    normf_max_F_sols = floor(log10(maximum(F_sols[:,i])))
     gi = findall(x-> x<250.0,E_coarse)
-    myplt = Plots.heatmap(E_coarse[gi],p_coarse,Fr_2D[gi,:]',title="$(i): log10(λ)=$(log10(lambda_values[i]))",fillcolor=cgrad([:white, :yellow, :orange, :red, :black]))
+    myplt = Plots.heatmap(E_coarse[gi],p_coarse,Fr_2D[gi,:]' ./(10^normf_max_Fr_2D),title="$(i): log10(λ)=$(round(log10(lambda_values[i]),sigdigits=4)) [x 10^$(Int(normf_max_Fr_2D))]",fillcolor=cgrad([:white, :yellow, :orange, :red, :black]))
+    #myplt0 = Plots.plot(F_sols[:,i] ./(10^normf_max_F_sols))
+    myplt0 = Plots.heatmap(E0_array,p0_array,reshape(F_sols[:,i] ./(10^normf_max_F_sols),(length(E0_array),length(p0_array)))',title="$(i): SD coefficients value [x 10^$(Int(normf_max_F_sols))]",fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]),xticks=[50,100,150,200],yticks=[-1.0,-0.5,0.0,0.5,1.0],ylims=(-1.0,1.0))
     p0, pN = extrema(p_sols); diffP = abs(pN-p0)
     x0, xN = extrema(x_sols); diffX = abs(xN-x0)
     l_mag = sqrt((p_sols[i]-p0)*(p_sols[i]-p0)/(diffP*diffP)+(x_sols[i]-x0)*(x_sols[i]-x0)/(diffX*diffX))
@@ -580,11 +613,12 @@ anim = @animate for i=plot_inds
     myplt1 = Plots.scatter!(myplt1, [p_sols[end]],[x_sols[end]],label="End")
     myplt1 = Plots.scatter!(myplt1, [p_sols[ilm]],[x_sols[ilm]],label="gamma_max")
     myplt1 = Plots.scatter!(myplt1, [p_sols[i]],[x_sols[i]],label="$(round(log10(lambda_values[i]),sigdigits=4))")
-    myplt_tot = Plots.plot(myplt,myplt1,layout=(1,2),size=(900,400))
+    myplt_tot_2 = Plots.plot(left_margin=8Plots.mm, myplt, myplt0, myplt1,layout=(1,3))
+    myplt_tot = Plots.plot(myplt_tot_1, myplt_tot_2, layout=(2,1),size=(1500,900))
     display(myplt_tot)  
     #display(myplt)
 end
-gif(anim,"test.gif",fps=2)
+gif(anim,"test_SD_rescale_with_new_TRANSP_WF.gif",fps=1)
 ###########################################################
 Ni = plot_inds[26]
 Fr_2D = reshape(F_SD_new*F_sols[:,Ni],length(E_coarse),length(p_coarse))#reshape(F_sols[:,i],size(f_test))

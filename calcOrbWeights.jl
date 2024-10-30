@@ -684,7 +684,7 @@ for iii=1:iiimax
         end
         global filepath_output = filepath_output*".jld2"
         myfile_s = jldopen(filepath_output,true,true,false,IOStream)
-        write(myfile_s, "W", Wtot)
+        write(myfile_s, "W2D", Wtot)
         write(myfile_s, "E_array", vec(E_array))
         write(myfile_s, "pm_array", vec(pm_array))
         write(myfile_s, "Rm_array", vec(Rm_array))
@@ -705,8 +705,8 @@ for iii=1:iiimax
         end
         close(myfile_s)
         if include2Dto4D
-            (iiimax==1) && verbose && println("Enflating orbit weight functions to 4D form... ")
-            (iiimax>1) && verbose && println("Enflating orbit weight functions $(iii) (of $(iiimax)) to 4D form... ")
+            (iiimax==1) && verbose && println("Inflating orbit weight functions to 4D form... ")
+            (iiimax>1) && verbose && println("Inflating orbit weight functions $(iii) (of $(iiimax)) to 4D form... ")
             global filepath_W = filepath_output
             include("helper/orbWeights_2Dto4D.jl")
         end
