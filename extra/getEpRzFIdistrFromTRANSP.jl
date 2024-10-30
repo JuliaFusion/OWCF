@@ -484,7 +484,7 @@ while isfile(filepath_output*".jld2") # To take care of not overwriting files. A
 end
 global filepath_output = filepath_output*".jld2"
 verbose && println("Saving the results at "*filepath_output*"... ")
-jldopen(filepath_output, true, true, false) do file
+jldopen(filepath_output, true, true, false, IOStream) do file
     write(file, "species", F_EpRz_dict["species"])
     write(file, "timepoint", F_EpRz_dict["time"])
     write(file, "ntot", F_EpRz_dict["ntot"])

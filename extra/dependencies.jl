@@ -49,9 +49,34 @@ using VoronoiDelaunay
 import OrbitTomography: orbit_grid
 using Base.Iterators
 
-# Constants needed for dependencies
+###### Constants needed for dependencies ######
+
 const kB = 1.380649e-23 # Boltzmann constant, J/K
 const ϵ0 = 8.8541878128e-12 # Permittivity of free space
+
+###### Structures needed for dependencies ######
+
+"""
+    grid(r2d,z2d,r,z,phi,nr,nz,nphi)
+
+A structure to represent an (R,z) grid in 2D, together with a 
+grid in the toroidal phi direction. The r2d and z2d fields are mesh 
+grids of the (R,z) grid points.
+"""
+struct grid
+    r2d::Matrix{Float64}
+    z2d::Matrix{Float64}
+    r::Vector{Float64}
+    z::Vector{Float64}
+    phi::Vector{Float64}
+    nr::Int64
+    nz::Int64
+    nphi::Int64
+end
+
+###### Functions ######
+
+###### Mathematics
 
 """
 erf(x::Real)
@@ -90,6 +115,65 @@ function erfc(x::Real; resolution::Int64=1000, sigma::Float64=1/sqrt(2))
     return 1 - erf(x; resolution=resolution, sigma=sigma)
 end
 
+"""
+    closest_index(myArray, val)
+
+Finds (the index of) the closest value to val in myArray. Just a function found on the internet as open source. It works.
+"""
+function closest_index(x::AbstractArray, val::Number)
+    ibest = first(eachindex(x))
+    dxbest = abs(x[ibest]-val)
+    for I in eachindex(x)
+        dx = abs(x[I]-val)
+        if dx < dxbest
+            dxbest = dx
+            ibest = I
+        end
+    end
+    ibest
+end
+
+###### Geometry
+
+"""
+rz_grid(rmin, rmax, nr, zmin, zmax, nz, phimin=0.0, phimax=0.0, nphi=1)
+
+Creates an interpolation grid.
+
+#### Input arguments
+## rmin - Minimum radius [cm]
+## rmax - Maximum radius [cm]
+## nr - Number of radii
+## zmin - Minimum z value [cm]
+## zmax - Maximum z value [cm]
+## nz - Number of z values
+## phimin - Minimum Phi value [rad]
+## phimax - Maximum Phi value [rad]
+## nphi - Number of Phi values 
+
+#### Return Value
+## Interpolation grid dictionary
+
+####Example Usage
+## ```julia
+## julia> grid = rz_grid(0,200.0,200,-100,100,200,phimin=4*np.pi/3,phimax=5*np.pi/3,nphi=5)
+## ```
+"""
+function rz_grid(rmin::Union{Int64,Float64}, rmax::Union{Int64,Float64}, nr::Int64, zmin::Union{Int64,Float64}, zmax::Union{Int64,Float64}, nz::Int64; phimin::Union{Int64,Float64}=0.0, phimax::Union{Int64,Float64}=0.0, nphi::Int64=1)
+    dr = (rmax - rmin) / nr
+    dz = (zmax - zmin) / nz
+    dphi = (phimax - phimin) / nphi
+    r = rmin .+ dr * (0:(nr-1))
+    z = zmin .+ dz * (0:(nz-1))
+    phi = phimin .+ dphi * (0:(nphi-1))
+
+    r2d = repeat(r,1,nz)
+    z2d = repeat(z,1,nr)'
+
+    return grid(r2d,z2d,r,z,phi,nr,nz,nphi)
+end
+
+###### Particle species functions
 
 """
     getGCP(species_identifier::AbstractString)
@@ -132,6 +216,8 @@ end
 function getSpeciesCharge(species_identifier::AbstractString)
     return getSpeciesEcu(species_identifier) * GuidingCenterOrbits.e0
 end
+
+###### Basic physics
 
 """
     debye_length(n_e::Real, T_e::Real, species_th_vec::Vector{String}, n_th:vec::Vector{T}, T_th_vec::Vector{T}) where T<:Real
@@ -221,6 +307,8 @@ function spitzer_slowdown_time(n_e::Real, T_e::Real, species_f::String, species_
     end
     return τ_s
 end
+
+###### Data manipulation
 
 """
     add_noise(S, b)
@@ -448,6 +536,8 @@ function apply_instrumental_response(Q::Array{Float64,5}, Ed_array::AbstractVect
     end
 end
 
+###### (Drift) Orbit-related functions
+
 """
     orbit_grid(M,false,eo,po,ro)
     orbit_grid(-||-, q=1, amu=OrbitTomography.H2_amu, kwargs... )
@@ -587,23 +677,7 @@ function get_orbel_volume(og::OrbitGrid, os_equidistant::Bool)
     end
 end
 
-"""
-    closest_index(myArray, val)
-
-Finds (the index of) the closest value to val in myArray. Just a function found on the internet as open source. It works.
-"""
-function closest_index(x::AbstractArray, val::Number)
-    ibest = first(eachindex(x))
-    dxbest = abs(x[ibest]-val)
-    for I in eachindex(x)
-        dx = abs(x[I]-val)
-        if dx < dxbest
-            dxbest = dx
-            ibest = I
-        end
-    end
-    ibest
-end
+###### UNLABELLED FUNCTIONS BELOW
 
 """
     interpFps(f,E,p,R,z,Eq,pq,Rq,zq)
@@ -721,25 +795,63 @@ end
     h5To4D(filepath_distr)
     h5To4D(filepath_distr, backwards=true, verbose=false)
 
-Load and read an h5 file containing the data necessary to construct a 4D fast-ion distribution, with dimensions (E,p,R,z).
+Load and read a .h5/.hdf5 file containing the data necessary to construct a 4D fast-ion distribution, with dimensions (E,p,R,z).
 Automatically assume that the data will be loaded backwards, because that seems to be the case when exporting 4D
-data from Python. Returns f, E, p, R, z
+data from Python via .h5/.hdf5 files. Returns f, E, p, R, z.
 """
 function h5to4D(filepath_distr::AbstractString; backwards::Bool = true, verbose::Bool = false)
 
     if verbose
-        println("Loading the 4D distribution from .h5 file... ")
+        println("Loading the 4D distribution from .hdf5 file... ")
     end
-    distr_file = h5open(filepath_distr) # With first NES orbit weights
-    fbackwards = read(distr_file,"f")
-    energy = read(distr_file, "energy")
-    pitch = read(distr_file, "pitch")
-    R = read(distr_file, "R")
-    if haskey(distr_file,"z")
-        z = read(distr_file,"z")
+    myfile = h5open(filepath_distr,"r")
+    if haskey(myfile,"F_ps")
+        verbose && println("Found F_ps key in .hdf5 file.")
+        fbackwards = read(myfile["F_ps"])
+    elseif haskey(myfile,"f")
+        verbose && println("Found f key in .hdf5 file.")
+        fbackwards = read(myfile["f"])
+    elseif haskey(myfile,"F_EpRz")
+        verbose && println("Found F_EpRz key in .hdf5 file.")
+        fbackwards = read(myfile["F_EpRz"])
     else
-        z = read(distr_file, "Z")
+        error("Fast-ion distribution .hdf5 file did not have any expected keys for the distribution (F_ps, f or F_EpRz).")
     end
+    if haskey(myfile,"energy")
+        energy = read(myfile["energy"])
+    elseif haskey(myfile,"E_array")
+        energy = read(myfile["E_array"])
+    else
+        error("Fast-ion distribution .hdf5 file did not have any expected keys for the energy grid points (energy or E_array).")
+    end
+    if haskey(myfile,"pitch")
+        pitch = read(myfile["pitch"])
+    elseif haskey(myfile,"p_array")
+        pitch = read(myfile["p_array"])
+    else
+        error("Fast-ion distribution .hdf5 file did not have any expected keys for the energy grid points (pitch or p_array).")
+    end
+    if haskey(myfile,"R")
+        R = read(myfile["R"])
+    elseif haskey(myfile,"R_array")
+        R = read(myfile["R_array"])
+    else
+        error("Fast-ion distribution .hdf5 file did not have any expected keys for the R grid points (R or R_array).")
+    end
+    if haskey(myfile,"z")
+        verbose && println("Found z key in .hdf5 file.")
+        z = read(myfile["z"])
+    elseif haskey(myfile,"Z")
+        verbose && println("Found Z key in .hdf5 file.")
+        z = read(myfile["Z"])
+    elseif haskey(myfile,"z_array")
+        z = read(myfile["z_array"])
+    elseif haskey(myfile,"Z_array")
+        z = read(myfile["Z_array"])
+    else
+        error("Fast-ion distribution .hdf5 file did not have any expected keys for the z grid points (z, Z, z_array or Z_array).")
+    end
+    close(myfile)
 
     if (size(fbackwards,1)==length(energy)) && (size(fbackwards,2)==length(pitch)) && (size(fbackwards,3)==length(R)) && (size(fbackwards,4)==length(z))
         backwards = false
@@ -854,6 +966,269 @@ function JLD2to4D(filepath_distr::String; verbose::Bool=false)
     close(myfile)
 
     return F_EpRz, E_array, p_array, R_array, z_array
+end
+
+"""
+read_ncdf(filepath; wanted_keys=nothing)
+
+Open and read the contents of a file in .cdf file format. The 'wanted_keys' keyword argument is a Vector of Strings that 
+specifies the file keys to load. If no file keys have been specified via the 'wanted_keys' keyword argument, load all keys 
+of the .cdf file, and return a dictionary with the .cdf file contents. The keys of the dictionary are the same as the keys 
+of the .cdf file.
+"""
+function read_ncdf(filepath::String; wanted_keys=nothing)
+
+    d = Dict()
+    d["err"] = 1
+    if isfile(filepath)
+        d["err"] = 0
+        NetCDF.open(filepath) do nc
+            cdf_variables = nc.vars
+            if !(wanted_keys==nothing)
+                for wanted_key in wanted_keys
+                    if wanted_key in keys(cdf_variables)
+                        values = NetCDF.readvar(nc,wanted_key)
+                        if () == size(values) # If the size of values is 0 (i.e. values is a scalar)
+                            d[wanted_key] = first(values) # Take the 'first' element, parse a float and store it in d with key 'wanted_key'
+                        else
+                            if typeof(values) <: Vector{NetCDF.ASCIIChar}
+                                values = reduce(*,map(x-> "$(x)",values)) # Concatenate all ASCII characters into one string
+                            end
+                            d[wanted_key] = values # Parse all elements in values as floats and store them as an array in d with key 'wanted_key'
+                        end
+                    end
+                end
+            else
+                for (key,_) in cdf_variables
+                    values = NetCDF.readvar(nc,key)
+                    if () == size(values) # If the size of values is 0 (i.e values is a scalar)
+                        d[key] = first(values) # Take the 'first' element, parse a float and store it in d with key 'wanted_key'
+                    else
+                        if typeof(values) <: Vector{NetCDF.ASCIIChar}
+                            values = reduce(*,map(x-> "$(x)",values)) # Concatenate all ASCII characters into one string
+                        end
+                        d[key] = values # Parse all elements in values as floats and store them as an array in d with key 'wanted_key'
+                    end
+                end
+            end
+        end
+    else
+        error("FILE DOES NOT EXIST: "*filepath)
+    end
+    return d
+end
+
+"""
+CDFto4D(filepath_distr, R_array, z_array)
+CDFto4D(-||-; E_range=nothing, p_range=nothing, btipsign=-1, species=1, verbose=false, vverbose=false)
+
+Read the TRANSP NUBEAM-generated data in the .cdf-file 'filepath_distr'. Use 'R_array' and 'z_array' as the (R,z) grid to interpolate the fast-ion data onto.
+NUBEAM-generated fast-ion distributions are given on an irrregular grid spiraling outwards from the magnetic axis. CDFto4D() will 
+interpolate that data onto a regular (E,p,R,z) grid.
+
+- 'filepath_distr' is the filepath to the TRANSP NUBEAM-generated output file in .cdf file format 
+- 'R_array' are the major radius (R) grid points onto which the fast-ion distribution will be interpolated. In meters
+- 'z_array' are the vertical coordinate (z) grid points onto which the fast-ion distribution will be interpolated. In meters
+- If 'E_range' and/or 'p_range' are not specified, use TRANSP-data ranges by default. E_range should be specified in keV. If specified, only use TRANSP-data 
+within the 'E_range'/'p_range' ranges to create the fast-ion distribution f(E,p,R,z). - Union{Nothing,Tuple{Float64,Float64}}
+- If 'btipsign' is not specified, assume 1 by default. 'btipsign' is the sign of the dot-product between the magnetic field and the plasma current.
+- If 'species' is not specified, assume 1 by default. 'species' is the integer index of the fast-ion species in the TRANSP .cdf-file. Usually the first
+fast-ion species '1' is wanted.
+- If 'verbose' is not specified, assume false by default. If 'verbose' is set to true, read_nubeam() will talk a lot!
+- If 'vverbose' is not specified, assume false by default. If 'vverbose' it set to true, read_nubeam() will talk a lot more (including printing for-loop information etc.)!
+Original function written in Python by Luke Stagner as part of the FIDASIM code (https://github.com/D3DEnergetic/FIDASIM).
+"""
+function CDFto4D(filepath_distr::String, R_array::Vector{Real}, z_array::Vector{Real}; E_range::Union{Nothing,Tuple{Float64,Float64}}=nothing, p_range::Union{Nothing,Tuple{Float64,Float64}}=nothing, btipsign::Int64=1, species::Int64=1, verbose::Bool = false, vverbose::Bool = false)
+    
+    verbose && println("Converting (R,z) points from meters to centimeters... ")
+    R_array = 100*R_array
+    z_array = 100*z_array
+    
+    verbose && println("Creating (R,z) grid from R,z input... ")
+    mygrid = rz_grid(minimum(R_array), maximum(R_array), length(R_array), minimum(z_array), maximum(z_array), length(z_array))
+
+    verbose && println("Loading data from TRANSP .cdf file... ")
+    species_var = "SPECIES_$(species)" # The fast-ion species identification pattern for TRANSP data
+    sstr = read_ncdf(filepath_distr, wanted_keys=[species_var])[species_var] # Will return a string with the fast-ion species of the TRANSP shot
+    TRANSP_data = read_ncdf(filepath_distr, wanted_keys=["TIME","R2D","Z2D","E_"*sstr,"A_"*sstr,"F_"*sstr,"RSURF","ZSURF","BMVOL"]) # Will return a struct with the requested TRANSP data
+
+    ngrid = length(TRANSP_data["R2D"]) # The number of (spiral) grid points on which the TRANSP data is given
+
+    if length(TRANSP_data["TIME"])>1
+        TRANSP_timepoint = TRANSP_data["TIME"][1] # The tokamak shot timepoint of the TRANSP-data. In seconds
+    else
+        TRANSP_timepoint = TRANSP_data["TIME"] # The tokamak shot timepoint of the TRANSP-data. In seconds
+    end
+
+    TRANSP_R_vector = TRANSP_data["R2D"] # 1D array. R values in cm 
+    TRANSP_z_vector = TRANSP_data["Z2D"] # 1D array. z values in cm
+    TRANSP_R_mesh = TRANSP_data["RSURF"] # 2D array. R values in cm
+    TRANSP_z_mesh = TRANSP_data["ZSURF"] # 2D array. z values in cm
+    bmvol = TRANSP_data["BMVOL"] # Volume of elements at (spiral) grid points. In cm^-3
+    p_vector = TRANSP_data["A_"*sstr] # 1D array
+    E_vector = TRANSP_data["E_"*sstr]*(1.0e-3) # 1D_array. Energy values in keV (after multiplication with (1.0e-3) factor)
+    F_Epbm = (TRANSP_data["F_"*sstr])*(1.0e3) # 3D array. size(F_Epbm)=(length(E_vector), length(p_vector), length(bmvol)). Distribution values in (keV)^-1 cm^-3
+    F_Epbm = map(x-> x > 0.0 ? 0.5*x : 0.0, F_Epbm) #Multiply elements by 0.5 to convert to pitch instead of solid angle d_omega/4pi
+
+    if btipsign < 0
+        verbose && println("Flipping fast-ion distribution in pitch since sign(J ⋅ B)< 0... ")
+        F_Epbm = reverse(F_Epbm,dims=2) # Reverse all elements in dimension of pitch, to account for plasma current and magnetic field pointing in different directions
+    end
+    if e_range==nothing # If an energy range has not been specified as input with the keyword arguments...
+        e_range = (minimum(E_vector), maximum(E_vector))
+    end
+    if p_range==nothing # If a pitch range has not been specified as input with the keyword arguments...
+        p_range = (minimum(p_vector), maximum(p_vector))
+    end
+
+    we = findall(x-> x >= e_range[1] && x <= e_range[2], E_vector) # Find the indices of all energies within specified energy range e_range
+    wp = findall(x-> x >= p_range[1] && x <= p_range[2], p_vector) # Find the indices of all pitches within specified pitch range p_range
+    E_vector = E_vector[we] # Trim energy vector accordingly
+    nenergy = length(E_vector)
+    p_vector = p_vector[wp] # Trim pitch vector accordingly
+    npitch = length(p_vector)
+    F_Epbm = F_Epbm[we,:,:] # Trim fast-ion distribution accordingly
+    F_Epbm = F_Epbm[:,wp,:]
+    dE = abs(E_vector[2] - E_vector[1]) # Assume uniform energy grid...
+    dp = abs(p_vector[2] - p_vector[1]) # Assume uniform pitch grid
+    emin, emax = clamp(minimum(E_vector) - 0.5*dE, 0.0, minimum(E_vector)), maximum(E_vector) + 0.5*dE # Make sure that lower energy bound is larger than zero
+    pmin, pmax = clamp(minimum(p_vector) - 0.5*dp, -1.0, minimum(p_vector)), clamp(maximum(p_vector)+0.5*dp, maximum(p_vector), 1.0) # Make sure pitch boundaries are within [-1.0, 1.0]
+
+    verbose && println("Energy min/max: $((emin, emax))")
+    verbose && println("Pitch min/max: $((pmin, pmax))")
+
+    # Query (R,z) grid data on which to interpolate on
+    query_nR = mygrid.nr # Number of query R points
+    query_nz = mygrid.nz
+    query_R = mygrid.r
+    query_z = mygrid.z
+    query_R_mesh = mygrid.r2d
+    query_z_mesh = mygrid.z2d
+    dR = abs(query_R[2] - query_R[1])
+    dz = abs(query_z[2] - query_z[1])
+
+    F_bm = dropdims(sum(F_Epbm,dims=(1,2))*dE*dp,dims=(1,2)) # The fast-ion distribution as a function of the bm volume elements (units: cm^-3)
+    ntot = sum(F_bm .*bmvol) # Multiply F_bm with the bm volume elements to get the total number of fast ions. Units: (cm^-3)*(cm^3) = #fast ions
+    verbose && println("Ntotal in phase space: $(ntot)")
+
+    verbose && println("Creating the Delaunay tessellation... ")
+    tri = DelaunayTessellation(length(TRANSP_R_vector)) # Instantiate a Delaunay tessellation of approximately length(TRANSP_R_vector)
+    mnr = minimum([minimum(TRANSP_R_vector),minimum(query_R)]) # The definite minimum of every possible R coordinate in the algorithm
+    mxr = maximum([maximum(TRANSP_R_vector),maximum(query_R)]) # The definite maximum of every possible R coordinate in the algorithm
+    mnz = minimum([minimum(TRANSP_z_vector),minimum(query_z)]) # The definite minimum of every possible z coordinate in the algorithm
+    mxz = maximum([maximum(TRANSP_z_vector),maximum(query_z)]) # The definite maximum of every possible z coordinate in the algorithm
+    r_tri(x) = min_coord + (max_coord-min_coord)*(x-mnr)/(mxr-mnr) # DelaunayTesselation expects all points to be within [min_coord,max_coord] (given by VoronoiDelaunay.min_coord etc). We therefore need a conversion function.
+    z_tri(y) = min_coord + (max_coord-min_coord)*(y-mnz)/(mxz-mnz) # DelaunayTesselation expects all points to be within [min_coord,max_coord] (given by VoronoiDelaunay.min_coord etc). We therefore need a conversion function.
+    r_tri_inv(x_tri) = mnr + (mxr-mnr)*(x_tri-min_coord)/(max_coord-min_coord) # We need a function to convert back to normal R values
+    z_tri_inv(y_tri) = mnz + (mxz-mnz)*(y_tri-min_coord)/(max_coord-min_coord) # We need a function to convert back to normal z values
+
+    TRANSP_spiral_rz_iterator_tri = zip(r_tri.(TRANSP_R_vector), z_tri.(TRANSP_z_vector)) # Create an iterator with all the TRANSP (R,z) coordinates as tuples
+    a = Point2D[Point(rr_tri, zz_tri) for (rr_tri,zz_tri) in TRANSP_spiral_rz_iterator_tri] # Put them all in a Point() object within a Point2D array
+    push!(tri, a) # Feed all points to the Delaunay tessellation
+
+    verbose && println("Mapping all triangles to original vertex indices... ")
+    vertices = Dict{String,Tuple{Int64,Int64,Int64}}() # A hashmap. The hashes are triangle IDs and the values are tuples with vertices indices in the same order as the a,b and c fields of the DelaunayTriangle object returned by locate(tri, point). The DelaunayTesselation struct provided no way to keep track of what indices of the TRANSP_R_vector, TRANSP_z_vector inputs that make up the vertices of the triangles in the tessellation... So I had to do it myself!
+    count = 1
+    for t in tri # For triangles in the tessellation
+        vverbose && println("Triangle $(count)")
+        ind_a = findall(x-> x==(getx(geta(t)),gety(geta(t))), collect(TRANSP_spiral_rz_iterator_tri)) # Find the (R,z) data index of the first vertex to triangle t
+        ind_b = findall(x-> x==(getx(getb(t)),gety(getb(t))), collect(TRANSP_spiral_rz_iterator_tri)) # Find the (R,z) data index of the second vertex to triangle t
+        ind_c = findall(x-> x==(getx(getc(t)),gety(getc(t))), collect(TRANSP_spiral_rz_iterator_tri)) # Find the (R,z) data index of the third vertex to triangle t
+
+        vverbose && println("ind_a: $(ind_a)    ind_b: $(ind_b)     ind_c: $(ind_c)")
+
+        triangle_ID = "$(t._neighbour_a)_$(t._neighbour_b)_$(t._neighbour_c)" # No other triangle in the tessellation will have this ID. Thus making it easily look-up-able later
+        vertices[triangle_ID] = (first(ind_a), first(ind_b), first(ind_c))
+        vverbose && println("Triangle ID: "*triangle_ID)
+        vverbose && println()
+        count += 1
+    end
+
+    # Test hashmap on test point
+    verbose && println("Creating nearest neighbour (NN) tree for extrapolation of points outside the tessellation... ")
+    brutetree = BruteTree(hcat(TRANSP_R_vector,TRANSP_z_vector)') # There are also other tree types. However, BruteTree was deemed good enough
+
+    F_Rz = zeros(query_nR,query_nz)
+    F_EpRz = zeros(nenergy,npitch,query_nR,query_nz)
+    count = 1
+    verbose && println("Interpolating fast-ion distribution onto all query points... ")
+    for (ir,rr) in enumerate(query_R), (iz,zz) in enumerate(query_z)
+        vverbose && println("$(count)/$(length(query_R)*length(query_z)): (R,z)=($(rr),$(zz))")
+        t = locate(tri, Point(r_tri(rr), z_tri(zz))) # Try to locate the query point inside of the tessellation
+
+        if isexternal(t) == true # If the query point was outside of the tessellation...
+            idx, dist = nn(brutetree, [rr, zz]) # Use brute-force nearest-neighbour extrapolation instead! Notice that here we don't need to r_tri() and z_tri() functions
+            F_Rz[ir,iz] = F_bm[idx]
+            F_EpRz[:,:,ir,iz] = F_Epbm[:,:,idx]
+        else
+            tID = "$(t._neighbour_a)_$(t._neighbour_b)_$(t._neighbour_c)" # Contruct the triangle ID from the order of the neighbours
+            ia, ib, ic = vertices[tID] # Look up the original indices of the vertices
+            x = [r_tri(rr), z_tri(zz)] # Query point in tri coordinates
+            xa = [getx(geta(t)), gety(geta(t))] # Vertex a of triangle t
+            xb = [getx(getb(t)), gety(getb(t))] # Vertex b of triangle t
+            xc = [getx(getc(t)), gety(getc(t))] # Vertex c of triangle t
+
+            μ = [(1/sum(abs2,x-xa)),(1/sum(abs2,x-xb)),(1/sum(abs2,x-xc))] 
+            μ = (1/sum(μ)) .* μ # Barycentric weights. sum(μ)=1 must hold
+
+            # Barycentric interpolation. All components of μ sum to one. 'Barycentric' simply means 'center-of-mass-like'. https://en.wikipedia.org/wiki/Barycentric_coordinate_system 
+            F_Rz[ir,iz] = μ[1]*F_bm[ia]+μ[2]*F_bm[ib]+μ[3]*F_bm[ic]
+            F_EpRz[:,:,ir,iz] = μ[1]*F_Epbm[:,:,ia]+μ[2]*F_Epbm[:,:,ib]+μ[3]*F_Epbm[:,:,ic]
+        end
+        count += 1
+    end 
+
+    F_Rz = map(x-> x<0.0 ? 0.0 : x, F_Rz) # Any negative values? Set them to zero instead!
+
+    # Correct for points outside of seperatrix. They should all be zero
+    verbose && println("Identifying query points outside of the separatrix... ")
+    R_maxis = mean(TRANSP_R_mesh[:,1]) # The R coordinate of the magnetic axis
+    z_maxis = mean(TRANSP_z_mesh[:,1])
+    R_sep = TRANSP_R_mesh[:,end] # The R coordintes of the separatrix
+    z_sep = TRANSP_z_mesh[:,end]
+
+    R_bdry = R_sep .- R_maxis # The R coordinates of the separatrix, relative to the magnetic axis
+    z_bdry = z_sep .- z_maxis
+
+    r_bdry = sqrt.(R_bdry.^2 .+ z_bdry.^2) # The r coordinates (local toroidal coordinate system. http://fusionwiki.ciemat.es/wiki/Toroidal_coordinates)
+    theta_bdry = atan.(z_bdry,R_bdry) # The θ coordinates from arctan of (z-z_axis)/(R-R_axis) values
+    theta_bdry = map(x-> x < 0.0 ? (x + 2*pi) : x,theta_bdry) # Ensure θ coordinates within [0,2π]
+    w = sortperm(theta_bdry) # Sort theta_bdry but return only the indices that would give the sorted order
+    theta_bdry = theta_bdry[w]
+    r_bdry = r_bdry[w]
+    w = unique(i -> theta_bdry[i], 1:length(theta_bdry)) # Keep only unique elements
+    theta_bdry = theta_bdry[w]
+    r_bdry = r_bdry[w]
+
+    itp = Interpolations.interpolate((theta_bdry,), r_bdry, Gridded(Linear())) # Create an interpolation object, to be able to interpolate new values of r from input theta values
+    etpf = extrapolate(itp, Flat()) # If outside of domain, just return flat (constant) values (flat=last known data value before extrapolation domain)
+
+
+    R_query_pts = query_R_mesh .- R_maxis # Same procedure as for data points, but for query points
+    z_query_pts = query_z_mesh .- z_maxis
+    r_query_pts = sqrt.(R_query_pts.^2 .+ z_query_pts.^2)
+    theta_query_pts = atan.(z_query_pts,R_query_pts)
+    theta_query_pts = map(x-> x < 0.0 ? (x + 2*pi) : x, theta_query_pts) # [0,2pi]
+
+    # For all query theta angles, find the cooresponding r points on the separatrix
+    r_query_bdry = zeros(size(theta_query_pts))
+    for (i,theta_query_pt) in enumerate(theta_query_pts)
+        r_query_bdry[i] = etpf(theta_query_pt)
+    end
+
+    w = findall(x-> x >= 0.0, (r_query_pts - r_query_bdry) .- 2) # If the query points are more than 2 cm outside of the separatrix...
+    F_Rz[w] .= 0.0 # ...make sure that the fast-ion distribution is zero there and outwards (> 2cm outside of the separatrix)
+    F_EpRz[:,:,w] .= 0.0 # ...make sure that the fast-ion distribution is zero there and outwards (> 2cm outside of the separatrix)
+
+    # Enforce correct normalization (sum(distribution) = #total number of fast ions) for interpolated fast-ion distributions
+    verbose && println("Enforcing correct normalization for interpolated fast-ion distribution (sum(f)=#total number of fast ions)... ")
+    ntot_denf = 2*pi*dR*dz*sum(reshape(query_R,(length(query_R),1)) .*F_Rz)
+    F_Rz = (ntot/ntot_denf) .* F_Rz 
+    ntot_fbm = (2*pi*dE*dp*dR*dz)*sum(reshape(query_R,(1,1,length(query_R),1)) .*F_EpRz)
+    F_EpRz = (ntot/ntot_fbm) .*F_EpRz
+
+    verbose && println("Returning (E,p,R,z) fast-ion distribution in units [keV^-1 m^-3]")
+    return (1.0e6) .*F_EpRz, E_vector, p_vector, query_R*0.01, query_z*0.01
 end
 
 """
@@ -1990,123 +2365,12 @@ function os2ps(M::AbstractEquilibrium, Σ_ff_inv::AbstractArray, F_os::Vector, o
             write(progress_file,"f_eprz",f_eprz) # Save
             write(progress_file,"last_ind",last_ind) # Save
             close(progress_file)
-
-            #pvis_file = jldopen("$(round(count/length(inds),digits=3)).jld2", true,true,true,IOStream)
-            #write(pvis_file,"count",count)
-            #close(pvis_filei)
         end
         last_ind = I
     end
 
     return EPRZDensity(f_eprz,energy,pitch,r,z) # Return as EPRZDensity object
 end
-
-# ---> These functions are deprecated and will be completely removed in the next OWCF version update
-# ---> These functions are deprecated and will be completely removed in the next OWCF version update
-# ---> These functions are deprecated and will be completely removed in the next OWCF version update
-#"""
-#    wahba_estimator(OS; kwargs...)
-#
-#Compute the Wahba expression G using the Tikhonov regularisation parameter in OS.alpha. The Wahba expression G can be written as
-#
-#                   |Wx-S|^2
-#G = ---------------------------------------
-#    Trace(I-W*Inv(Wt*W+alpha*alpha*I)*Wt)^2
-#
-#Where I is the identity matrix, Wt is the transpose of W and alpha is OS.alpha. Inv(A) is the inverse of the matrix A. This function
-#is heavily inspired by the marginal_loglike() function written by L. Stagner, which can be found in the OrbitTomography.jl 
-#package in the tomography.jl file.
-#
-#WARNING! If the signal S has a lot of diagnostic energy bins, then this algorithm will require a lot of RAM memory.
-#"""
-#function wahba_estimator(OS; norm=1.0e18/size(OS.W,2),max_iter=30*size(OS.W,1))
-#    S = OS.d
-#    noise = OS.err
-#    Σ_S = Diagonal(noise.^2)
-#    Σ_S_inv = inv(Σ_S)
-#
-#    W_scaled = norm*OS.W
-#
-#    F_prior_scaled = OS.mu/norm
-#
-#    # Scale covariance matrices
-#    Σ_ff_scaled = OS.alpha*OS.S
-#    Σ_ff_inv_scaled = inv(OS.alpha)*OS.S_inv
-#    Γ_scaled = sqrt(inv(OS.alpha))*Matrix(OS.G)
-#
-#    F_scaled = (try 
-#        vec(nonneg_lsq(vcat(W_scaled./noise, Γ_scaled), vcat(S./noise, Γ_scaled*F_prior_scaled); alg=:fnnls, use_parallel=false, max_iter=max_iter))
-#    catch er
-#        if isa(er,InterruptException)
-#            rethrow(er)
-#        end
-#        @warn "Non-negative Least Squares failed. Using MAP estimate"
-#        println(err)
-#
-#        Σ_inv = Σ_ff_inv_scaled .+ W_scaled'*Σ_S_inv*W_scaled
-#        Σ_inv \ (W_scaled'*(Σ_S_inv*S) + Σ_ff_inv_scaled*F_prior_scaled)
-#    end)
-#
-#    F = vec((norm/size(W_scaled,2)) .*F_scaled) # Re-scale solution to correct size
-#
-#    W = OS.W
-#    alpha = OS.alpha
-#
-#    nom = (LinearAlgebra.norm(W*F-S))^2
-#    denom = tr(Diagonal(ones(size(W,1))) - W*inv(transpose(W)*W + (alpha*alpha) .*Diagonal(ones(size(W,2))))*transpose(W))^2
-#
-#    return nom/denom
-#end
-#
-#"""
-#    wahba_optimize_tikhonov_factor!(OS; kwargs...)
-#    wahba_optimize_tikhonov_factor!(OS; log_bounds=(-3,3), kwargs...)
-#
-#Wahba lahba dub dub! This optimisation function attempts to find the optimal Tikhonov regularisation factor by minimizing
-#the expression G, as found at https://en.wikipedia.org/wiki/Tikhonov_regularization under 'Determination of the Tikhonov factor'.
-#Grace Wahba proved that the optimal Tikhonov regularisation parameter, in the sense of leave-one-out cross-validation, minimizes the expression G.
-#See for example Wahba, G. (1990). "Spline Models for Observational Data". CBMS-NSF Regional Conference Series in Applied Mathematics. Society for 
-#Industrial and Applied Mathematics. See also for example www.doi.org/10.1080/00401706.1979.10489751 (Golub, G.; Heath, M.; Wahba, G. (1979). Technometrics. 21 (2)).
-#
-#The function structure is heavily inspired by the optimize_alpha!() function written by L. Stagner, which can be found in the OrbitTomography.jl
-#package in the tomography.jl file.
-#
-#The optimization will print info every 2nd iterations by default (show_trace=true and show_every=2, respectively).
-#
-#A time limit for the optimization is set to 15 minutes (15*60 seconds) by default.
-#"""
-#function wahba_optimize_tikhonov_factor!(OS; log_bounds=(-6,6), show_trace=true, show_every=2, iterations=1000, kwargs...)
-#    f = x -> begin
-#        OS.alpha = 10.0^x
-#        return -wahba_estimator(OS; kwargs...)
-#    end
-#
-#    op = optimize(f, log_bounds[1], log_bounds[2], Brent(),rel_tol=1e-3, show_trace=show_trace, show_every=show_every, iterations=iterations)
-#
-#    OS.alpha = 10.0^Optim.minimizer(op)
-#
-#    return Optim.minimum(op)
-#end
-#
-#"""
-#    loglike_optimize_tikhonov_factor!(OS)
-#
-#Given the OrbitSystem struct OS, compute the optimal tikhonov regularization factor by maximizing the log
-#likelihood.
-#"""
-#function loglike_optimize_tikhonov_factor!(OS; show_trace=true, show_every=2, iterations=1000, log_bounds = (-6,6), kwargs...)
-#    f = x -> begin
-#        OS.alpha = 10.0^x
-#        return -marginal_loglike(OS; kwargs...)
-#    end
-#
-#    op = optimize(f, log_bounds[1], log_bounds[2], Brent(),rel_tol=1e-3, show_trace=show_trace, show_every=show_every, iterations=iterations)
-#
-#    OS.alpha = 10.0^Optim.minimizer(op)
-#
-#    return Optim.minimum(op)
-#end
-#
 
 """
     getOSTopoMap(M, E, pmRm_inds, pm_array, Rm_array)
@@ -2783,7 +3047,7 @@ end
 
 """
 _slowing_down_function_core(v_0, p_0, v_array, p_array, n_e, T_e, species_f, species_th_vec, n_th_vec, T_th_vec)
-_slowing_down_function_core(-||-; S0=1.0, g=(v-> v), returnExtra=false)
+_slowing_down_function_core(-||-; S0=1.0, g=(v-> v), dampen=false, damp_type=:erfc, sigma=nothing, v_damp=nothing, returnExtra=false)
 
 Compute a neutral beam injection slowing-down distribution function, using the formulas in W.G.F. Core, Nucl. Fusion 33, 829 (1993)
 and J.D. Gaffey, J. Plasma Physics 16, 149-169, (1976).
@@ -2803,13 +3067,14 @@ Keyword arguments:
 - g - Function of speed (v). exp(-g(v)) governs speed diffusion above injection speed
 - dampen - If true, the slowing-down function will be damped below v_L (please see final eq. in W.G.F. Core, Nucl. Fusion 33, 829 (1993)) using the error function complement
 - damp_type - If 'dampen' is set to true, damp_type specifies the type of damping. :linear and :erfc (complementory error function) currently supported
+- sigma - If 'damp_type' is set to :erfc, sigma is the sigma in the Gaussian distribution
 - v_damp - If specified, the slowing-down function (SDF) will be dampened below the speed of v_damp (in m/s). If not specified, 'dampen' is set to true and 'damp_type' is set to :erfc, the SDF will be dampened below v_L (see function code).
 - returnExtra - If true, (in addition to f_SD) v_c, v_L, τ_s and α_0 will be returned
 
 This function should not be used directly, but always via the slowing_down_function() function, to avoid confusing between 
 energy (E) and speed (v) grid points input.
 """
-function _slowing_down_function_core(v_0::Real, p_0::Real, v_array::Vector{T} where {T<:Real}, p_array::Vector{T} where {T<:Real}, n_e::Real, T_e::Real, species_f::String, species_th_vec::Vector{String}, n_th_vec::Vector{T} where {T<:Real}, T_th_vec::Vector{T} where {T<:Real}; S0::Float64=1.0, g=(v-> v), dampen::Bool=false, damp_type::Symbol=:erfc, v_damp::Union{Nothing,Real}=nothing, returnExtra::Bool=false)
+function _slowing_down_function_core(v_0::Real, p_0::Real, v_array::Vector{T} where {T<:Real}, p_array::Vector{T} where {T<:Real}, n_e::Real, T_e::Real, species_f::String, species_th_vec::Vector{String}, n_th_vec::Vector{T} where {T<:Real}, T_th_vec::Vector{T} where {T<:Real}; S0::Float64=1.0, g=(v-> v), dampen::Bool=false, damp_type::Symbol=:erfc, sigma::Union{Nothing,Real}=nothing, v_damp::Union{Nothing,Real}=nothing, returnExtra::Bool=false)
     m_e = (GuidingCenterOrbits.e_amu)*(GuidingCenterOrbits.mass_u) # Electron mass, kg
     τ_s = spitzer_slowdown_time(n_e, T_e, species_f, species_th_vec, n_th_vec, T_th_vec) # Spitzer slowing-down time, s
     Z_th_vec = getSpeciesEcu.(species_th_vec) # Atomic charge number for all thermal plasma ion species
@@ -2832,8 +3097,7 @@ function _slowing_down_function_core(v_0::Real, p_0::Real, v_array::Vector{T} wh
         v_damp = isnothing(v_damp) ? v_L : v_damp # If v_damp is specified, use v_damp. If not, use v_L
         nv = length(v_array)
         if damp_type==:erfc && (v_damp>0.0)
-            FWHM = v_damp/10 
-            sigma = FWHM/(2*sqrt(2*log(2))) # Based on the formula for FWHM for Gaussians
+            sigma = !isnothing(sigma) ? sigma : (v_damp/10)/(2*sqrt(2*log(2))) # If sigma was not specified, use formula based on the formula for FWHM for Gaussians
             damp_factors = reshape(erfc.((-1) .*(v_array .- v_damp); sigma=sigma) ./2,(nv,1)) # Factors range between 0 and 1
             f_SD = damp_factors .*f_SD
         elseif damp_type==:linear
@@ -2872,8 +3136,9 @@ The keyword arguments are:
     - type: The type of slowing-down function you want to compute (currently, only :core is supported) [-]
     - returnExtra: If true, extra outputs will be returned (please see below)
     - E_tail_length: If specified (Float or Int), the slowing-down function will be dampened below (E0-E_tail_length) [keV]
+    - sigma: If specified, (Float or Int), the slowing-down function will be dampened this quickly [keV]
 """
-function slowing_down_function(E_0::Real, p_0::Real, E_array::Vector{T} where {T<:Real}, p_array::Vector{T} where {T<:Real}, n_e::Real, T_e::Real, species_f::String, species_th_vec::Vector{String}, n_th_vec::Vector{T} where {T<:Real}, T_th_vec::Vector{T} where {T<:Real}; type::Symbol=:core, returnExtra::Bool=false, E_tail_length::Union{Nothing,Real}=nothing, kwargs...)
+function slowing_down_function(E_0::Real, p_0::Real, E_array::Vector{T} where {T<:Real}, p_array::Vector{T} where {T<:Real}, n_e::Real, T_e::Real, species_f::String, species_th_vec::Vector{String}, n_th_vec::Vector{T} where {T<:Real}, T_th_vec::Vector{T} where {T<:Real}; type::Symbol=:core, returnExtra::Bool=false, E_tail_length::Union{Nothing,Real}=nothing, sigma::Union{Nothing,Real}=nothing, kwargs...)
     m_f = getSpeciesMass(species_f) # Beam (fast) particle mass, kg
     E2v_rel = (E-> (GuidingCenterOrbits.c0)*sqrt(1-(1/(((E*1000*GuidingCenterOrbits.e0)/(m_f*(GuidingCenterOrbits.c0)^2))+1)^2))) # A one-line function to transform from energy (keV) to relativistic speed (m/s)
     v2E_rel = (v-> (m_f*(GuidingCenterOrbits.c0)^2)*(sqrt(1/(1-(v/(GuidingCenterOrbits.c0))^(2)))-1)) # A one-line function to transform from relativistic speed (m/s) to energy (keV)
@@ -2881,6 +3146,11 @@ function slowing_down_function(E_0::Real, p_0::Real, E_array::Vector{T} where {T
     v_damp = nothing
     if !isnothing(E_tail_length)
         v_damp = E2v_rel(clamp(E_0 - E_tail_length,0,Inf))
+    end
+
+    v_sigma = nothing
+    if !isnothing(sigma)
+        v_sigma = E2v_rel(clamp(sigma,0,Inf))
     end
 
     # Use the specified type of slowing-down function
@@ -2904,9 +3174,9 @@ function slowing_down_function(E_0::Real, p_0::Real, E_array::Vector{T} where {T
     v_0 =  E2v_rel(E_0) # Convert energy source point to velocity (relativistically)
     v_array = E2v_rel.(E_array) # Convert energy grid to velocity (relativistically)
     if returnExtra # If extra output is desired... 
-        f_SD_vp, v_c, v_L, τ_s, α_0 = my_SD_func(v_0, p_0, v_array, p_array, n_e, T_e, species_f, species_th_vec, n_th_vec, T_th_vec; returnExtra=returnExtra, v_damp=v_damp, kwargs...)
+        f_SD_vp, v_c, v_L, τ_s, α_0 = my_SD_func(v_0, p_0, v_array, p_array, n_e, T_e, species_f, species_th_vec, n_th_vec, T_th_vec; returnExtra=returnExtra, v_damp=v_damp, sigma=v_sigma, kwargs...)
     else # If not...
-        f_SD_vp = my_SD_func(v_0, p_0, v_array, p_array, n_e, T_e, species_f, species_th_vec, n_th_vec, T_th_vec; v_damp=v_damp, kwargs...)
+        f_SD_vp = my_SD_func(v_0, p_0, v_array, p_array, n_e, T_e, species_f, species_th_vec, n_th_vec, T_th_vec; v_damp=v_damp, sigma=v_sigma, kwargs...)
     end
     dvdE_array = [(1/sqrt(2*m_f*v2E_rel(v))) for v in v_array] # Compute Jacobian from v to E
     f_SD = reshape(dvdE_array,(length(dvdE_array),1)) .*f_SD_vp # Transform f(v,p) to f(E,p)

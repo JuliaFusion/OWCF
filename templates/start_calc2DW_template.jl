@@ -153,9 +153,9 @@ end
     # PLEASE NOTE! Specify alpha particles as '4he' or '4He' (NOT 'he4' or 'He4'). Same goes for helium-3 (specify as '3he', NOT 'he3')
     timepoint = nothing # If unknown, just leave as nothing. The algorithm will try to figure it out automatically.
     thermal_temp = nothing # The thermal species temperature for the (R,z) point of interest. If filepath_thermal_distr is provided, leave as nothing
-    thermal_temp_axis = 0.0 # keV. Please specify this if filepath_thermal_distr, filepath_FI_cdf and thermal_temp are not specified
+    thermal_temp_axis = nothing # keV. Please specify this if filepath_thermal_distr, filepath_FI_cdf and thermal_temp are not specified
     thermal_dens = nothing # The thermal species density for the (R,z) point of interest. If filepath_thermal_distr is provided, leave as nothing
-    thermal_dens_axis = 0.0e20 # m^-3. Please specify this if filepath_thermal_distr and filepath_FI_cdf are not specified
+    thermal_dens_axis = nothing # m^-3. Please specify this if filepath_thermal_distr, filepath_FI_cdf and thermal_dens are not specified
     # Below, you should specify the tokamak as well, if you know it. E.g. "JET", "ITER" etc.
     # PLEASE NOTE! When plasma_rot is set to true and filepath_plasma_rot_TRANSP is specified 
     # but filepath_thermal_distr is NOT a TRANSP output file (and filepath_FI_cdf is not a corresponding NUBEAM output file, as explained above), 
