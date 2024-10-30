@@ -87,8 +87,12 @@ verbose && println("Loading orbit weights... ")
 myfile = jldopen(filepath_W,false,false,false,IOStream)
 if haskey(myfile,"Wtot")
     W2D = myfile["Wtot"]
-else
+elseif haskey(myfile,"W")
     W2D = myfile["W"]
+elseif haskey(myfile,"W2D")
+    W2D = myfile["W2D"]
+else
+    error("Unknown file key for weight functions!")
 end
 E_array = myfile["E_array"]
 pm_array = myfile["pm_array"]
@@ -252,7 +256,7 @@ while isfile(filepath_output*".jld2") # To take care of not overwriting files. A
 end
 global filepath_output = filepath_output*".jld2"
 myfile = jldopen(filepath_output,true,true,false,IOStream)
-write(myfile, "Wtot", W4D)
+write(myfile, "W", W4D)
 write(myfile, "E_array", E_array)
 write(myfile, "pm_array", pm_array)
 write(myfile, "Rm_array", Rm_array)
