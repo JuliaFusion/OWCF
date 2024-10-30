@@ -31,7 +31,7 @@
 # You should delete the orbWeights4D file once you're done with it. These files are massive and take
 # up an unnessecary amount of space in general.
 
-# Script written by Henrik Järleblad. Last maintained 2022-10-09.
+# Script written by Henrik Järleblad. Last maintained 2024-10-30.
 ###################################################################################################
 
 ## ------
