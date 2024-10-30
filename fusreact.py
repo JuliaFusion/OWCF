@@ -224,7 +224,7 @@ def sigma_diff(E, costheta, reaction='d-d', product_state='GS', anisotropic=True
         sigma = sigma_tot(Ecm, reaction=reaction) * W / C
         #sigma = sigma_tot(Ecm, reaction=reaction) / (4*np.pi)
         #sigma = 1.0
-    elif all(p in [a,b] for p in ['4he','9be']) and product_state == '1L': 
+    elif all(p in [a,b] for p in ['4he','9be']) and product_state == '1l': 
         # 9Be(4He,ng)12C reaction. Cross-sectional patchwork provided by Massimo Nocente.
         # 1->0 transition of 12C
         df = alpha9Be_1L_dataframe
@@ -246,7 +246,7 @@ def sigma_diff(E, costheta, reaction='d-d', product_state='GS', anisotropic=True
         E /= 1000 # MeV
         sigma = interp((E,-1*costheta)) * 1e-31 # m**2/sr; the -1 factor is due to the carbon-12 being followed, and not the neutron (for which we have the emission probability, technically)
 
-    elif all(p in [a,b] for p in ['4he','9be']) and product_state == '2L': 
+    elif all(p in [a,b] for p in ['4he','9be']) and product_state == '2l': 
         # 9Be(4He,ng)12C reaction. Cross-sectional patchwork provided by Massimo Nocente.
         # 2->1 transition of 12C
         df = alpha9Be_2L_dataframe
