@@ -186,6 +186,11 @@
 #                 Otherwise, please leave unspecified - Float64
 # z_of_interest_unit - The unit of z_of_interest. Please see OWCF/misc/convert_units.jl for lists of all accepted units of measurement in the OWCF. 
 #                      - String  
+#
+# btipsign - The sign of the dot product between the magnetic field and the plasma current. Can be 1 or -1. - Int64
+# h5file_of_nonJulia_origin - If .h5 or .hdf5 files are specified as input, and they were not created with the Julia programming language, the 
+#                             h5file_of_nonJulia_origin input variable might need to be set to true. This is because some languages reverse the array 
+#                             dimension order when saved as a .h5 or .hdf5 file. E.g. (E,p,R,z) sometimes become (z,R,p,E) - Bool
 #############################################################################################################################################################
 
 ## First you have to set the system specifications
@@ -265,6 +270,10 @@ end
     verbose = false
     z_of_interest = nothing
     z_of_interest_unit = "m"
+
+    ### Weird input arguments
+    btipsign = 1 # The sign of the dot product between the magnetic field and the plasma current. Most likely not needed. But please specify, if known.
+    h5file_of_nonJulia_origin = false # If rescale_F_synth_filepath is an .h5 or .hdf5 file, and it was not created with the Julia programming language, this input variable should probably be set to true
 end
 
 ## -----------------------------------------------------------------------------
