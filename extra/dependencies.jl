@@ -792,8 +792,8 @@ function flip_along_pm(W::AbstractArray; with_channels::Bool=false)
 end
 
 """
-    h5To4D(filepath_distr)
-    h5To4D(filepath_distr, backwards=true, verbose=false)
+    h5to4D(filepath_distr)
+    h5to4D(filepath_distr, backwards=true, verbose=false)
 
 Load and read a .h5/.hdf5 file containing the data necessary to construct a 4D fast-ion distribution, with dimensions (E,p,R,z).
 Automatically assume that the data will be loaded backwards, because that seems to be the case when exporting 4D
