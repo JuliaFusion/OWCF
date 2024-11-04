@@ -35,12 +35,16 @@ using LinearAlgebra
 using SparseArrays
 using Statistics
 using SCS, Convex
+include(folderpath_OWCF*"misc/convert_units.jl")
 if plot_solutions || gif_solutions
     using Plots
 end
 if :COLLISIONS in regularization
     include(folderpath_OWCF*"extra/dependencies.jl")
     include(folderpath_OWCF*"misc/temp_n_dens.jl")
+end
+if lowercase(String(rescale_F_synth_type))=="file"
+    include(folderpath_OWCF*"extra/dependencies.jl")
 end
 
 ###########################################################################################################
@@ -89,7 +93,7 @@ for (i,S_unit) in enumerate(S_units)
         ok = false
         verbose && println("")
         verbose && print("Unit of signal $(i): $(S_unit). Unit of err $(i): $(err_units[i]). Attempting to convert err to match S unit... ")
-        S_errs[i] = unit_conversion_factor(S_errs_units[i],S_unit) .*S_errs[i]
+        S_errs[i] = units_conversion_factor(S_errs_units[i],S_unit) .*S_errs[i]
         S_errs_units[i] = S_unit
         verbose && println("Success!")
     end
@@ -152,7 +156,7 @@ for (i,f) in enumerate(filepaths_W)
         Ed_vector_unit = read_func(myfile["Ed_array_unit"])
         if !(Ed_vector_unit==S_abscissas_units[i])
             verbose && print("Unit of measurement bin centers of weight function $(i): $(Ed_vector_unit). Unit of measurement bin centers of signal $(i): $(S_abscissas_units[i]). Attempting to convert measurement bin centers of weight function $(i) to match unit of signal $(i)... ")
-            Ed_vector = unit_conversion_factor(Ed_vector_unit,S_abscissas_units[i]) .*Ed_vector
+            Ed_vector = units_conversion_factor(Ed_vector_unit,S_abscissas_units[i]) .*Ed_vector
             Ed_vector_unit = S_abscissas_units[i]
             verbose && println("Success!")
         end
@@ -175,7 +179,7 @@ for (i,f) in enumerate(filepaths_W)
         Ed_vector_unit = read_func(myfile["Ed_array_unit"])
         if !(Ed_vector_unit==S_abscissas_units[i])
             verbose && print("Unit of measurement bin centers of weight function $(i): $(Ed_vector_unit). Unit of measurement bin centers of signal $(i): $(S_abscissas_units[i]). Attempting to convert measurement bin centers of weight function $(i) to match unit of signal $(i)... ")
-            Ed_vector = unit_conversion_factor(Ed_vector_unit,S_abscissas_units[i]) .*Ed_vector
+            Ed_vector = units_conversion_factor(Ed_vector_unit,S_abscissas_units[i]) .*Ed_vector
             Ed_vector_unit = S_abscissas_units[i]
             verbose && println("Success!")
         end
@@ -200,7 +204,7 @@ for (i,f) in enumerate(filepaths_W)
         Ed_vector_unit = read_func(myfile["Ed_array_unit"])
         if !(Ed_vector_unit==S_abscissas_units[i])
             verbose && print("Unit of measurement bin centers of weight function $(i): $(Ed_vector_unit). Unit of measurement bin centers of signal $(i): $(S_abscissas_units[i]). Attempting to convert measurement bin centers of weight function $(i) to match unit of signal $(i)... ")
-            Ed_vector = unit_conversion_factor(Ed_vector_unit,S_abscissas_units[i]) .*Ed_vector
+            Ed_vector = units_conversion_factor(Ed_vector_unit,S_abscissas_units[i]) .*Ed_vector
             Ed_vector_unit = S_abscissas_units[i]
             verbose && println("Success!")
         end
@@ -232,7 +236,7 @@ for (i,f) in enumerate(filepaths_W)
         Ed_vector_unit = read_func(myfile["Ed_array_unit"])
         if !(Ed_vector_unit==S_abscissas_units[i])
             verbose && print("Unit of measurement bin centers of weight function $(i): $(Ed_vector_unit). Unit of measurement bin centers of signal $(i): $(S_abscissas_units[i]). Attempting to convert measurement bin centers of weight function $(i) to match unit of signal $(i)... ")
-            Ed_vector = unit_conversion_factor(Ed_vector_unit,S_abscissas_units[i]) .*Ed_vector
+            Ed_vector = units_conversion_factor(Ed_vector_unit,S_abscissas_units[i]) .*Ed_vector
             Ed_vector_unit = S_abscissas_units[i]
             verbose && println("Success!")
         end
@@ -281,7 +285,7 @@ for i in eachindex(filepaths_W)
     # If not, convert both the abscissa units and weight functions units (since weight functions have units signal/ion)
     if !(W_abscissas_units[i][1]==S_abscissas_units[i])
         verbose && print("Unit of abscissa (measurement bin centers) of $(filepaths_S[i]): $(S_abscissas_units[i]). Unit of FIRST abscissa (measurement bin centers) of $(filepaths_W[i]): $(W_abscissas_units[i][1]). Converting weight function and the first abscissa to match unit of signal abscissa... ")
-        ucf = unit_conversion_factor(W_abscissas_units[i][1],S_abscissas_units[i])
+        ucf = units_conversion_factor(W_abscissas_units[i][1],S_abscissas_units[i])
         W_inflated[i] = (1/ucf) .*W_inflated[i] # Since weight functions have units signal/ion and the signal will have 1/units of the abscissa, multiply by the inverse of the unit conversion factor
         W_abscissas[i][1] = ucf .*W_abscissas[i][1]
         W_abscissas_units[i][1] = S_abscissas_units[i]
@@ -292,7 +296,7 @@ for i in eachindex(filepaths_W)
         for j in eachindex(W_abscissas[i]) # For each reconstruction space dimension
             if (j>1) && !(W_abscissas_units[i][j]==W_abscissas_units[i-1][j]) # If the units of the same dimension for different weight function files don't match (except for the measurement bin center units of course (they will almost always differ), hence the j>1 condition)...
                 verbose && println("Units of abscissa $(j) in $(filepaths_W[i]) and $(filepaths_W[i-1]) do not match. Converting abscissa $(j) in $(filepaths_W[i]) to match the unit of abscissa $(j) in $(filepaths_W[i-1])... ")
-                ucf = unit_conversion_factor(W_abscissas_units[i][j],W_abscissas_units[i-1][j])
+                ucf = units_conversion_factor(W_abscissas_units[i][j],W_abscissas_units[i-1][j])
                 W_abscissas[i][j] = ucf .*W_abscissas[i-1][j]
                 W_abscissas_units[i][j] = W_abscissas_units[i-1][j]
             end
@@ -362,18 +366,52 @@ W_inflated = nothing # Clear memory. To minimize memory usage
 # COMPUTE RESCALING FACTORS TO BE ABLE TO RESCALE WEIGHT FUNCTIONS TO HAVE THE SYNTHETIC MEASUREMENTS MATCH 
 # THE EXPERIMENTAL MEASUREMENTS.
 
+# CONTINUE CODING HERE!!! (BELOW)
 if rescale_W
+    verbose && println("Rescaling weight functions... ")
     if lowercase(String(rescale_F_synth_type))=="file"
-        if (XX in scriptSources_W) || (YY in scriptSources_W) || ...
-        elseif () # DEDUCE (E,p) FROM W_abscissas_units
-        elseif () # DEDUCE (vpara,vperp) FROM W_abscissas_units
-        elseif () # DEDUCE (E,p,R,z) FROM W_abscissas_units
-        elseif () # DEDUCE (E,pm,Rm) FROM W_abscissas_units
-        elseif () # DEDUCE (E,mu,Pphi) FROM W_abscissas_units
-        elseif () # DEDUCE (E,mu,Pphi;sigma) FROM W_abscissas_units
-        elseif () # DEDUCE (E,p,R,z) FROM W_abscissas_units
+        verbose && println("---> rescale_F_synth_type=$(rescale_F_synth_type) was specified. Loading F_synth from file... ")
+        file_ext = lowercase(split(rescale_F_synth_filepath,".")[end]) # Assume final part of filepath after "." is the file extension
+        if file_ext=="jld2"
+            F_synth, E_synth, p_synth, R_synth, z_synth = JLD2to4D(rescale_F_synth_filepath)
+        elseif file_ext=="hdf5" || file_ext=="h5"
+            F_synth, E_synth, p_synth, R_synth, z_synth = h5to4D(rescale_F_synth_filepath;backwards=h5file_of_nonJulia_origin)
+        elseif file_ext=="cdf"
+            F_synth, E_synth, p_synth, R_synth, z_synth = CDFto4D(rescale_F_synth_filepath, units_conversion_factor(R_of_interest_unit,"m")*R_of_interest, units_conversion_factor(z_of_interest_unit,"m")*z_of_interest; btipsign=btipsign)
         else
-            # RAISE ERROR
+            error("Input variable 'rescale_F_synth_filepath' has unknown file extension ($(file_ext)). Accepted file extensions are .jld2, .hdf5, .h5 and .cdf. Please correct and re-try.")
+        end
+        w_abscissas_units = W_abscissas_units[1] # Units of abscissas of first weight function matrix are the units of the abscissas of all weight functions matrices
+
+        if length(w_abscissas_units)==3 # Deduce (E,p) or (vpara,vperp) from w_abscissas_units (length of 3 means reconstruction space dim of 2)
+            unit_1 = w_abscissas_units[2] # The second dimension of the weight matrix is the first dimension of the reconstruction space
+            unit_2 = w_abscissas_units[3] # The second dimension of the weight matrix is the first dimension of the reconstruction space
+
+            unit_dict_1 = unit_dict(unit_1) # Split unit_1 into its unit components and powers
+            unit_dict_2 = unit_dict(unit_2) # Split unit_2 into its unit components and powers
+
+            unit_dict_tot = merge(unit_dict_1, unit_dict_2)
+
+            unit_vector = zeros(4) # A vector to keep track of units and powers.
+            for key in keys(unit_dict_tot)
+            end
+
+            if (sum(in.(keys(unit_dict_1),Ref(ENERGY_UNITS)))>0 && sum(in.(keys(unit_dict_2),Ref(DIMENSIONLESS_UNITS)))>0) || # If (E,p) or
+               (sum(in.(keys(unit_dict_1),Ref(ENERGY_UNITS_LONG)))>0 && sum(in.(keys(unit_dict_2),Ref(DIMENSIONLESS_UNITS_LONG)))>0) || # (E,p) (long format) or
+               (sum(in.(keys(unit_dict_2),Ref(ENERGY_UNITS)))>0 && sum(in.(keys(unit_dict_1),Ref(DIMENSIONLESS_UNITS)))>0) || # (p,E) or
+               (sum(in.(keys(unit_dict_2),Ref(ENERGY_UNITS_LONG)))>0 && sum(in.(keys(unit_dict_1),Ref(DIMENSIONLESS_UNITS_LONG)))>0) # (p,E) (long format)
+
+            elseif 
+            verbose && println("----> Loading reference fast-ion distribution assuming weight functions are given in (E,p) coordinates (or similar)... ")
+        elseif length(W_abscissas_units[1])==2 && # DEDUCE  FROM W_abscissas_units
+            (sum(in.(keys(unit_dict(W_abscissas_units[1][1]))))>0 || lowercase(W_abscissas_units[1][2]) in keys(ENERGY_UNITS_LONG)) &&
+            (lowercase(W_abscissas_units[1][3]) in keys(DIMENSIONLESS_UNITS) || lowercase(W_abscissas_units[1][3]) in keys(DIMENSIONLESS_UNITS_LONG))
+            verbose && println("----> Loading reference fast-ion distribution assuming weight functions are given in (E,p) coordinates (or similar)... ")
+        elseif () # DEDUCE (E,p,R,z) FROM W_abscissas_units
+        elseif false # ADD MORE CASES HERE IN THE FUTURE. SUCH AS (E,pm, Rm), (E,mu,Pphi), (E,mu,Pphi;sigma) etc
+        else
+            currently_supported_abscissas = "(E,p), (vpara, vperp), (E,p,R,z)"
+            error("rescale_F_synth_type=$(rescale_F_synth_type) was specified, but weight function abscissas did not match any currently supported groups. Currently supported abscissas for weight functions include $(currently_supported_abscissas). Please change rescale_F_synth_type to :GAUSSIAN, or specify filepaths_W to be filepath(s) to file(s) containing weight functions with supported abscissas.")
         end
     elseif lowercase(String(rescale_F_synth_type))=="gaussian"
         # COMPUTE A BUNCH OF RANDOM GAUSSIANS FOR THE RECONSTRUCTION SPACE
@@ -384,6 +422,7 @@ if rescale_W
         error("'rescale_W' was set to true but 'rescale_F_synth_type' was not specified correctly. Currently supported options include :FILE and :GAUSSIAN. Please correct and re-try.")
     end
 else
+    verbose && println("Weight functions will NOT be rescaled... ")
     rescale_W_factors = ones(length(filepaths_W))
 end
 # Plan suggestion:
