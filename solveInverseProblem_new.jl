@@ -25,6 +25,7 @@
 # Script written by Henrik Järleblad. Last maintained 2024-10-15.
 ###########################################################################################################
 
+# SECTION 0
 verbose && println("Loading Julia packages... ")
 using Base.Iterators
 using FileIO
@@ -43,18 +44,18 @@ if :COLLISIONS in regularization
     include(folderpath_OWCF*"extra/dependencies.jl")
     include(folderpath_OWCF*"misc/temp_n_dens.jl")
 end
-if lowercase(String(rescale_F_synth_type))=="file"
+if lowercase(String(rescale_W_F_ref_source))=="file"
     include(folderpath_OWCF*"extra/dependencies.jl")
 end
 
 ###########################################################################################################
-# PERFORM SAFETY CHECKS
+# SECTION 1: PERFORM SAFETY CHECKS
 if !(length(filepaths_S)==length(filepaths_W))
     error("Number of measurement files: $(length(filepaths_S)). Number of weight matrix files: $(length(filepaths_W)). Number of measurement files and number of weight matrix files must match. Please correct and re-try.")
 end
 
 ###########################################################################################################
-# LOAD MEASUREMENTS
+# SECTION 2: LOAD MEASUREMENTS
 
 verbose && print("Loading measurements... ")
 S = Vector{Vector{Float64}}(undef,length(filepaths_S)) # Pre-allocate measurements for all diagnostics
@@ -101,7 +102,7 @@ end
 ok && verbose && println("Done!")
 
 ###########################################################################################################
-# LOAD WEIGHT FUNCTIONS
+# SECTION 3: LOAD WEIGHT FUNCTIONS
 
 verbose && println("Loading weight functions... ")
 if isempty(min_array) || isempty(max_array) || isempty(n_array) # If any of them are empty...
@@ -273,7 +274,7 @@ for (i,f) in enumerate(filepaths_W)
 end
 
 ###########################################################################################################
-# CHECK THAT ALL ABSCISSAS MATCH IN TERMS OF DIMENSIONS AND UNITS
+# SECTION 4: CHECK THAT ALL ABSCISSAS MATCH IN TERMS OF DIMENSIONS AND UNITS
 
 verbose && println("Performing dimension and unit checks for the weight functions... ")
 for i in eachindex(filepaths_W)
@@ -305,7 +306,7 @@ for i in eachindex(filepaths_W)
 end
 
 ###########################################################################################################
-# INTERPOLATE ONTO THE GRID SPECIFIED BY min_array, max_array and n_array 
+# SECTION 5: INTERPOLATE ONTO THE GRID SPECIFIED BY min_array, max_array and n_array 
 # IF THEY ARE NOT SPECIFIED, USE THE ABSCISSAS OF THE FIRST WEIGHT MATRIX IN filepaths_W
 
 verbose && println("Attemping to interpolate all weight functions onto a common reconstruction space grid... ")
@@ -347,11 +348,11 @@ for (i,w_inflated) in enumerate(W_inflated)
 end
 
 ###########################################################################################################
-# WRITE SOMETHING TO TAKE CARE OF ONLY INCLUDING VALID ORBITS 
+# SECTION 6: WRITE SOMETHING TO TAKE CARE OF ONLY INCLUDING VALID ORBITS 
 # IF RECONSTRUCTING IN ORBIT SPACE
 
 ###########################################################################################################
-# RESHAPE ALL INFLATED WEIGHT MATRICES INTO THEIR 2D SHAPE, TO BE USED IN INVERSE PROBLEMS
+# SECTION 7: RESHAPE ALL INFLATED WEIGHT MATRICES INTO THEIR 2D SHAPE, TO BE USED IN INVERSE PROBLEMS
 
 W = Vector{Array{Float64,2}}(undef,length(filepaths_W)) # The weight matrices, for each diagnostic
 for (i,w_inflated) in enumerate(W_inflated)
@@ -361,65 +362,213 @@ end
 W_inflated = nothing # Clear memory. To minimize memory usage
 
 ###########################################################################################################
-# IF rescale_W WAS SET TO true IN THE START FILE, LOAD OR COMPUTE FAST-ION DISTRIBUTION(S).
-# USE THIS/THESE DISTRIBUTION(S) TOGETHER WITH THE WEIGHT MATRICES TO COMPUTE SYNTHETIC MEASUREMENTS.
-# COMPUTE RESCALING FACTORS TO BE ABLE TO RESCALE WEIGHT FUNCTIONS TO HAVE THE SYNTHETIC MEASUREMENTS MATCH 
+# SECTION 8: IF rescale_W WAS SET TO true IN THE START FILE, LOAD OR COMPUTE FAST-ION DISTRIBUTION(S).
+# USE THIS/THESE DISTRIBUTION(S) TOGETHER WITH THE WEIGHT MATRICES TO COMPUTE REFERENCE MEASUREMENTS.
+# COMPUTE RESCALING FACTORS TO BE ABLE TO RESCALE WEIGHT FUNCTIONS TO HAVE THE REFERENCE MEASUREMENTS MATCH 
 # THE EXPERIMENTAL MEASUREMENTS.
 
-# CONTINUE CODING HERE!!! (BELOW)
 if rescale_W
     verbose && println("Rescaling weight functions... ")
-    if lowercase(String(rescale_F_synth_type))=="file"
-        verbose && println("---> rescale_F_synth_type=$(rescale_F_synth_type) was specified. Loading F_synth from file... ")
-        file_ext = lowercase(split(rescale_F_synth_filepath,".")[end]) # Assume final part of filepath after "." is the file extension
-        if file_ext=="jld2"
-            F_synth, E_synth, p_synth, R_synth, z_synth = JLD2to4D(rescale_F_synth_filepath)
-        elseif file_ext=="hdf5" || file_ext=="h5"
-            F_synth, E_synth, p_synth, R_synth, z_synth = h5to4D(rescale_F_synth_filepath;backwards=h5file_of_nonJulia_origin)
-        elseif file_ext=="cdf"
-            F_synth, E_synth, p_synth, R_synth, z_synth = CDFto4D(rescale_F_synth_filepath, units_conversion_factor(R_of_interest_unit,"m")*R_of_interest, units_conversion_factor(z_of_interest_unit,"m")*z_of_interest; btipsign=btipsign)
-        else
-            error("Input variable 'rescale_F_synth_filepath' has unknown file extension ($(file_ext)). Accepted file extensions are .jld2, .hdf5, .h5 and .cdf. Please correct and re-try.")
-        end
-        w_abscissas_units = W_abscissas_units[1] # Units of abscissas of first weight function matrix are the units of the abscissas of all weight functions matrices
+    if lowercase(String(rescale_W_type))=="mean"
+        verbose && println("---> mean(S)/mean(W*F_ref) will be used to rescale weight functions... ")
+        rescale_func = Statistics.mean # Set the mean() function as the rescale_func() function
+    elseif lowercase(String(rescale_W_type))=="maximum" || lowercase(String(rescale_W_type))=="max" 
+        verbose && println("---> max(S)/max(W*F_ref) will be used to rescale weight functions... ")
+        rescale_func = Base.maximum # Set the maximum() function as the rescale_func() function
+    else
+        error("rescale_W_type=$(rescale_W_type). Currently supported options include :MEAN and :MAXIMUM. Please correct and re-try.")
+    end
+    if lowercase(String(rescale_W_F_ref_source))=="file"
+        currently_supported_abscissas = "(E,p), (vpara, vperp), (E,p,R,z)" # UPDATE THIS WHEN NEEDED!
+        standard_rescale_W_error = "rescale_W_F_ref_source=$(rescale_W_F_ref_source) was specified, but weight function abscissas did not match any currently supported groups. Currently supported abscissas for weight functions include $(currently_supported_abscissas). Please change rescale_W_F_ref_source to :GAUSSIAN, or specify filepaths_W to be filepath(s) to file(s) containing weight functions with supported abscissas."
+        w_abscissas_units = W_abscissas_units[1] # Units of abscissas of first weight function matrix are the units of the abscissas of all weight functions matrices, because of section 5
+        w_abscissas = W_abscissas[1] # Abscissas of first weight function matrix are the abscissas of all weight functions matrices, because of section 5
 
+        verbose && println("---> rescale_W_F_ref_source=$(rescale_W_F_ref_source) was specified... ")
+        verbose && println("------> Checking weight function reconstruction space... ")
         if length(w_abscissas_units)==3 # Deduce (E,p) or (vpara,vperp) from w_abscissas_units (length of 3 means reconstruction space dim of 2)
-            unit_1 = w_abscissas_units[2] # The second dimension of the weight matrix is the first dimension of the reconstruction space
-            unit_2 = w_abscissas_units[3] # The second dimension of the weight matrix is the first dimension of the reconstruction space
+            verbose && print("------> Weight functions reconstruction space is 2D. Deducing coordinates type... ")
+            units_1 = w_abscissas_units[2] # The second dimension of the weight matrix is the first dimension of the reconstruction space
+            units_2 = w_abscissas_units[3] # The third dimension of the weight matrix is the second dimension of the reconstruction space
 
-            unit_dict_1 = unit_dict(unit_1) # Split unit_1 into its unit components and powers
-            unit_dict_2 = unit_dict(unit_2) # Split unit_2 into its unit components and powers
-
-            unit_dict_tot = merge(unit_dict_1, unit_dict_2)
-
-            unit_vector = zeros(4) # A vector to keep track of units and powers.
-            for key in keys(unit_dict_tot)
+            units_tot = vcat(units_1, units_2)
+            w_energy_ind = findall(x-> x in ENERGY_UNITS || x in ENERGY_UNITS_LONG, units_tot)
+            w_pitch_ind = findall(x-> x in DIMENSIONLESS_UNITS || x in DIMENSIONLESS_UNITS_LONG, units_tot)
+            w_speed_inds = findall(x-> units_are_speed(x), units_tot)
+            # IN THE FUTURE, ADD MORE UNIT CHECKS HERE IF NEEDED
+            if length(w_energy_ind)==1 && length(w_pitch_ind)==1
+                w_energy_ind .+= 1 # To align it with the original w_abscissas and w_abscissas_units indices
+                w_pitch_ind .+= 1 # To align it with the original w_abscissas and w_abscissas_units indices
+                w_rec_space = "(E,p)"
+                verbose && println(w_rec_space)
+            elseif length(w_speed_inds)==2
+                w_speed_inds .+= 1 # To align it with the original w_abscissas and w_abscissas_units indices
+                w_rec_space = "(vpara,vperp)"
+                verbose && print(w_rec_space*". Distinguishing (vpara, vperp) arrays...")
+                w_vel_arrays = w_abscissas[w_speed_inds]
+                if minimum(w_vel_arrays[1])<0 && minimum(w_vel_arrays[2])>0 # vpara can be negative. vperp cannot
+                    verbose && println("ok!")
+                    w_vpara_ind = [w_speed_inds[1]] # Order of abscissas in w_vel_arrays is the same as the order in w_speed_inds
+                    w_vperp_ind = [w_speed_inds[2]] # Order of abscissas in w_vel_arrays is the same as the order in w_speed_inds
+                elseif minimum(w_vel_arrays[2]<0 && minimum(w_vel_arrays[1]>0)) # vpara can be negative. vperp cannot
+                    verbose && println("ok!")
+                    w_vpara_ind = [w_speed_inds[2]] # Order of abscissas in w_vel_arrays is the same as the order in w_speed_inds
+                    w_vperp_ind = [w_speed_inds[1]] # Order of abscissas in w_vel_arrays is the same as the order in w_speed_inds
+                else
+                    verbose && println("")
+                    @warn "Could not distinguish (vpara,vperp) arrays from weight function abscissas. Assuming abscissa with index $(w_speed_inds[1]) to be vpara and abscissa with index $(w_speed_inds[2]) to be vperp."
+                    w_vpara_ind = [w_speed_inds[1]] # Order of abscissas in w_vel_arrays is the same as the order in w_speed_inds
+                    w_vperp_ind = [w_speed_inds[2]] # Order of abscissas in w_vel_arrays is the same as the order in w_speed_inds
+                end
+            elseif false # ADD MORE 2D CASES HERE IN FUTURE UPDATES
+            else
+                error(standard_rescale_W_error)
             end
+            R_of_interests = vcat(units_conversion_factor(R_of_interest_unit,"m")*R_of_interest) # R_of_interests will be the same, regardless of 2D coordinates
+            z_of_interests = vcat(units_conversion_factor(z_of_interest_unit,"m")*z_of_interest) # z_of_interests will be the same, regardless of 2D coordinates
+        elseif length(w_abscissas_units)==5 # DEDUCE (E,p,R,z) FROM W_abscissas_units
+            verbose && print("------> Weight functions reconstruction space is 4D. Deducing coordinates type... ")
+            units_1 = w_abscissas_units[2] # The second dimension of the weight matrix is the first dimension of the reconstruction space
+            units_2 = w_abscissas_units[3] # The third dimension of the weight matrix is the second dimension of the reconstruction space
+            units_3 = w_abscissas_units[4] # The fourth dimension of the weight matrix is the third dimension of the reconstruction space
+            units_4 = w_abscissas_units[5] # The fifth dimension of the weight matrix is the fourth dimension of the reconstruction space
 
-            if (sum(in.(keys(unit_dict_1),Ref(ENERGY_UNITS)))>0 && sum(in.(keys(unit_dict_2),Ref(DIMENSIONLESS_UNITS)))>0) || # If (E,p) or
-               (sum(in.(keys(unit_dict_1),Ref(ENERGY_UNITS_LONG)))>0 && sum(in.(keys(unit_dict_2),Ref(DIMENSIONLESS_UNITS_LONG)))>0) || # (E,p) (long format) or
-               (sum(in.(keys(unit_dict_2),Ref(ENERGY_UNITS)))>0 && sum(in.(keys(unit_dict_1),Ref(DIMENSIONLESS_UNITS)))>0) || # (p,E) or
-               (sum(in.(keys(unit_dict_2),Ref(ENERGY_UNITS_LONG)))>0 && sum(in.(keys(unit_dict_1),Ref(DIMENSIONLESS_UNITS_LONG)))>0) # (p,E) (long format)
+            units_tot = vcat(units_1, units_2, units_3, units_4)
+            w_energy_ind = findall(x-> x in ENERGY_UNITS || x in ENERGY_UNITS_LONG, units_tot)
+            w_pitch_ind = findall(x-> x in DIMENSIONLESS_UNITS || x in DIMENSIONLESS_UNITS_LONG, units_tot)
+            w_Rz_inds = findall(x-> x in LENGTH_UNITS || x in LENGTH_UNITS_LONG, units_tot)
+            # IN THE FUTURE, ADD MORE UNIT CHECKS HERE IF NEEDED
+            if length(w_energy_ind)==1 && length(w_pitch_ind)==1 && length(w_Rz_inds)==2
+                w_energy_ind .+= 1 # To align it with the original w_abscissas and w_abscissas_units indices
+                w_pitch_ind .+= 1 # To align it with the original w_abscissas and w_abscissas_units indices
+                w_Rz_inds .+= 1 # To align it with the original w_abscissas and w_abscissas_units indices
+                w_rec_space = "(E,p,R,z)"
+                verbose && print(w_rec_space*". Distinguishing (R,z) arrays... ")
 
-            elseif 
-            verbose && println("----> Loading reference fast-ion distribution assuming weight functions are given in (E,p) coordinates (or similar)... ")
-        elseif length(W_abscissas_units[1])==2 && # DEDUCE  FROM W_abscissas_units
-            (sum(in.(keys(unit_dict(W_abscissas_units[1][1]))))>0 || lowercase(W_abscissas_units[1][2]) in keys(ENERGY_UNITS_LONG)) &&
-            (lowercase(W_abscissas_units[1][3]) in keys(DIMENSIONLESS_UNITS) || lowercase(W_abscissas_units[1][3]) in keys(DIMENSIONLESS_UNITS_LONG))
-            verbose && println("----> Loading reference fast-ion distribution assuming weight functions are given in (E,p) coordinates (or similar)... ")
-        elseif () # DEDUCE (E,p,R,z) FROM W_abscissas_units
-        elseif false # ADD MORE CASES HERE IN THE FUTURE. SUCH AS (E,pm, Rm), (E,mu,Pphi), (E,mu,Pphi;sigma) etc
+                w_RnZ_arrays = w_abscissas[w_Rz_inds]
+                if minimum(w_RnZ_arrays[2])<0 && minimum(w_RnZ_arrays[1])>0 # If the second LENGTH_UNITS abscissa has negative elements, and the first one does not..
+                    verbose && println("ok!")
+                    w_R_ind = w_Rz_inds[1] # Order of abscissas in w_RnZ_arrays is the same as the order in w_Rz_inds
+                    w_z_ind = w_Rz_inds[2] # Order of abscissas in w_RnZ_arrays is the same as the order in w_Rz_inds
+                    R_of_interests = w_RnZ_arrays[1] # The first LENGTH_UNITS abscissa is very likely to be the R grid points...
+                    z_of_interests = w_RnZ_arrays[2] # ...and the second LENGTH_UNITS abscissa is very likely to be the z grid points
+                elseif minimum(w_RnZ_arrays[1])<0 && minimum(w_RnZ_arrays[2])>0 # If it's the other way around...
+                    verbose && println("ok!")
+                    w_R_ind = w_Rz_inds[2] # Order of abscissas in w_RnZ_arrays is the same as the order in w_Rz_inds
+                    w_z_ind = w_Rz_inds[1] # Order of abscissas in w_RnZ_arrays is the same as the order in w_Rz_inds
+                    R_of_interests = w_RnZ_arrays[2] # ...it's very likely to be the other way around.
+                    z_of_interests = w_RnZ_arrays[1] # ...it's very likely to be the other way around.
+                else
+                    verbose && println("")
+                    @warn "Could not deduce (R,z) arrays from weight function abscissas. Assuming abscissa with index $(w_Rz_inds[1]) to be R and abscissa with index $(w_Rz_inds[2]) to be z."
+                    w_R_ind = w_Rz_inds[1] # Order of abscissas in w_RnZ_arrays is the same as the order in w_Rz_inds
+                    w_z_ind = w_Rz_inds[2] # Order of abscissas in w_RnZ_arrays is the same as the order in w_Rz_inds
+                    R_of_interests = w_RnZ_arrays[1]
+                    z_of_interests = w_RnZ_arrays[2]
+                end
+                R_of_interests = units_conversion_factor(w_abscissas_units[w_R_ind],"m") .*R_of_interests # Need unit of measurement meter for CDFto4D function (if that will be used)
+                z_of_interests = units_conversion_factor(w_abscissas_units[w_z_ind],"m") .*z_of_interests # Need unit of measurement meter for CDFto4D function (if that will be used)
+            elseif false # ADD MORE 4D CASES HERE IN FUTURE UPDATES
+            else
+                error(standard_rescale_W_error)
+            end
+        elseif false # ADD MORE (1D-6D) CASES HERE IN FUTURE UPDATES. SUCH AS (E,pm, Rm), (E,mu,Pphi), (E,mu,Pphi;sigma) etc
         else
-            currently_supported_abscissas = "(E,p), (vpara, vperp), (E,p,R,z)"
-            error("rescale_F_synth_type=$(rescale_F_synth_type) was specified, but weight function abscissas did not match any currently supported groups. Currently supported abscissas for weight functions include $(currently_supported_abscissas). Please change rescale_F_synth_type to :GAUSSIAN, or specify filepaths_W to be filepath(s) to file(s) containing weight functions with supported abscissas.")
+            error(standard_rescale_W_error)
         end
-    elseif lowercase(String(rescale_F_synth_type))=="gaussian"
+
+        verbose && println("------> Loading F_ref from file... ")
+        file_ext = lowercase(split(rescale_W_F_file_path,".")[end]) # Assume final part of filepath after "." is the file extension
+        if file_ext=="jld2"
+            F_ref, E_ref, p_ref, R_ref, z_ref = JLD2to4D(rescale_W_F_file_path)
+        elseif file_ext=="hdf5" || file_ext=="h5"
+            F_ref, E_ref, p_ref, R_ref, z_ref = h5to4D(rescale_W_F_file_path;backwards=h5file_of_nonJulia_origin)
+        elseif file_ext=="cdf"
+            F_ref, E_ref, p_ref, R_ref, z_ref = CDFto4D(rescale_W_F_file_path, R_of_interests, z_of_interests; btipsign=btipsign)
+        else
+            error("Input variable 'rescale_W_F_file_path' has unknown file extension ($(file_ext)). Accepted file extensions are .jld2, .hdf5, .h5 and .cdf. Please correct and re-try.")
+        end
+
+        if w_rec_space=="(E,p)"
+            verbose && println("------> Computing W*F_ref assuming weight functions are given in (E,p) coordinates (or similar)... ")
+            w_energy_unit = w_abscissas_units[w_energy_ind]
+            w_pitch_unit = w_abscissas_units[w_pitch_ind]
+            w_energy_abscissa = w_abscissas[w_energy_ind]; nwE = length(w_energy_abscissa)
+            w_pitch_abscissa = w_abscissas[w_pitch_ind]; nwp = length(w_pitch_abscissa)
+
+            query_points_n_coords = Iterators.product(zip(w_energy_abscissa,1:nwE),zip(w_pitch_abscissa,1:nwp),zip(R_of_interests,1:1),zip(z_of_interests,1:1)) # R and z should already be 1-element Vectors with unit of measurement 'm'
+            F_ref_interpolated = zeros(nwE,nwp,1,1) # Pre-allocate the interpolated f(E,p) distribution
+
+            E_ref = units_conversion_factor("keV",w_energy_unit) .*E_ref # Convert the energy units from keV (which we know the JLD2to4D, h5to4D and CDFto4D functions output) to w_energy_unit
+            F_ref = units_conversion_factor("keV^-1",units_inverse(w_energy_unit)) .*F_ref # simultaneously, convert the fast-ion distribution via the inverse of the energy units
+
+            nodes = (E_ref,p_ref,R_ref,z_ref)
+            itp = Interpolations.interpolate(nodes,F_ref,Gridded(Linear()))
+            etp = Interpolations.extrapolate(itp,Flat()) # If outside of interpolation region, use edge values to extrapolate
+            for query_point_n_coord in query_points_n_coords
+                point = map(x-> x[1],query_point_n_coord) # The point to interpolate at. E.g. (100.0,0.3) in energy (keV),pitch
+                coord = map(x-> x[2],query_point_n_coord) # The coordinate of that point. E.g. (53,14)
+                F_ref_interpolated[coord] = etp(point...)
+            end
+            F_ref_interpolated = dropdims(F_ref_interpolated,dims=(3,4)) # From shape (nwE,nwp,1,1) to (nwE,nwp)
+            F_ref_interp_1D = reshape(F_ref_interpolated,(nwE*nwp,))
+
+            rescale_W_factors = ones(length(filepaths_W)) # Pre-allocate weight re-scale factors
+            for i in eachindex(filepaths_W)
+                WF = W[i]*F_ref_interp_1D # The weight function matrix (2D) multiplied with the (1D/vectorized) reference fast-ion distribution
+                rescale_W_factors[i] = rescale_func(S[i])/rescale_func(WF) # S[i] is the experimental data vector of (fast-ion) diagnostic 'i'
+            end
+        elseif w_rec_space=="(vpara,vperp)"
+            verbose && println("------> Using reference fast-ion distribution assuming weight functions are given in (vpara,vperp) coordinates (or similar)... ")
+            w_vpara_unit = w_abscissas_units[w_vpara_ind]
+            w_vperp_unit = w_abscissas_units[w_vperp_ind]
+            w_vpara_abscissa = w_abscissas[w_vpara_ind]; nwvpa = length(w_vpara_abscissa)
+            w_vperp_abscissa = w_abscissas[w_vperp_ind]; nwvpe = length(w_vpara_abscissa)
+            nfE = length(E_ref); nfp = length(p_ref)
+
+            nodes = (E_ref,p_ref,R_ref,z_ref)
+            itp = Interpolations.interpolate(nodes,F_ref,Gridded(Linear()))
+            etp = Interpolations.extrapolate(itp,Flat()) # If outside of interpolation region, use edge values to extrapolate
+            query_points_n_coords = Iterators.product(zip(E_ref,1:nfE),zip(p_ref,1:nfp),zip(R_of_interests,1:1),zip(z_of_interests,1:1))
+            F_ref_interpolated = zeros(nfE,nfp,1,1) # Pre-allocate the interpolated f(E,p) distribution
+            for query_point_n_coord in query_points_n_coords
+                point = map(x-> x[1],query_point_n_coord) # The point to interpolate at. E.g. (100.0,0.3) in energy (keV),pitch
+                coord = map(x-> x[2],query_point_n_coord) # The coordinate of that point. E.g. (53,14)
+                F_ref_interpolated[coord] = etp(point...)
+            end
+            F_ref_interpolated = dropdims(F_ref_interpolated,dims=(3,4)) # From shape (nfE,nfp,1,1) to (nfE,nfp)
+
+            F_ref_VEL, vpara_ref, vperp_ref = Ep2VparaVperp(E_ref, p_ref, F_ref_interpolated; my_gcp=FI_species, needJac=true, returnAbscissas=true)
+            vpara_ref = units_conversion_factor("m_s^-1",w_vpara_unit) .*vpara_ref # Match the units of w_abscissas
+            vperp_ref = units_conversion_factor("m_s^-1",w_vperp_unit) .*vperp_ref # Match the units of w_abscissas
+            F_ref_VEL = units_conversion_factor("m^-2_s^2",units_inverse(w_vpara_unit)*"_"*units_inverse(w_vperp_unit)) .* F_ref_VEL
+
+            nodes = (vpara_ref,vperp_ref)
+            itp = Interpolations.interpolate(nodes,F_ref_VEL,Gridded(Linear()))
+            etp = Interpolations.extrapolate(itp,Flat())
+            query_points_n_coords = Iterators.product(zip(w_vpara_abscissa,1:nwvpa),zip(w_vperp_abscissa,1:nwvpe))
+            F_ref_VEL_interp = zeros(nwvpa,nwvpe)
+            # CONTINUE CODING HERE!!!
+            # CONTINUE CODING HERE!!!
+            # CONTINUE CODING HERE!!!
+
+        elseif w_rec_space=="(E,p,R,z)"
+            verbose && println("------> Using reference fast-ion distribution assuming weight functions are given in (E,p,R,z) coordinates (or similar)... ")
+            # CONTINUE CODING HERE!!!
+            # CONTINUE CODING HERE!!!
+            # CONTINUE CODING HERE!!!
+            
+        elseif false
+        else
+            error(standard_rescale_W_error)
+        end
+    elseif lowercase(String(rescale_W_F_ref_source))=="gaussian"
         # COMPUTE A BUNCH OF RANDOM GAUSSIANS FOR THE RECONSTRUCTION SPACE
         # RESHAPE AND MULTIPLY WITH WEIGHT FUNCTIONS
         # ADD TO AVERAGE 
         # LET THE AVERAGE BE THE RESCALE FACTORS FOR EACH DIAGNOSTIC
     else
-        error("'rescale_W' was set to true but 'rescale_F_synth_type' was not specified correctly. Currently supported options include :FILE and :GAUSSIAN. Please correct and re-try.")
+        error("'rescale_W' was set to true but 'rescale_W_F_ref_source' was not specified correctly. Currently supported options include :FILE and :GAUSSIAN. Please correct and re-try.")
     end
 else
     verbose && println("Weight functions will NOT be rescaled... ")
