@@ -267,7 +267,7 @@ end
     spitzer_slowdown_time(n_e, T_e, species_f, species_th_vec, n_th_vec, T_th_vec)
     spitzer_slowdown_time(-||-; plasma_model = :texas, returnExtra = false)
 
-Compute the non-relativistic Spitzer slowing-down time for fast-ion species 'species_f', following the equation in the ITER Physics Basis (http://sites.apam.columbia.edu/fusion/IPB_Chap_5.pdf). 
+Compute the non-relativistic Spitzer slowing-down time (in seconds) for fast-ion species 'species_f', following the equation in the ITER Physics Basis (http://sites.apam.columbia.edu/fusion/IPB_Chap_5.pdf). 
 Assume multiple thermal species via the vector inputs. By default, use the texas (University of Texas) model for the Coloumb logarithm.
 if returnExtra, in addition to τ_s, return the coulomb logarithm as well as the Debye length. The inputs are: 
     - n_e: The electron density [m^-3]
@@ -280,7 +280,11 @@ The keyword arguments are:
     - plasma_model: The model to use for the plasma parameter. Currently supported :salewski or :texas [-]
     - returnExtra: If true, in addition to the Spitzer slowing-down time, the Coulomb logarithm and Debye length will be returned as well [-]
 """
-function spitzer_slowdown_time(n_e::Real, T_e::Real, species_f::String, species_th_vec::Vector{String}, n_th_vec::Vector{T} where {T<:Real}, T_th_vec::Vector{T} where {T<:Real}; plasma_model::Symbol = :texas, returnExtra::Bool = false)
+function spitzer_slowdown_time(n_e::Real, T_e::Real, species_f::String, species_th_vec::Union{String,Vector{String}}, n_th_vec::Union{T,Vector{T}} where {T<:Real}, T_th_vec::Union{T,Vector{T}} where {T<:Real}; plasma_model::Symbol = :texas, returnExtra::Bool = false)
+    species_th_vec = vcat(species_th_vec) # In case input was a String, and not a Vector
+    n_th_vec = vcat(n_th_vec) # -||-
+    T_th_vec = vcat(T_th_vec) # -||-
+    
     ϵ0 = 8.8541878128e-12 # Permittivity of free space
     m_f = getSpeciesMass(species_f) # The fast-ion species mass, kg
     m_e = (GuidingCenterOrbits.e_amu)*(GuidingCenterOrbits.mass_u) # Electron mass, kg
@@ -1038,9 +1042,12 @@ fast-ion species '1' is wanted.
 - If 'vverbose' is not specified, assume false by default. If 'vverbose' it set to true, read_nubeam() will talk a lot more (including printing for-loop information etc.)!
 Original function written in Python by Luke Stagner as part of the FIDASIM code (https://github.com/D3DEnergetic/FIDASIM).
 """
-function CDFto4D(filepath_distr::String, R_array::Vector{Real}, z_array::Vector{Real}; E_range::Union{Nothing,Tuple{Float64,Float64}}=nothing, p_range::Union{Nothing,Tuple{Float64,Float64}}=nothing, btipsign::Int64=1, species::Int64=1, verbose::Bool = false, vverbose::Bool = false)
+function CDFto4D(filepath_distr::String, R_array::Union{T,Vector{T}} where {T<:Real}, z_array::Union{T,Vector{T}} where {T<:Real}; E_range::Union{Nothing,Tuple{T,T}} where {T<:Real}=nothing, p_range::Union{Nothing,Tuple{Float64,Float64}}=nothing, btipsign::Int64=1, species::Int64=1, verbose::Bool = false, vverbose::Bool = false)
     
-    verbose && println("Converting (R,z) points from meters to centimeters... ")
+    R_array = vcat(R_array) # Convert to Vector, if Real. Do nothing, if Vector
+    z_array = vcat(z_array) # Convert to Vector, if Real. Do nothing, if Vector
+
+    verbose && println("Converting (R,z) points from meters to centimeters (TRANSP default)... ")
     R_array = 100*R_array
     z_array = 100*z_array
     
@@ -1074,14 +1081,14 @@ function CDFto4D(filepath_distr::String, R_array::Vector{Real}, z_array::Vector{
         verbose && println("Flipping fast-ion distribution in pitch since sign(J ⋅ B)< 0... ")
         F_Epbm = reverse(F_Epbm,dims=2) # Reverse all elements in dimension of pitch, to account for plasma current and magnetic field pointing in different directions
     end
-    if e_range==nothing # If an energy range has not been specified as input with the keyword arguments...
-        e_range = (minimum(E_vector), maximum(E_vector))
+    if E_range==nothing # If an energy range has not been specified as input with the keyword arguments...
+        E_range = (minimum(E_vector), maximum(E_vector))
     end
     if p_range==nothing # If a pitch range has not been specified as input with the keyword arguments...
         p_range = (minimum(p_vector), maximum(p_vector))
     end
 
-    we = findall(x-> x >= e_range[1] && x <= e_range[2], E_vector) # Find the indices of all energies within specified energy range e_range
+    we = findall(x-> x >= E_range[1] && x <= E_range[2], E_vector) # Find the indices of all energies within specified energy range e_range
     wp = findall(x-> x >= p_range[1] && x <= p_range[2], p_vector) # Find the indices of all pitches within specified pitch range p_range
     E_vector = E_vector[we] # Trim energy vector accordingly
     nenergy = length(E_vector)
@@ -1201,7 +1208,7 @@ function CDFto4D(filepath_distr::String, R_array::Vector{Real}, z_array::Vector{
     r_bdry = r_bdry[w]
 
     itp = Interpolations.interpolate((theta_bdry,), r_bdry, Gridded(Linear())) # Create an interpolation object, to be able to interpolate new values of r from input theta values
-    etpf = extrapolate(itp, Flat()) # If outside of domain, just return flat (constant) values (flat=last known data value before extrapolation domain)
+    etpf = extrapolate(itp, Interpolations.Flat()) # If outside of domain, just return flat (constant) values (flat=last known data value before extrapolation domain)
 
 
     R_query_pts = query_R_mesh .- R_maxis # Same procedure as for data points, but for query points

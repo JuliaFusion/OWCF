@@ -83,6 +83,34 @@ OWCF_UNITS_LONG = merge(OWCF_BASE_UNITS_LONG, ACCELERATION_UNITS_LONG, FORCE_UNI
 
 
 """
+    units_pow(units_in,p)
+
+Return the input 'units_in' raised to the power 'p'.
+"""
+function units_pow(units_in::String, p::Int64; verbose=false)
+    verbose && println("units_in: $(units_in)")
+    my_units_dict = units_to_dict(units_in)
+    for key in keys(my_units_dict)
+        my_units_dict[key] = p*my_units_dict[key]
+    end
+
+    units_out = units_from_dict(my_units_dict)
+
+    verbose && println("units_out: $(units_out)")
+    return units_out
+end
+
+"""
+    units_inverse(units_in)
+
+Return the inverse of the input 'units_in'.
+"""
+function units_inverse(units_in::String; kwargs...)
+    return units_pow(units_in,-1; kwargs...)
+end
+
+
+"""
 units_to_base_units(units_in)
 
 Convert units of measurement into base units of measurement, including 
@@ -173,6 +201,8 @@ function units_to_base_units(units_in::String; verbose=false)
     # Merge duplicate units and return String
     return units_from_dict(units_to_dict(units_out)), cf_out
 end
+
+
 """
     units_conversion_factor(units_in, units_out)
 
@@ -187,6 +217,11 @@ PLEASE NOTE! The OWCF unit notation scheme is CASE SENSITIVE. This is to avoid a
 such as millielectronvolt (meV) and megaelectronvolt (MeV).
 """
 function units_conversion_factor(units_in::String,units_out::String; rounding=true, verbose=false)
+
+    # The trivial case
+    if lowercase(units_in)==lowercase(units_out)
+        return 1.0
+    end
 
     # Convert units into base units (https://en.wikipedia.org/wiki/SI_base_unit). Extra conversion factor (cf) might be needed (e.g. 1 keV=(1.602177e-19) J = (1.602177e-19) kg_m^2_s^-2)
     units_in, cf_in = units_to_base_units(units_in; verbose=verbose)
@@ -441,6 +476,7 @@ function units_conversion_factor(units_in::String,units_out::String; rounding=tr
     return rounding ? round(cf,sigdigits=12) : cf
 end
 
+
 """
     units_to_dict(units_in)
 
@@ -470,8 +506,15 @@ function units_to_dict(units_in::String)
         end
     end
 
+    for key in keys(my_unit_dict)
+        if my_unit_dict[key]==0
+            delete!(my_unit_dict,key) # Remove 0 artefacts that might appear
+        end
+    end
+
     return my_unit_dict
 end
+
 
 """
     units_from_dict(my_dict)
@@ -491,4 +534,47 @@ function units_from_dict(my_dict::Dict)
         end
     end
     return units_out[1:end-1] # Remove the last "_"
+end
+
+
+"""
+    units_are_speed(units_in)
+
+Deduce if units_in is a set of units that constitutes speed.
+If so, return true. If not, return false.
+"""
+function units_are_speed(units_in::String; verbose=false)
+
+    # Trivial case
+    if units_in in keys(SPEED_UNITS) || units_in in keys(SPEED_UNITS_LONG)
+        verbose && println("Trivial case. units_in in OWCF SPEED_UNITS (or SPEED_UNITS_LONG) list.")
+        return true
+    end
+
+    # Compository units case
+    units_base_dict = units_to_dict(units_to_base_units(units_in)[1])
+
+    if !(length(units_base_dict)==2) # Should be only two base units: LENGTH and TIME
+        verbose && println("Base units of $(units_in) are not of length 2 (LENGTH AND TIME).")
+        return false
+    else
+        l_units = 0
+        t_units = 0
+        for key in keys(units_base_dict) # Not optimal code, but ok since array length is just 2
+            if key in keys(LENGTH_UNITS) || key in keys(LENGTH_UNITS_LONG)
+                l_units += units_base_dict[key]
+            elseif key in keys(TIME_UNITS) || key in keys(TIME_UNITS_LONG)
+                t_units += units_base_dict[key]
+            else
+                verbose && println("Base unit $(key) of $(units_in) are not a LENGTH nor TIME.")
+                return false
+            end
+        end
+        if !(l_units==1 && t_units==-1)
+            verbose && println("Case 3. l_units=$(l_units) and not 1. t_units=$(t_units) and not -1.")
+            return false
+        else
+            return true
+        end
+    end
 end

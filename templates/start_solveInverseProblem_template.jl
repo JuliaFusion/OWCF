@@ -151,24 +151,24 @@
 #                               - A Float or Int. In seconds
 #                               - A String in format "XX.XXXX" or "XX,XXXX". In seconds
 #                               - A String with the filepath to a TRANSP-NUBEAM output file (in .cdf file format. The file is named e.g. 95679V28_fi_1.cdf).
-# rescale_W - If set to true, the algorithm will rescale the weight functions so that the WF_synth matrix-Vector product matches the 
-#             experimental data for all diagnostics. The F_synth variable is a reference fast-ion distribution (e.g. Maxwellian distribution 
+# rescale_W - If set to true, the algorithm will rescale the weight functions so that the W*F_ref matrix-Vector product matches the 
+#             experimental data for all diagnostics. The F_ref variable is a reference fast-ion distribution (e.g. Maxwellian distribution 
 #             or a TRANSP distribution). - Bool
-# rescale_F_synth_type - If rescale_W is set to true, this variable determines the type of F_synth that will be used to rescale the weight functions. 
+# rescale_W_type - If rescale_W is set to true, the type of rescaling must be specified. Currently, the available options are:
+#                      - :MAXIMUM. If used, the weight functions will be rescaled so that the maximum of the WF_ref matrix-Vector product matches  
+#                        the maximum of the experimental data for all diagnostics.
+#                      - :MEAN. If used, the weight functions will be rescaled so that the mean of the WF_ref matrix-Vector product matches the mean 
+#                        of the experimental data for all diagnostics.
+# rescale_W_F_ref_source - If rescale_W is set to true, this variable determines the source of F_ref that will be used to rescale the weight functions. 
 #                        The currently available options include :FILE and :GAUSSIAN - Symbol
-# rescale_F_synth_filepath - If rescale_W is set to true, and rescale_F_synth_type is set to :FILE, then rescale_F_synth_filepath needs to 
+# rescale_W_F_file_path - If rescale_W is set to true, and rescale_W_F_ref_source is set to :FILE, then rescale_W_F_file_path needs to 
 #                            be specified as the filepath to a .jld2 file or .hdf5 file loadable by the JLD2to4D() or h5to4D() functions in 
 #                            the OWCF/extra/dependencies.jl function library, respectively. Please check their function documentation for 
-#                            file key requirements. The rescale_F_synth_filepath variable can also be specified as the filepath to a TRANSP-NUBEAM 
+#                            file key requirements. The rescale_W_F_file_path variable can also be specified as the filepath to a TRANSP-NUBEAM 
 #                            output file in .cdf format (e.g. 95679V28_fi_1.cdf), loadable by the CDFto4D() function in the 
 #                            OWCF/extra/dependencies.jl function library - String
-# rescale_F_synth_N_FI_tot - If rescale_W is set to true and rescale_F_synth_type is set to :GAUSSIAN, then rescale_F_synth_N_FI_tot needs to be 
+# rescale_W_F_gaus_N_FI_tot - If rescale_W is set to true and rescale_W_F_ref_source is set to :GAUSSIAN, then rescale_W_F_gaus_N_FI_tot needs to be 
 #                            specified as an estimate of the total number of fast ions in the plasma - Float64
-# rescale_W_type - If rescale_W is set to true, the type of rescaling must be specified. Currently, the available options are:
-#                      - :MAXIMUM. If used, the weight functions will be rescaled so that the maximum of the WF_synth matrix-Vector product matches  
-#                        the maximum of the experimental data for all diagnostics.
-#                      - :MEAN. If used, the weight functions will be rescaled so that the mean of the WF_synth matrix-Vector product matches the mean 
-#                        of the experimental data for all diagnostics.
 # R_of_interest - If the reconstruction is in velocity-space (2D), an (R,z) point of interest might need to be specified, to 
 #                 e.g. include collision physics as prior information, or to rescale the weight functions using a TRANSP distribution.
 #                 Otherwise, please leave unspecified - Float64
@@ -188,6 +188,7 @@
 #                      - String  
 #
 # btipsign - The sign of the dot product between the magnetic field and the plasma current. Can be 1 or -1. - Int64
+# FI_species - If the reconstruction space is (vpara,vperp), the fast-ion distribution might need to be specified. "D", "T", "alpha" etc - String
 # h5file_of_nonJulia_origin - If .h5 or .hdf5 files are specified as input, and they were not created with the Julia programming language, the 
 #                             h5file_of_nonJulia_origin input variable might need to be set to true. This is because some languages reverse the array 
 #                             dimension order when saved as a .h5 or .hdf5 file. E.g. (E,p,R,z) sometimes become (z,R,p,E) - Bool
@@ -255,14 +256,14 @@ end
     end
     rescale_W = true
     if rescale_W
-        rescale_F_synth_type = :FILE # Currently supported, :FILE and :GAUSSIAN
-        if rescale_F_synth_type == :FILE
-            rescale_F_synth_filepath = ""
-        end
-        if rescale_F_synth_type == :GAUSSIAN
-            rescale_F_synth_N_FI_tot = 0.0e00
-        end
         rescale_W_type = :MAXIMUM # Currently supported, :MAXIMUM and :MEAN
+        rescale_W_F_ref_source = :FILE # Currently supported, :FILE and :GAUSSIAN
+        if rescale_W_F_ref_source == :FILE
+            rescale_W_F_file_path = ""
+        end
+        if rescale_W_F_ref_source == :GAUSSIAN
+            rescale_W_F_gaus_N_FI_tot = 0.0e00
+        end
     end
     R_of_interest = nothing
     R_of_interest_unit = "m"
@@ -271,9 +272,10 @@ end
     z_of_interest = nothing
     z_of_interest_unit = "m"
 
-    ### Weird input arguments
+    ### Extra input arguments
     btipsign = 1 # The sign of the dot product between the magnetic field and the plasma current. Most likely not needed. But please specify, if known.
-    h5file_of_nonJulia_origin = false # If rescale_F_synth_filepath is an .h5 or .hdf5 file, and it was not created with the Julia programming language, this input variable should probably be set to true
+    FI_species = "" # If reconstruction is in (vpara,vperp), the fast-ion species might need to be specified. Please see OWCF/misc/species_func.jl for more info on species options.
+    h5file_of_nonJulia_origin = false # If rescale_W_F_file_path is an .h5 or .hdf5 file, and it was not created with the Julia programming language, this input variable should probably be set to true
 end
 
 ## -----------------------------------------------------------------------------
