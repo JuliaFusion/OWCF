@@ -56,6 +56,15 @@ struct ViewingCone
     CP::Vector{Float64}
 end
 
+function Base.show(io::IO, vc::ViewingCone)
+    println(io,typeof(vc))
+    println(io,"Loaded from: $(vc.file)")
+    println(io,"Number of voxels: $(vc.Nvoxels)")
+    println(io,"minimum(R), maximum(R) [meters]: $(round(minimum(vc.R),sigdigits=4)), $(round(maximum(vc.R),sigdigits=4))")
+    println(io,"minimum(z), maximum(z) [meters]: $(round(minimum(vc.Z),sigdigits=4)), $(round(maximum(vc.Z),sigdigits=4))")
+    println(io,"Resolution (dR,dphi,dz) [meters]: ($(round(vc.dR,sigdigits=4)),$(round(vc.dPHI,sigdigits=4)),$(round(vc.dZ,sigdigits=4)))")
+end
+
 """
     ViewingCone(name)
 
@@ -194,12 +203,12 @@ i_points: array of point indices (same length as i_voxels).
     (A point with given R,z coordinates might be inside 
     multiple voxels, since toroidal symmetry is assumed).
 """
-function map_points_voxels(vc::ViewingCone, R::Union{Real,T}, z::Union{Real,T}) where {T<:AbstractArray}
+function map_points_voxels(vc::ViewingCone, R::Union{Real,T}, z::Union{Real,T}; verbose=false, vverbose=false) where {T<:AbstractArray}
     ip = get_poloidal_index(vc, R, z)
     i_all_points = collect(1:length(ip))
 
     # Filter points inside the viewing cone
-    inside = findall(x-> x != -1, ip)
+    inside = findall(x-> x != -1, ip); verbose && println("map_points_voxels() -> length(inside): $(length(inside))")
     ip, i_points_inside = ip[inside], i_all_points[inside]
 
     if isempty(ip)
@@ -211,13 +220,17 @@ function map_points_voxels(vc::ViewingCone, R::Union{Real,T}, z::Union{Real,T}) 
     ivox = vc.IVOX[ip]
     nvox = vc.NVOX[ip]
     
-    i_voxels = vcat(ivox) # Reshape all voxel 1-element arrays into one long vector
-    i_points = similar(i_voxels) # Pre-allocate i_points
+    verbose && println("map_points_voxels() -> length(ivox): $(length(ivox))")
+    i_voxels = vcat(ivox...) # Reshape all voxel 1-element arrays into one long vector
+    verbose && println("map_points_voxels() -> length(i_voxels): $(length(i_voxels))")
+    i_points = Vector{Int64}(undef,length(i_voxels)) # Pre-allocate i_points
 
     # Assign points to voxel indices
     i0 = 1
     for (i, n) in enumerate(nvox)
         i1 = i0 + n - 1
+        vverbose && println("map_points_voxels() -> i0: $(i0)    n: $(n)    i1: $(i1)     i: $(i)")
+        vverbose && println("map_points_voxels() -> i_points_inside[i]: $(i_points_inside[i])")
         i_points[i0:i1] .= i_points_inside[i]
         i0 = i1 + 1
     end
