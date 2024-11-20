@@ -109,32 +109,34 @@
 #                      - :ZEROTIKHONOV - If included, 0th order Tikhonov regularization will be used.
 #                      - :FIRSTTIKHONOV - If included, 1st order Tikhonov regularization will be used.
 #                      - :COLLISIONS - If included, the fast-ion distribution will be assumed to be spanned by a set of slowing-down functions,
-#                                      incorporating collision-physics into the reconstruction. Currently, this is only available for velocity-space
-#                                      reconstructions in (E,p).
+#                                      incorporating collision-physics into the reconstruction. Currently, this is only available for velocity-space (2D)
+#                                      reconstructions in (E,p) and (vpara,vperp).
 #                  One or several of the above options should be specified as elements in a Vector. Otherwise, empty Vector - Vector{Symbol}
 # regularization_equil_filepath - If :COLLISIONS is included in the 'regularization' Vector, the filepath to a magnetic equilibrium file 
 #                                 (either in .eqdsk file format or an extra/createSolovev.jl output file) must be specified. This is to compute 
 #                                 necessary quantities for the creation of the slowing-down basis functions, e.g. the Spitzer slowing-down time - String
 # regularization_thermal_ion_temp - If :COLLISIONS is included in the 'regularization' Vector, data on the thermal ion temperatures must be specified. 
-#                                   This can be done in several ways. Currently, the following options are available:
-#                                       - A Vector of Floats or Ints. Each element corresponds to the temperature of the corresponding thermal ion 
+#                                   This should be in the form of a Vector of equal length to the regularization_thermal_ion_species input variable (see below).
+#                                   For the elements of the Vector, the following options are currently available:
+#                                       - A Float or an Int. The element corresponds to the temperature of the corresponding thermal ion 
 #                                         species element in the 'regularization_thermal_ion_species' input variable (see below). The temperatures must 
 #                                         be provided in keV.
-#                                       - A Vector of Strings. Each element should be a filepath to an output file of the helper/createCustomThermalProfiles.jl 
-#                                         script. Each element is assumed to be the temperature profile of the corresponding thermal ion species element 
+#                                       - A String. The element should be a filepath to an output file of the helper/createCustomThermalProfiles.jl 
+#                                         script. The element is assumed to be the temperature profile of the corresponding thermal ion species element 
 #                                         in the 'regularization_thermal_ion_species' input variable (see below).
-#                                       - A String with the filepath to a TRANSP output file (in .cdf file format). All thermal ion temperature profiles will 
+#                                       - A String. The filepath to a TRANSP output file (in .cdf file format). The thermal ion temperature profile will 
 #                                         be loaded from this file. The ion species in the 'regularization_thermal_ion_species' input variable will be used 
 #                                         to load the correct data from the TRANSP output file (the file is named e.g. 95679V28.cdf).
 # regularization_thermal_ion_dens - If :COLLISIONS is included in the 'regularization' Vector, data on the thermal ion densities must be specified. 
-#                                   This can be done in several ways. Currently, the following options are available:
-#                                       - A Vector of Floats or Ints. Each element corresponds to the density of the corresponding thermal ion 
+#                                   This should be in the form of a Vector of equal length to the regularization_thermal_ion_species input variable (see below).
+#                                   For the elements of the Vector, the following options are currently available:
+#                                       - A Float or an Int. The element corresponds to the density of the corresponding thermal ion 
 #                                         species element in the 'regularization_thermal_ion_species' input variable (see below). The densities must 
 #                                         be provided in m^-3.
-#                                       - A Vector of Strings. Each element should be a filepath to an output file of the helper/createCustomThermalProfiles.jl 
-#                                         script. Each element is assumed to be the density profile of the corresponding thermal ion species element 
+#                                       - A String. The element should be a filepath to an output file of the helper/createCustomThermalProfiles.jl 
+#                                         script. The element is assumed to be the density profile of the corresponding thermal ion species element 
 #                                         in the 'regularization_thermal_ion_species' input variable (see below).
-#                                       - A String with the filepath to a TRANSP output file (in .cdf file format). All thermal ion density profiles will 
+#                                       - A String. The filepath to a TRANSP output file (in .cdf file format). The thermal ion density profile will 
 #                                         be loaded from this file. The ion species in the 'regularization_thermal_ion_species' input variable will be used 
 #                                         to load the correct data from the TRANSP output file (the file is named e.g. 95679V28.cdf).
 # regularization_thermal_ion_species - If :COLLISIONS is included in the 'regularization' Vector, data on the thermal ion species must be specified. This 
@@ -144,6 +146,11 @@
 # regularization_thermal_electron_temp - If :COLLISIONS is included in the 'regularization' Vector, data on the thermal electron temperature must be specified.
 #                                        This can be done in several ways. Currently, the following options are available:
 #                                           - A Float. The temperature must be provided in keV
+#                                           - A String with the filepath to an output file of the helper/createCustomThermalProfiles.jl script
+#                                           - A String with the filepath to a TRANSP output file (in .cdf file format, e.g. 99971L36.cdf).
+# regularization_thermal_electron_dens - If :COLLISIONS is included in the 'regularization' Vector, data on the thermal electron density must be specified.
+#                                        This can be done in several ways. Currently, the following options are available:
+#                                           - A Float. The density must be provided in m^-3
 #                                           - A String with the filepath to an output file of the helper/createCustomThermalProfiles.jl script
 #                                           - A String with the filepath to a TRANSP output file (in .cdf file format, e.g. 99971L36.cdf).
 # regularization_timepoint - If :COLLISIONS is included in the 'regularization' Vector, and a TRANSP output file has been specified for either the ion or 
@@ -170,10 +177,9 @@
 # rescale_W_F_gaus_N_FI_tot - If rescale_W is set to true and rescale_W_F_ref_source is set to :GAUSSIAN, then rescale_W_F_gaus_N_FI_tot needs to be 
 #                            specified as an estimate of the total number of fast ions in the plasma - Float64
 # R_of_interest - If the reconstruction is in velocity-space (2D), an (R,z) point of interest might need to be specified, to 
-#                 e.g. include collision physics as prior information, or to rescale the weight functions using a TRANSP distribution.
+#                 e.g. include collision physics as prior information, or to rescale the weight functions using a reference fast-ion distribution.
 #                 Otherwise, please leave unspecified - Float64
-# R_of_interest_unit - The unit of R_of_interest. Please see OWCF/misc/convert_units.jl for lists of all accepted units of measurement in the OWCF. 
-#                      - String  
+# R_of_interest_unit - The unit of R_of_interest. Please see OWCF/misc/convert_units.jl for lists of all accepted units of measurement in the OWCF. - String  
 # scriptSources_W - A Vector of Strings with the same length as the 'filepaths_W' input variable. Each element of the 
 #                   'scriptSources_W' input variable informs the algorithm with which OWCF script the corresponding element 
 #                   in the 'filepaths_W' input variable has been computed. For example, if scriptSources_W[2]="calcOrbWeights",
@@ -182,13 +188,12 @@
 #                   computed with the OWCF, just put 'none' for the corresponding element in scriptSources_W.
 # verbose - If set to true, the script will talk a lot! - Bool
 # z_of_interest - If the reconstruction is in velocity-space (2D), an (R,z) point of interest might need to be specified, to 
-#                 e.g. include collision physics as prior information, or to rescale the weight functions using a TRANSP distribution.
+#                 e.g. include collision physics as prior information, or to rescale the weight functions using a reference fast-ion distribution.
 #                 Otherwise, please leave unspecified - Float64
-# z_of_interest_unit - The unit of z_of_interest. Please see OWCF/misc/convert_units.jl for lists of all accepted units of measurement in the OWCF. 
-#                      - String  
+# z_of_interest_unit - The unit of z_of_interest. Please see OWCF/misc/convert_units.jl for lists of all accepted units of measurement in the OWCF. - String  
 #
 # btipsign - The sign of the dot product between the magnetic field and the plasma current. Can be 1 or -1. - Int64
-# FI_species - If the reconstruction space is (vpara,vperp), the fast-ion distribution might need to be specified. "D", "T", "alpha" etc - String
+# FI_species - If the reconstruction space is (vpara,vperp) or :COLLISIONS is included in regularization, the fast-ion species need to be specified. "D", "T", "alpha" etc - String
 # h5file_of_nonJulia_origin - If .h5 or .hdf5 files are specified as input, and they were not created with the Julia programming language, the 
 #                             h5file_of_nonJulia_origin input variable might need to be set to true. This is because some languages reverse the array 
 #                             dimension order when saved as a .h5 or .hdf5 file. E.g. (E,p,R,z) sometimes become (z,R,p,E) - Bool
@@ -231,7 +236,7 @@ end
 ## -----------------------------------------------------------------------------
 @everywhere begin
     constraints = [:NONNEG]
-    excluded_measurement_intervals = [[(),()],[(),()]]
+    excluded_measurement_intervals = [[(,),...],[(,),...]]
     excluded_measurement_units = ["",""]
     exclude_zero_measurements = true
     filepaths_S = ["",""]
@@ -248,10 +253,11 @@ end
     regularization = [:ZEROTIKHONOV]
     if :COLLISIONS in regularization
         regularization_equil_filepath = ""
-        regularization_thermal_ion_temp = [] # or "" (please read start file template description above)
-        regularization_thermal_ion_dens = [] # or "" (please read start file template description above)
+        regularization_thermal_ion_temp = [] # (please read start file template description above)
+        regularization_thermal_ion_dens = [] # (please read start file template description above)
         regularization_thermal_ion_species = ["",""] # Or [""], ["","",""] etc 
         regularization_thermal_electron_temp = 0.0 # or "" (please read start file template description above)
+        regularization_thermal_electron_dens = 0.0 # or "" (please read start file template description above)
         regularization_timepoint = 00.0000 # or "" (please read start file template description above)
     end
     rescale_W = true
@@ -274,7 +280,7 @@ end
 
     ### Extra input arguments
     btipsign = 1 # The sign of the dot product between the magnetic field and the plasma current. Most likely not needed. But please specify, if known.
-    FI_species = "" # If reconstruction is in (vpara,vperp), the fast-ion species might need to be specified. Please see OWCF/misc/species_func.jl for more info on species options.
+    FI_species = "" # If reconstruction is in (vpara,vperp) or :COLLISIONS in the 'regularization' input variable, the fast-ion species might need to be specified. Please see OWCF/misc/species_func.jl for more info on species options.
     h5file_of_nonJulia_origin = false # If rescale_W_F_file_path is an .h5 or .hdf5 file, and it was not created with the Julia programming language, this input variable should probably be set to true
 end
 
