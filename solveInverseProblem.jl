@@ -257,7 +257,7 @@ z_array_TRANSP = myfile["z"]
 close(myfile)
 iR_TRANSP = argmin(abs.(R_array_TRANSP .- 100*R_of_interest))
 iz_TRANSP = argmin(abs.(z_array_TRANSP .- 100*z_of_interest))
-f_test_orig = unit_conversion_factor("cm^-3","m^-3") .*F_EpRz_TRANSP[:,:,iR_TRANSP,iz_TRANSP] # TRANSP distribution is in cm^-3. Convert to m^-3
+f_test_orig = units_conversion_factor("cm^-3","m^-3") .*F_EpRz_TRANSP[:,:,iR_TRANSP,iz_TRANSP] # TRANSP distribution is in cm^-3. Convert to m^-3
 nodes_TRANSP = (E_array_TRANSP,p_array_TRANSP)
 itp = Interpolations.interpolate(nodes_TRANSP,f_test_orig,Gridded(Linear()))
 etp = Interpolations.extrapolate(itp,Interpolations.Flat())

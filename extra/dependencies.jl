@@ -79,6 +79,71 @@ end
 ###### Mathematics
 
 """
+    gaussian(μ, σ)
+    gaussian(-||-; mx=μ .+6 .*σ, mn=μ .-6 .*σ, n=50)
+
+Compute the (multi-variate) Gaussian distribution with mean 'μ' and standard deviation 'σ'.
+By default, the upper bounds 'mx' of the grid are found by adding 6σ to the mean μ.
+The lower bounds 'mn' of the grid are found by subtracting 6σ from the mean μ. By default, the number 
+of grid points in all dimensions is the same: 50. To use the function to create a D-dimensional Gaussian
+distribution, where D is any integer >0, do e.g. the following. The example below is for a 3-dimensional case:
+m = [100.0, 0.6, 3.3]
+v = [25.0, 0.01, 0.04]
+myGauss = gaussian(μ, σ; mx=[200.0, 1.0, 3.8], mn=[0.0, -1.0, 3.0], n=[10,101,104])
+
+The variable 'myGauss' will then be a 10x101x104 array. In the first dimension, the lower and upper bounds will 
+be 0.0 and 200.0, respectively. And so on for the other dimensions.
+
+The floor_level keyword argument can be used to set all values smaller than floor_level*maximum(f)
+to 0.0 before returning the output. f is the Gaussian distribution.
+
+The verbose keyword argument will make the function talk more!
+"""
+function gaussian(μ::AbstractVector, σ::AbstractVector; mn::AbstractVector=μ .-6 .*σ, mx::AbstractVector=μ .+6 .*σ, n::Union{Int64,Vector{Int64}}=50, floor_level::Float64=0.0, verbose::Bool=false)
+    DIM=length(μ) # The number of dimensions
+    if !(DIM==length(σ))
+        error("length(μ)=$(DIM) while length(σ)=$(length(σ)). The number of mean (μ) points must be equal to the number of standard deviation (σ) points. Please correct and re-try.")
+    end
+    if !(DIM==length(mx))
+        error("length(μ)=$(DIM) while length(mx)=$(length(mx)). The number of upper bound (mx) points must equal the number of mean (μ) points. Please correct and re-try.")
+    end
+    if !(DIM==length(mn))
+        error("length(μ)=$(DIM) while length(mn)=$(length(mx)). The number of lower bound (mn) points must equal the number of mean (μ) points. Please correct and re-try.")
+    end
+    if !(DIM==length(n))
+        verbose && println("Matching length of grid points 'n' to $(DIM)-dimensional space... ")
+        n = repeat(vcat(n),DIM)
+    end
+    verbose && println("Upper bound(s) for $(DIM)-dimensional grid: $(mx)")
+    verbose && println("Lower bound(s) for $(DIM)-dimensional grid: $(mn)")
+    verbose && println("Number of grid points (in each dimension): $(n)")
+
+    v = σ.^2 # Compute the variance from the standard deviation
+    verbose && println("Creating $(DIM)-dimensional grid for Gaussian distribution... ")
+    query_vecs_n_inds = () # A tuple to hold all query points and their indices. Structure: ((vector,indices),(vector,indices),...)
+    for i in 1:DIM # For all grid dimensions... 
+        query_vecs_n_inds = tuple(query_vecs_n_inds[:]...,collect(zip(collect(range(mn[i],stop=mx[i],length=n[i])),1:n[i]))) # Add the (vector,indices) pairs one by one  into a big tuple (tuples are immutable, hence the cumbersome code)
+    end
+    query_points_n_coords = Iterators.product(query_vecs_n_inds...) # Create a long list of all reconstruction space grid points and their coordinates by computing a product between all query point-index vectors. Example structure (if 3 dimensions): [((x1_1,1),(x2_1,1),(x3_1,1)),((x1_2,2),(x2_1,1),(x3_1,1)),...]
+    verbose && print("Computing Gaussian distribution with mean $(μ) and standard deviation $(σ)...")
+    gauss_distr = zeros(tuple(n...)) # Pre-allocate Gaussian distribution
+    for query_point_n_coord in query_points_n_coords
+        point = [p for p in map(x-> x[1],query_point_n_coord)] # The point to compute the Gaussian at. E.g. (100.0,0.3) in energy (keV),pitch
+        coord = map(x-> x[2],query_point_n_coord) # The coordinate of that point. E.g. (53,14)
+        gauss_distr[coord...] = ((2*pi)^(-DIM/2))*inv(sqrt(det(diagm(v)))) *exp(-0.5*transpose(point - μ)*inv(diagm(v))*(point - μ))
+    end
+    verbose && println("Done!")
+
+    if floor_level>0
+        verbose && print("Grid points with values below $(floor_level)*maximum(gauss_distr) will be manually set to 0.0...")
+        max_g = maximum(gauss_distr)
+        gauss_distr = map(x-> x<floor_level*max_g ? 0.0 : x, gauss_distr)
+        verbose && println("Done!")
+    end
+    return gauss_distr
+end
+
+"""
 erf(x::Real)
 erf(x; resolution::Int64 = 1000, sigma=1/sqrt(2))
 
@@ -1040,6 +1105,8 @@ within the 'E_range'/'p_range' ranges to create the fast-ion distribution f(E,p,
 fast-ion species '1' is wanted.
 - If 'verbose' is not specified, assume false by default. If 'verbose' is set to true, read_nubeam() will talk a lot!
 - If 'vverbose' is not specified, assume false by default. If 'vverbose' it set to true, read_nubeam() will talk a lot more (including printing for-loop information etc.)!
+
+Return f(E,p,R,z) in keV^-1_m^-3 and R- and z-arrays in meters.
 Original function written in Python by Luke Stagner as part of the FIDASIM code (https://github.com/D3DEnergetic/FIDASIM).
 """
 function CDFto4D(filepath_distr::String, R_array::Union{T,Vector{T}} where {T<:Real}, z_array::Union{T,Vector{T}} where {T<:Real}; E_range::Union{Nothing,Tuple{T,T}} where {T<:Real}=nothing, p_range::Union{Nothing,Tuple{Float64,Float64}}=nothing, btipsign::Int64=1, species::Int64=1, verbose::Bool = false, vverbose::Bool = false)
