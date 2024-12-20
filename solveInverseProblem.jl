@@ -1,707 +1,1876 @@
-###########################################################
-# THIS SCRIPT IS CURRENTLY UNDER CONSTRUCTION!!!
-# THIS SCRIPT IS CURRENTLY UNDER CONSTRUCTION!!!
-# THIS SCRIPT IS CURRENTLY UNDER CONSTRUCTION!!!
-#
-#
-# When completed, it will be able to solve the S=WF inverse
-# problem. That is, given a set of measurements S (either from 
-# calcSpec.jl or experimental data), use 0th or 1st order 
-# Tikhonov together with the weight functions (computed by
-# calcOrbWeights.jl or calc2DWeights.jl or even calc4DWeights.jl)
-# to reconstruct the fast-ion distribution F. This is done for 
-# many regularization parameter values, and returned as a 
-# multi-dimensional array.
-#
-# THIS SCRIPT IS CURRENTLY UNDER CONSTRUCTION!!!
-# THIS SCRIPT IS CURRENTLY UNDER CONSTRUCTION!!!
-# THIS SCRIPT IS CURRENTLY UNDER CONSTRUCTION!!!
-###########################################################
+#########################################  solveInverseProblem.jl #########################################
 
-# Load packages
-folderpath_OWCF = "/home/henrikj/Codes/OWCF/"
-cd(folderpath_OWCF)
-using Pkg
-Pkg.activate(".")
-using JLD2
-using HDF5
-using FileIO
-using Plots
-###########################################################
-# Load the experimental data, including MPRu, and try with that
-# KM14
-filepath_KM14_data = "/home/henrikj/Documents/dissemination/papers/99971_2Drec_paper/data/KM14/99971_data_KM14_t=48.5_49.5s.dat"
-datafile = open(filepath_KM14_data,"r")
-lines = readlines(datafile)
-Ed_array_S_KM14 = zeros(length(lines)-1)
-spec_KM14 = zeros(length(lines)-1)
-spec_err_KM14 = zeros(length(lines)-1)
-for i in eachindex(lines)
-    if i>1
-        line_array = split(lines[i],"\t")
-        Ed_array_S_KM14[i-1] = parse(Float64,line_array[2])
-        spec_KM14[i-1] = parse(Float64,line_array[3])
-        spec_err_KM14[i-1] = parse(Float64,line_array[4])
-    end
-end
-close(datafile)
-gi_KM14 = findall(x-> x>=7.75 && x<=9.5,Ed_array_S_KM14)
-Ed_array_S_KM14_orig = Ed_array_S_KM14[gi_KM14]
-S_exp_KM14_orig = spec_KM14[gi_KM14]
-err_exp_KM14_orig = spec_err_KM14[gi_KM14] 
-###########################################################
-# KM15
-filepath_KM15_data = "/home/henrikj/Documents/dissemination/papers/99971_2Drec_paper/data/KM15/99971_data_KM15_t=48.5_49.5s.dat"
-datafile = open(filepath_KM15_data,"r")
-lines = readlines(datafile)
-Ed_array_S_KM15 = zeros(length(lines)-1)
-spec_KM15 = zeros(length(lines)-1)
-spec_err_KM15 = zeros(length(lines)-1)
-for i in eachindex(lines)
-    if i>1
-        line_array = split(lines[i]," ")
-        Ed_array_S_KM15[i-1] = parse(Float64,line_array[2])
-        spec_KM15[i-1] = parse(Float64,line_array[3])
-        spec_err_KM15[i-1] = parse(Float64,line_array[4])
-    end
-end
-close(datafile)
-gi_KM15 = findall(x-> x>=7.75 && x<=9.5,Ed_array_S_KM15)
-Ed_array_S_KM15_orig = Ed_array_S_KM15[gi_KM15]
-S_exp_KM15_orig = spec_KM15[gi_KM15]
-err_exp_KM15_orig = spec_err_KM15[gi_KM15] 
-###########################################################
-# MPRu
-using HDF5
-myfile = h5open("/home/henrikj/Documents/dissemination/papers/99971_2Drec_paper/data/MPRu/99971_MPRu_exp_data.h5","r")
-Ed_array_S_MPRu = read(myfile["Xpos_array"])
-spec_err_MPRu = read(myfile["erro_array"])
-spec_MPRu = read(myfile["spec_array"])
-close(myfile)
-gi_MPRu = findall(x-> x>=20.0 && x<=60.0,Ed_array_S_MPRu)
-Ed_array_S_MPRu_orig = Ed_array_S_MPRu[gi_MPRu]
-S_exp_MPRu_orig = spec_MPRu[gi_MPRu]
-err_exp_MPRu_orig = spec_err_MPRu[gi_MPRu] 
-###########################################################
-pltKM14nKM15 = Plots.scatter(Ed_array_S_KM14_orig,S_exp_KM14_orig; label="KM14",markershape=:diamond,markersize=4,markercolor=:green)
-pltKM14nKM15 = Plots.yerror!(Ed_array_S_KM14_orig,S_exp_KM14_orig; yerror=err_exp_KM14_orig)
-pltKM14nKM15 = Plots.plot!(xlabel="Deposited energy [MeV]",ylabel="Counts",yaxis=:identity)
-pltKM14nKM15 = Plots.plot!(title="Experimental data",xtickfontsize=13,xguidefontsize=14)
-pltKM14nKM15 = Plots.plot!(ytickfontsize=13,yguidefontsize=14)
-pltKM14nKM15 = Plots.plot!(titlefontsize=15)
-pltKM14nKM15 = Plots.scatter!(Ed_array_S_KM15_orig,S_exp_KM15_orig; label="KM15",markershape=:diamond,markersize=4,markercolor=:red)
-pltKM14nKM15 = Plots.yerror!(Ed_array_S_KM15_orig,S_exp_KM15_orig; yerror=err_exp_KM15_orig)
+#### Description:
+# This script solves an inverse problem on the form S=W*F where 'S' is a vector of length m containing all the 
+# measurements/data points, 'F' is a vector of length n containing the fast-ion distribution in vectorized form 
+# and 'W' is an m x n matrix containing all the weight functions (as rows) relating 'S' to 'F'. The script can 
+# solve standard fast-ion tomography inverse problems in any dimension D, where 1 <= D <= 6, including orbit 
+# tomography problems. Several forms of prior information, constraints and regularization can be included when 
+# solving the inverse problem. These are described in the template file OWCF/templates/start_solveInverseProblem_template.jl.
+# Any number of diagnostics can be included in the inverse problem, as long as they are included together with 
+# an equal number of weight matrices.
+#
+# Please see the OWCF/templates/start_solveInverseProblem_template.jl file for further input information.
 
-pltMPRu = Plots.scatter(Ed_array_S_MPRu_orig,S_exp_MPRu_orig; label="MPRu",markershape=:diamond,markersize=4,mc=:purple)
-pltMPRu = Plots.yerror!(Ed_array_S_MPRu_orig,S_exp_MPRu_orig; yerror=err_exp_MPRu_orig)
-pltMPRu = Plots.plot!(xlabel="Proton impact position [cm]",ylabel="Counts",yaxis=:identity)
-pltMPRu = Plots.plot!(title="Experimental data",xtickfontsize=13,xguidefontsize=14)
-pltMPRu = Plots.plot!(ytickfontsize=13,yguidefontsize=14)
-pltMPRu = Plots.plot!(titlefontsize=15)
-###########################################################
-# Load KM14 weight functions
-using JLD2
-using HDF5
+#### Inputs (Units given when defined in script)
+# Given via input file start_solveInverseProblem_template.jl, for example. 'template' should be replaced by whatever.
+
+#### Outputs
+# -
+
+#### Saved files
+# solInvProb_[tokamak]_S_[numODiag]_[numOMeasure]_W_[numOW]_[recSpaceGridSize]_[hyperParamGridSize]_[date and time].jld2
+# where 
+#   - 'tokamak' is the tokamak in which the inverse problem is solved. Specified in input file
+#   - 'numODiag' is the number of diagnostics used to solve the inverse problem
+#   - 'numOMeasure' is the total number of measurements used to solve the inverse problem
+#   - 'numOW' is the number of weight matrices used to solve the inverse problem (equal to numODiag)
+#   - 'recSpaceGridSize' is the size of the reconstruction space grid on which the fast-ion distribution is reconstructed
+#   - 'hyperParamGridSize' is the size of the hyper-parameter value(s) grid used to regularize the inverse problem
+#   - 'date and time' is the date and time at which the inverse problem was solved
+# This saved file will have the keys:
+#   sols - The solutions to the inverse problem in inflated format, i.e. recSpaceGridSize x hyperParamGridSize - Array{Float64}
+#   sols_abscissa_i - where i is an integer >=1. The reconstruction space abscissas of the sols output data. E.g. sols_abscissa_i
+#                     contains the grid points corresponding to the i:th dimension of sols - Vector{Float64}
+#   sols_abscissa_i_units - where i is an integer >=1. The units of measurement of sols_abscissa_i - String
+#   sols_hyper_abscissa_i - where i is an integer >=1. The hyper-parameter values of the i:th regularization dimension of sols.
+#                           For example, if the reconstruction space is 2D and two hyper-parameters where needed to solved the inverse 
+#                           problem (e.g. the regularization strength for 0th Order Tikhonov and 1st Order Tikhonov, respectively) 
+#                           sols[:,:,i,j] corresponds to the solution with hyper-parameter values sols_hyper_abscissa_1[i] and 
+#                           sols_hyper_abscissa_2[j]. - Vector{Float64}
+#   FI_species - The particle species of the reconstructed fast-ion distribution - String
+#   measurement_bin_units_i - The units of the measurements of the i:th diagnostic used to solve the inverse problem - String
+#   l_curve_x - The x-axis values of the L-curve of the solutions to the inverse problem, corresponding to ||S-WF|| - Vector{Float64}
+#   l_curve_y - The y-axis-values of the L-curve of the solutions to the inverse problem, corresponding to ||F|| - Vector{Float64}
+#   l_curve_opt_index - The index of the L-curve point with the largest curvature. (l_curve_x[l_curve_opt_index], l_curve_y[l_curve_opt_index])
+#                       will then correpond to the L-curve point - Int64
+#   l_curve_opt_hyper_point - The hyper-parameter point corresponding to
+#verbose && println("---> Saving output data... ")
+#write(myfile,"sols",sols_inflated)
+#for (i,ab) in enumerate(W_abscissas[1][2:end])
+#    if saveInHDF5format
+#        ab = Float64.(ab) # Convert from Real to Float64, since .hdf5 files cannot handle Real types
+#    end
+#    write(myfile,"sols_abscissa_$(i)",ab)
+#    write(myfile,"sols_abscissa_$(i)_units",W_abscissas_units[1][i+1])
+#end
+#for (i,hp_ab) in enumerate(hyper_arrays)
+#    write(myfile,"sols_hyper_abscissa_$(i)",hp_ab)
+#end
+#write(myfile,"FI_species",FI_species)
+#for (i,s_ab_units) in enumerate(S_abscissas_units)
+#    write(myfile,"measurement_bin_units_$(i)",s_ab_units)
+#end
+#write(myfile,"l_curve_x",sdf)
+#write(myfile,"l_curve_y",srn)
+#write(myfile,"l_curve_opt_index",ilm)
+#write(myfile,"l_curve_opt_hyper_point",ilm_hyper_point)
+#write(myfile,"l_curve_opt_hyper_coord",ilm_hyper_coord)
+#write(myfile,"l_curve_opt_sol",sol_ilm)
+#write(myfile,"filepath_start",filepath_start)
+#if rescale_W
+#    write(myfile,"rescale_W_factors",rescale_W_factors)
+#end
+#if collision_physics_reg
+#    write(myfile,"coll_phys_basis",F_SD_safe_inflated)
+#    write(myfile,"coll_phys_thermal_species",regularization_thermal_ion_species)
+#    write(myfile,"coll_phys_Ti",thermal_ion_temperatures)
+#    write(myfile,"coll_phys_ni",thermal_ion_densities)
+#    write(myfile,"coll_phys_Te",thermal_electron_temperatures)
+#    write(myfile,"coll_phys_ne",thermal_electron_densities)
+#    write(myfile,"coll_phys_rho",rho_of_interests)
+#end
+#close(myfile)
+
+### Other
+# 
+
+# Script written by Henrik Järleblad. Last maintained 2024-12-18.
+###########################################################################################################
+
+# println section number tracker
+prnt = 0
+
+# Timestamp of script execution start
+timestamps = [time()]
+
+# SECTION 0
+println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
+
+verbose && println("Loading Julia packages... ")
+using Base.Iterators
+using Dates
 using FileIO
-filepath_W = "/home/henrikj/Codes/OWCF_results/cycle31/17/weights/velWeights_JET_99971L72_at8,9s_KM14_T-d=n-4He.hdf5"
-myfile = h5open(filepath_W,"r")
-W_KM14 = read(myfile["W"])
-Ed_array_W_KM14 = read(myfile["Ed_array"])
-Ed_array_W_KM14 = Ed_array_W_KM14 ./(1000.0) # keV to MeV
-E_array = read(myfile["E_array"])
-p_array = read(myfile["p_array"])
-R_of_interest = read(myfile["R"])
-z_of_interest = read(myfile["z"])
-En_array_W_KM14 = read(myfile["Ed_array_raw"])
-close(myfile)
-###########################################################
-# Define coarse grid vectors. Compute interpolations of 
-# weight functions onto coarse grid.
-E_coarse = collect(range(minimum(E_array),stop=250.0,length=100))
-p_coarse = collect(range(extrema(p_array)...,length=35))
+using HDF5
 using Interpolations
-nodes = (Ed_array_W_KM14, E_array, p_array)
+using JLD2
+using LinearAlgebra
+using SparseArrays
+using Statistics
+using SCS, Convex
+include(folderpath_OWCF*"misc/convert_units.jl")
+if plot_solutions || gif_solutions
+    using Plots
+end
+if "collisions" in lowercase.(String.(regularization))
+    verbose && println("Collision physics included in list of regularization ---> OWCF dependencies needed.")
+    include(folderpath_OWCF*"extra/dependencies.jl")
+    include(folderpath_OWCF*"misc/temp_n_dens.jl")
+    include(folderpath_OWCF*"misc/species_func.jl")
+end
+if rescale_W
+    verbose && println("rescale_W set to true ---> OWCF dependencies needed.")
+    include(folderpath_OWCF*"extra/dependencies.jl")
+end
 
-# Create interpolation object
-itp = interpolate(nodes, W_KM14, Gridded(Linear()))
+append!(timestamps,time()) # The timestamp when all necessary packages have been loaded
+###########################################################################################################
+# SECTION 1: PERFORM SAFETY CHECKS
+println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
 
-W_coarse_KM14 = zeros(length(Ed_array_S_KM14_orig),length(E_coarse),length(p_coarse)) # Pre-allocate 4D array
-numObadInds = 0
-for Edi=1:length(Ed_array_S_KM14_orig)
-    for Ei=1:length(E_coarse)
-        for pi=1:length(p_coarse)
-            try
-                W_coarse_KM14[Edi,Ei,pi] = itp(Ed_array_S_KM14_orig[Edi],E_coarse[Ei],p_coarse[pi]) # Interpolate at 3D query point
-            catch
-                numObadInds += 1
-                debug && println("(Edi: $(Edi), Ei: $(Ei), pi: $(pi)) <--- Interpolation failed for this index") # Print if failed (should not happen)
+verbose && println("Performing safety checks... ")
+if !(length(filepaths_S)==length(filepaths_W))
+    error("Number of measurement files: $(length(filepaths_S)). Number of weight matrix files: $(length(filepaths_W)). Number of measurement files and number of weight matrix files must match. Please correct and re-try.")
+end
+
+append!(timestamps,time()) # The timestamp when the foundational safety check has been performed
+###########################################################################################################
+# SECTION 2: LOAD MEASUREMENTS
+println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
+
+verbose && print("Loading measurements... ")
+global S; S = Vector{Vector{Float64}}(undef,length(filepaths_S)) # Pre-allocate measurements for all diagnostics
+global S_units; S_units = Vector{String}(undef,length(filepaths_S)) # Pre-allocate units of measurements for all diagnostics
+global S_errs; S_errs = Vector{Vector{Float64}}(undef,length(filepaths_S)) # Pre-allocate errors (uncertainties) for all diagnostics
+global S_errs_units; S_errs_units = Vector{String}(undef,length(filepaths_S)) # Pre-allocate units of errors (uncertainties) for all diagnostics
+global S_abscissas; S_abscissas = Vector{Vector{Float64}}(undef,length(filepaths_S)) # Pre-allocate measurement bin centers for all diagnostics
+global S_abscissas_units; S_abscissas_units = Vector{String}(undef,length(filepaths_S)) # Pre-allocate units of measurement bin centers for all diagnostics
+for (i,f) in enumerate(filepaths_S)
+    local myfile # Declare local scope. Just for clarity
+    f_suffix = lowercase(split(f,".")[end])
+    if f_suffix=="jld2"
+        myfile = jldopen(f,false,false,false,IOStream)
+        read_func = x -> x # Identity function. For .jld2 files
+    elseif f_suffix=="h5" || f_suffix=="hdf5"
+        myfile = h5open(f,"r")
+        read_func = read # HDF5 read function. For .hdf5 (.h5) files
+    else
+        error("Measurement files should be in either .jld2 or .hdf5 (.h5) file format. Measurement file "*f*"is not. Please correct and re-try.")
+    end
+    S[i] = read_func(myfile["S"])
+    S_units[i] = read_func(myfile["S_units"])
+    S_errs[i] = read_func(myfile["err"])
+    S_errs_units[i] = read_func(myfile["err_units"])
+    S_abscissas[i] = read_func(myfile["Ed_array"])
+    S_abscissas_units[i] = read_func(myfile["Ed_array_units"])
+    close(myfile)
+end
+verbose && println("Done!")
+
+
+global ok # Declare global scope
+ok = true # Simplifying print bool dummy variable
+verbose && print("Ensuring measurements units consistency between S and err... ")
+for (i,S_unit) in enumerate(S_units)
+    if !(S_unit==S_errs_units[i])
+        global ok; ok = false
+        verbose && println("")
+        verbose && print("Units of signal $(i): $(S_unit). Units of err $(i): $(err_units[i]). Attempting to convert err to match S units... ")
+        S_errs[i] = units_conversion_factor(S_errs_units[i],S_unit) .*S_errs[i]
+        S_errs_units[i] = S_unit
+        verbose && println("Success!")
+    end
+end
+ok && verbose && println("Done!")
+
+append!(timestamps,time()) # The timestamp when the measurements have been loaded completely
+###########################################################################################################
+# SECTION 3: LOAD WEIGHT FUNCTIONS
+println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
+
+verbose && print("Loading weight functions... ")
+if isempty(min_array) || isempty(max_array) || isempty(n_array) # If any of them are empty...
+    # Use filepaths_W[1] to determine dimensionality
+    verbose && println("")
+    verbose && println("min_array, max_array or n_array was not specified (empty). Determining problem dimensionality via the first weight function matrix in filepaths_W... ")
+    if !isfile(filepaths_W[1])
+        error("$(filepaths_W[1]) is not a valid filepath. Please correct and re-try.")
+    end
+    file_ext = lowercase(split(filepaths_W[1],".")[end]) # Assume final part of filepath after "." is the file extension
+    if file_ext=="jld2"
+        myfile = jldopen(filepaths_W[1],false,false,false,IOStream)
+        if !(lowercase(scriptSources_W[1])=="calc4dweights" || lowercase(scriptSources_W[1])=="calc4dweights.jl")
+            W = myfile["W"] # The W file key should be present in all types of weight function files, except...
+            DIM = length(size(W))
+        else # When we are loading a calc4DWeights.jl output file. Then, we know the dimension to be 5 (one measurement dimension, plus 4 reconstruction space dimensions)
+            DIM = 5
+        end
+        close(myfile)
+    elseif file_ext=="hdf5" || file_ext=="h5"
+        myfile = h5open(filepaths_W[1],"r")
+        W = read(myfile["W"])
+        DIM = length(size(W))
+        close(myfile)
+    else
+        error("$(filepaths_W[1]) was not in .jld2, .hdf5 or .h5 file format. Please correct and re-try.")
+    end
+else # If none of them are empty...
+    DIM = 1+length(n_array) # Simply use n_array. One measurement dimension, plus all reconstruction space dimensions
+end
+
+global W_inflated; W_inflated = Vector{Array{Float64,DIM}}(undef,length(filepaths_W)) # The (inflated) weight functions, for each diagnostic. PLEASE NOTE! All weight functions need to have the same number of dimensions!
+global W_abscissas; W_abscissas = Vector{Vector{Vector{Real}}}(undef,length(filepaths_W)) # The abscissas (measurement bin centers + phase-space grid points), for each set of weight functions
+global W_abscissas_units; W_abscissas_units = Vector{Vector{String}}(undef,length(filepaths_W)) # The units of measurement, for each abscissa, for each set of weight functions
+for (i,f) in enumerate(filepaths_W)
+    local myfile # Declare local scope. Just for clarity
+    f_suffix = lowercase(split(f,".")[end]) # Check file extension for .jld2 or .hdf5 (.h5)
+    if f_suffix=="jld2"
+        myfile = jldopen(f,false,false,false,IOStream)
+        read_func = x -> x # Identity function. For .jld2 files
+    elseif f_suffix=="h5" || f_suffix=="hdf5"
+        myfile = h5open(f,"r")
+        read_func = read # HDF5 read function. For .hdf5 (.h5) files
+    else
+        error("Weight function files should be in either .jld2 or .hdf5 (.h5) file format. Weight function file "*f*"is not. Please correct and re-try.")
+    end
+    sswi = lowercase(scriptSources_W[i])
+    if sswi=="calc2dweights" || sswi=="calc2dweights.jl" # Account for misinterpretation by user (include .jl file extension)
+        if !haskey(myfile,"W")
+            error("In the filepaths_W input array, the $(f) file does not have a 'W' file key, even though '$(scriptSources_W[i])' was specified in the scriptSources_W input array. Please correct and re-try.")
+        end
+        W_inflated[i] = read_func(myfile["W"])
+        Ed_vector = read_func(myfile["Ed_array"])
+        Ed_vector_units = read_func(myfile["Ed_array_units"])
+        E_vector = read_func(myfile["E_array"])
+        E_vector_units = "keV" # from calc2DWeights.jl, the energy grid points will always be in keV
+        p_vector = read_func(myfile["p_array"])
+        p_vector_units = "-" # from calc2DWeights.jl, the pitch grid points will always be dimensionless
+        close(myfile)
+        W_abscissas[i] = [Ed_vector, E_vector, p_vector]
+        W_abscissas_units[i] = [Ed_vector_units, E_vector_units, p_vector_units]
+    elseif sswi=="orbweights_2dto4d" || sswi=="orbweights_2dto4d.jl" || sswi=="calcorbweights" || sswi=="calcorbweights.jl" # Account for misinterpretation by user (include .jl file extension). PLEASE NOTE! THESE FILES SHOULD REALLY BE OUTPUT FILES FROM THE orbWeights_2Dto4D.jl SCRIPT. THE CODE BELOW JUST TAKES INTO ACCOUNT THAT USERS MIGHT BE CONFUSED
+        if haskey(myfile,"W2D")
+            error("In the filepaths_W input array, the $(f) file is an output file of the calcOrbWeights.jl script. This is not a file that you can specify as input to the solveInverseProblem.jl script. Even though one might think so. Please specify an output file of the OWCF/helper/orbWeights_2Dto4D.jl script instead.")
+        end
+        if !haskey(myfile,"W")
+            error("In the filepaths_W input array, the $(f) file does not have a 'W' file key, even though '$(scriptSources_W[i])' was specified in the scriptSources_W input array. Please correct and re-try.")
+        end
+        W_inflated[i] = read_func(myfile["W"])
+        Ed_vector = read_func(myfile["Ed_array"])
+        Ed_vector_units = read_func(myfile["Ed_array_units"])
+        E_vector = read_func(myfile["E_array"])
+        E_vector_units = "keV" # from calcOrbWeights.jl, the energy grid points will always be in keV
+        pm_vector = read_func(myfile["pm_array"])
+        pm_vector_units = "-" # from calcOrbWeights.jl, the pitch maximum grid points will always be dimensionless
+        Rm_vector = read_func(myfile["Rm_array"])
+        Rm_vector_units = "m" # from calcOrbWeights.jl, the major radius maximum grid points will always be in meters
+        close(myfile)
+        W_abscissas[i] = [Ed_vector, E_vector, pm_vector, Rm_vector]
+        W_abscissas_units[i] = [Ed_vector_units, E_vector_units, pm_vector_units, Rm_vector_units]
+    elseif sswi=="calc4dweights" || sswi=="calc4dweights.jl"
+        # Due to its size, the calc4DWeights.jl case needs special treatment
+        # This code can most likely only be run on clusters with a HUGE amount of RAM
+        VAL = read_func(myfile["VAL"]) # Vector containing the non-zero values of the (E,p,R,z) weight matrix
+        ROW = read_func(myfile["ROW"]) # Vector containing the corresponding row elements
+        COL = read_func(myfile["COL"]) # Vector containing the corresponding column elements
+        m_W = read_func(myfile["m_W"]) # Total number of rows (including zero elements not included in R and C) of the (E,p,R,z) weight matrix
+        n_W = read_func(myfile["n_W"]) # Total number of columns (including zero elements not included in R and C) of the (E,p,R,z) weight matrix
+        Ed_vector = read_func(myfile["Ed_array"])
+        Ed_vector_units = read_func(myfile["Ed_array_units"])
+        E_vector = read_func(myfile["E_array"])
+        E_vector_units = "keV" # from calc4DWeights.jl, the energy grid points will always be in keV
+        p_vector = read_func(myfile["p_array"])
+        p_vector_units = "-" # from calc4DWeights.jl, the pitch grid points will always be dimensionless
+        R_vector = read_func(myfile["R_array"])
+        R_vector_units = "m" # from calc4DWeights.jl, the major radius grid points will always be in meters
+        z_vector = read_func(myfile["z_array"])
+        z_vector_units = "m" # from calc4DWeights.jl, the vertical coordinate grid points will always be in meters
+        EpRz_coords = read_func(myfile["EpRz_coords"]) # The indices and (E,p,R,z) coordinates for all the columns of the (E,p,R,z) weight matrix (W_2D, see below)
+        close(myfile)
+        W_2D = dropzeros(sparse(append!(ROW,m_W),append!(COL,n_W),append!(VAL,0.0)))
+        W_5D = zeros(length(Ed_vector),length(E_array),length(p_array),length(R_array),length(z_array))
+        verbose && println("Re-creating the 5D (Ed,E,p,R,z) weight function matrix... ")
+        for iEd in 1:size(W_2D,1)
+            for (i,c) in enumerate(EpRz_coords[:])
+                W_5D[iEd,c[1][1],c[2][1],c[3][1],c[4][1]] = W_2D[iEd,i]
+            end
+        end
+        W_inflated[i] = W_5D
+        W_abscissas[i] = [Ed_vector, E_vector, p_vector, R_vector, z_vector]
+        W_abscissas_units[i] = [Ed_vector_units, E_vector_units, p_vector_units, R_vector_units, z_vector_units]
+    else
+        # The general weight functions loading case
+        W_inflated[i] = read_func(myfile["W"])
+        abscissas = []
+        units = []
+        append!(abscissas,[read_func(myfile["Ed_array"])]) # Must have 'Ed_array' file key
+        append!(units,[read_func(myfile["Ed_array_units"])]) # Must have 'Ed_array_units' file key
+        append!(abscissas,[read_func(myfile["D1_array"])]) # Must have at least 'D1_array' file key
+        append!(units,[read_func(myfile["D1_array_units"])]) # Must have at least 'D1_array_units' file key
+        if haskey(myfile,"D2_array")
+            append!(abscissas,[read_func(myfile["D2_array"])])
+            append!(units,[read_func(myfile["D2_array_units"])])
+        end
+        if haskey(myfile,"D3_array")
+            append!(abscissas,[read_func(myfile["D3_array"])])
+            append!(units,[read_func(myfile["D3_array_units"])])
+        end
+        if haskey(myfile,"D4_array")
+            append!(abscissas,[read_func(myfile["D4_array"])])
+            append!(units,[read_func(myfile["D4_array_units"])])
+        end
+        if haskey(myfile,"D5_array")
+            append!(abscissas,[read_func(myfile["D5_array"])])
+            append!(units,[read_func(myfile["D5_array_units"])])
+        end
+        if haskey(myfile,"D6_array")
+            append!(abscissas,[read_func(myfile["D6_array"])])
+            append!(units,[read_func(myfile["D6_array_units"])])
+        end
+        close(myfile)
+        W_abscissas[i] = [Float64.(ab) for ab in abscissas] # Transform to Vector{Float64} from Vector{any}
+        W_abscissas_units[i] = map(x-> "$(x)",units) # Transform to Vector{String} from Vector{any}
+    end
+end
+verbose && println("Done!")
+
+append!(timestamps,time()) # The timestamp when the weight functions have been loaded completely
+###########################################################################################################
+# SECTION 4: CHECK THAT ALL ABSCISSAS MATCH IN TERMS OF DIMENSIONS AND UNITS.
+# OTHERWISE, CORRECT THEM SO THAT ALL MATCH.
+println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
+
+verbose && println("Performing dimension and units checks for the weight functions... ")
+for i in eachindex(filepaths_W)
+    if !(length(W_abscissas[i])==length(W_abscissas[1]))
+        error("Number of abscissas found in $(filepaths_W[1]): $(length(W_abscissas[1])). Number of abscissas found in $(filepaths_W[i]): $(length(W_abscissas[i])). Number of abscissas must match for all weight functions files. Please correct and re-try.")
+    end
+
+    # Check if the units of the measurement bin centers of the weight functions match the units of the measurement bin centers of the signal
+    # If not, convert both the abscissa units and weight functions units (since weight functions have units signal/ion)
+    if !(W_abscissas_units[i][1]==S_abscissas_units[i])
+        verbose && println("---> Units of abscissa (measurement bin centers) of $(filepaths_S[i]) is $(S_abscissas_units[i]).")
+        verbose && println("---> Units of FIRST abscissa (measurement bin centers) of $(filepaths_W[i]) is $(W_abscissas_units[i][1]).") 
+        verbose && println("------> Converting weight function and its first abscissa to match units of signal abscissa... ")
+        ucf = units_conversion_factor(W_abscissas_units[i][1],S_abscissas_units[i])
+        W_inflated[i] = (1/ucf) .*W_inflated[i] # Since weight functions have units signal/ion and the signal will have 1/units of the abscissa, multiply by the inverse of the units conversion factor
+        W_abscissas[i][1] = ucf .*W_abscissas[i][1]
+        W_abscissas_units[i][1] = S_abscissas_units[i]
+    end
+
+    # Check that the units of the reconstruction space abscissas of all weight functions match
+    if i>1 # Only compare with previous file if i>1. Otherwise, will cause out-of-bounds error
+        for j in eachindex(W_abscissas[i]) # For each reconstruction space dimension (j>1)
+            if (j>1) && !(W_abscissas_units[i][j]==W_abscissas_units[i-1][j]) # If the units of the same dimension for different weight function files don't match (except for the measurement bin center units of course (they will almost always differ), hence the j>1 condition)...
+                verbose && println("Units of abscissa $(j) in $(filepaths_W[i]) and $(filepaths_W[i-1]) do not match. Converting abscissa $(j) in $(filepaths_W[i]) to match the units of abscissa $(j) in $(filepaths_W[i-1])... ")
+                ucf = units_conversion_factor(W_abscissas_units[i][j],W_abscissas_units[i-1][j])
+                W_abscissas[i][j] = ucf .*W_abscissas[i][j]
+                W_abscissas_units[i][j] = W_abscissas_units[i][j]
             end
         end
     end
 end
-W_2D_KM14_orig = reshape(W_coarse_KM14,(length(Ed_array_S_KM14_orig),length(E_coarse)*length(p_coarse)))
-###########################################################
-for iEd in axes(W_coarse_KM14,1)
-    display(Plots.heatmap(E_coarse,p_coarse,W_coarse_KM14[iEd,:,:]'))
+
+append!(timestamps,time()) # The timestamp when the abscissas units checks have been performed
+###########################################################################################################
+# SECTION 5: INTERPOLATE ONTO THE GRID SPECIFIED BY min_array, max_array and n_array 
+# IF THEY ARE NOT SPECIFIED, USE THE ABSCISSAS OF THE FIRST WEIGHT MATRIX IN filepaths_W
+println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
+
+verbose && println("Attempting to interpolate all weight functions onto a common reconstruction space grid... ")
+verbose && println("---> Creating interpolation grid (query points)")
+global query_vecs_n_inds; query_vecs_n_inds = () # A tuple to hold all query point vectors and their indices. Structure: ((vector,indices),(vector,indices),...) with length equal to reconstruction grid dimension
+if isempty(min_array) || isempty(max_array) || isempty(n_array) # If any of them are empty...
+    verbose && println("------> min_array, max_array and/or n_array were not specified. Data grid of $(filepaths_W[1]) will be used")
+    for abscissa in W_abscissas[1][2:end] # Use all reconstruction space abscissas of the first weight function file as reconstruction grid...
+        global query_vecs_n_inds # Use global scope variable
+        query_vecs_n_inds = tuple(query_vecs_n_inds[:]...,collect(zip(abscissa,1:length(abscissa)))) # Add the (vector,indices) pairs one by one  into a big tuple (tuples are immutable, hence the cumbersome code)
+    end
+else
+    verbose && println("------> min_array, max_array and n_array were specified. Utilizing... ")
+    for i in eachindex(n_array) # For all reconstruction grid dimensions... 
+        global query_vecs_n_inds # Use global scope variable
+        query_vecs_n_inds = tuple(query_vecs_n_inds[:]...,collect(zip(collect(range(min_array[i],stop=max_array[i],length=n_array[i])),1:n_array[i]))) # Add the (vector,indices) pairs one by one  into a big tuple (tuples are immutable, hence the cumbersome code)
+    end
 end
-###########################################################
-# Load the KM15 weight functions
-filepath_W_KM15 = "/home/henrikj/Codes/OWCF_results/cycle31/17/weights/velWeights_JET_99971L72_at8,9s_KM15_T-d=n-4He.hdf5"
-myfile = h5open(filepath_W_KM15,"r")
-W_KM15 = read(myfile["W"])
-W_KM15_raw = read(myfile["W_raw"])
-Ed_array_W_KM15 = read(myfile["Ed_array"])
-Ed_array_W_KM15 = Ed_array_W_KM15 ./(1000.0) # keV to MeV
-Ed_array_W_KM15_raw = read(myfile["Ed_array_raw"])
-close(myfile)
-###########################################################
-# Do an equivalent interpolation for the KM15, as for the KM14
-nodes = (Ed_array_W_KM15, E_array, p_array)
-itp = interpolate(nodes, W_KM15, Gridded(Linear()))
-W_coarse_KM15 = zeros(length(Ed_array_S_KM15_orig),length(E_coarse),length(p_coarse)) # Pre-allocate 4D array
-numObadInds = 0
-for Edi=1:length(Ed_array_S_KM15_orig)
-    for Ei=1:length(E_coarse)
-        for pi=1:length(p_coarse)
-            try
-                W_coarse_KM15[Edi,Ei,pi] = itp(Ed_array_S_KM15_orig[Edi],E_coarse[Ei],p_coarse[pi]) # Interpolate at 3D query point
-            catch
-                numObadInds += 1
-                debug && println("(Edi: $(Edi), Ei: $(Ei), pi: $(pi)) <--- Interpolation failed for this index") # Print if failed (should not happen)
+query_points_n_coords = Iterators.product(query_vecs_n_inds...) # Create a long list of all reconstruction space grid points and their coordinates by computing a product between all query point-index vectors. Example structure (if 3 dimensions): [((x1_1,1),(x2_1,1),(x3_1,1)),((x1_2,2),(x2_1,1),(x3_1,1)),...]
+
+for (i,w_inflated) in enumerate(W_inflated)
+    w_inflated_interpolated = zeros(tuple(size(w_inflated,1),(length.(query_vecs_n_inds))...)) # Pre-allocate a new inflated weight function, to store the interpolated values
+    nodess = () # The nodes of the interpolation object (nodess name only due to Scope warnings)
+    for abscissa in W_abscissas[i][2:end] # Use the reconstruction space abscissas of the weight functions as the nodes of the interpolation object...
+        nodess = tuple(nodess[:]...,abscissa) # Put them all in a tuple (tuples are immutable, hence the cumbersome code)
+    end
+    node_coords = CartesianIndices(length.(nodess)) # A trick to specify all node coordinates of an array of general size
+    verbose && println("---> Interpolating weight matrix $(i) of $(length(W_inflated))... ")
+    for j=1:size(w_inflated,1)
+        local itp; itp = Interpolations.interpolate(nodess,w_inflated[j,node_coords],Gridded(Linear()))
+        local etp; etp = Interpolations.extrapolate(itp,Interpolations.Flat()) # If outside of interpolation region, use edge values to extrapolate
+        for query_point_n_coord in query_points_n_coords
+            point = map(x-> x[1],query_point_n_coord) # The point to interpolate at. E.g. (100.0,0.3) in energy (keV),pitch
+            coord = map(x-> x[2],query_point_n_coord) # The coordinate of that point. E.g. (53,14)
+            w_inflated_interpolated[j,coord...] = etp(point...)
+        end
+    end
+    W_inflated[i] = w_inflated_interpolated # Replace the non-interpolated with the interpolated
+    W_abscissas[i] = [W_abscissas[i][1], map(x-> map(xx-> xx[1],x), query_vecs_n_inds)...] # Replace the original grid points with the query points
+end
+
+append!(timestamps,time()) # The timestamp when the weight functions have been interpolated onto a common reconstruction space grid
+###########################################################################################################
+# SECTION 6: RESHAPE ALL INFLATED WEIGHT MATRICES INTO THEIR 2D SHAPE, TO BE USED IN INVERSE PROBLEMS
+# THEN, INTERPOLATE EACH WEIGHT MATRIX W[i] TO MATCH THE MEASUREMENT BIN CENTER GRID OF THE CORRESPONDING SIGNAL S[i]
+println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
+
+verbose && println("For each diagnostic, restructuring weight functions into 2D matrix... ")
+global W; W = Vector{Array{Float64,2}}(undef,length(filepaths_W)) # The weight matrices, for each diagnostic
+for (i,w_inflated) in enumerate(W_inflated)
+    verbose && println("---> Restructuring weight functions, creating weight matrix $(i) of $(length(W_inflated))... ")
+    ws = size(w_inflated)
+    W[i] = reshape(w_inflated,(ws[1],reduce(*,ws[2:end])))
+end
+W_inflated = nothing # Clear memory. To minimize memory usage
+
+verbose && println("For each diagnostic, interpolating the weight matrix to match measurement data grid... ")
+for (i,w) in enumerate(W)
+    verbose && println("---> Interpolating weight matrix $(i) of $(length(W))... ")
+    verbose && println("------> extrema(S abscissa grid): $(extrema(S_abscissas[i])) $(S_abscissas_units[i])")
+    verbose && println("------> extrema(W abscissa grid): $(extrema(W_abscissas[i][1])) $(W_abscissas_units[i][1])")
+    if !(W_abscissas_units[i][1]==S_abscissas_units[i])
+        @warn "Units for measurement data grid ($(S_abscissas_units[i])) do not match units of weight matrix measurement bin centers ($(W_abscissas_units[i][1])). This should be impossible. Please contact the admins of the OWCF and attach the start file, to have the error investigated."
+    end
+    query_points = S_abscissas[i]
+    w_new = zeros(length(query_points),size(w,2))
+    for (ic,col) in enumerate(eachcol(w))
+        local nodes; nodes = (W_abscissas[i][1],)
+        local itp; itp = Interpolations.interpolate(nodes,col,Gridded(Linear()))
+        local etp; etp = Interpolations.extrapolate(itp,0.0) # Assume zero sensitivity (no knowledge) outside of known spectrum range
+        w_new[:,ic] = [etp(qp) for qp in query_points]
+    end
+    W[i] = w_new
+    W_abscissas[i][1] = query_points
+    W_abscissas_units[i][1] = S_abscissas_units[i] # This should already be the case
+end
+
+append!(timestamps,time()) # The timestamp when the weight functions have been reshaped into 2D and interpolated onto the corresponding measurements grid
+###########################################################################################################
+# SECTION 7: DEFINE FUNCTIONS THAT MIGHT NEED TO BE USED SEVERAL TIMES IN LATER SECTIONS, E.G. IF
+# - WEIGHT FUNCTIONS ARE TO BE RESCALED AND THE REFERENCE FAST-ION DISTRIBUTION IS TO BE LOADED FROM FILE
+# - COLLISIONAL PHYSICS IS TO BE USED AS REGULARIZATION WHEN SOLVING THE INVERSE PROBLEM
+# IN FUTURE VERSIONS, ADD MORE FUNCTIONAL CHECKS HERE IF NECESSARY.
+println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
+
+if (rescale_W && lowercase(String(rescale_W_F_ref_source))=="file") || ("collisions" in lowercase.(String.(regularization)))
+    verbose && println("Defining necessary coordinate space deduction functions... ")
+    function is_energy_pitch(w_abscissas::Vector{Vector{T}} where {T<:Real}, w_abscissas_units::Vector{String}; verbose=false, returnExtra=false)
+        if length(w_abscissas_units)!=3
+            verbose && println("is_energy_pitch(): Number of reconstruction space abscissas is not equal to 2. Returning false... ")
+            return (returnExtra ? (false, 0, 0) : false)
+        end
+
+        units_1 = w_abscissas_units[2] # The second dimension of the weight matrix is the first dimension of the reconstruction space
+        units_2 = w_abscissas_units[3] # The third dimension of the weight matrix is the second dimension of the reconstruction space
+        units_tot = vcat(units_1, units_2)
+        
+        w_energy_ind = findall(x-> x in keys(ENERGY_UNITS) || x in keys(ENERGY_UNITS_LONG), units_tot)
+        w_pitch_ind = findall(x-> x in keys(DIMENSIONLESS_UNITS) || x in keys(DIMENSIONLESS_UNITS_LONG), units_tot)
+        if !(length(w_energy_ind)==1 && length(w_pitch_ind)==1)
+            verbose && println("is_energy_pitch(): (E,p) coordinates not found. Returning false... ")
+            return (returnExtra ? (false, 0, 0) : false)
+        else
+            verbose && println("is_energy_pitch(): (E,p) coordinates confirmed! Returning true... ")
+            w_energy_ind .+= 1 # To align it with the original w_abscissas and w_abscissas_units indices
+            w_pitch_ind .+= 1 # To align it with the original w_abscissas and w_abscissas_units indices
+            return (returnExtra ? (true, w_energy_ind[1], w_pitch_ind[1]) : true) # [1] because we know there should be only 1 element returned by findall()
+        end
+    end
+
+    function is_vpara_vperp(w_abscissas::Vector{Vector{T}} where {T<:Real}, w_abscissas_units::Vector{String}; verbose=false, returnExtra=false)
+        if length(w_abscissas_units)!=3
+            verbose && println("is_vpara_vperp(): Number of reconstruction space abscissas is not equal to 2. Returning false... ")
+            return (returnExtra ? (false, 0, 0) : false)
+        end
+
+        units_1 = w_abscissas_units[2] # The second dimension of the weight matrix is the first dimension of the reconstruction space
+        units_2 = w_abscissas_units[3] # The third dimension of the weight matrix is the second dimension of the reconstruction space
+        units_tot = vcat(units_1, units_2)
+        w_speed_inds = findall(x-> units_are_speed(x), units_tot)
+
+        if !(length(w_speed_inds)==2)
+            verbose && println("is_vpara_vperp(): (vpara,vperp) coordinates not found. Returning false... ")
+            return (returnExtra ? (false, 0, 0) : false)
+        else
+            w_speed_inds .+= 1 # To align it with the original w_abscissas and w_abscissas_units indices
+            verbose && print("is_vpara_vperp(): (vpara,vperp) coordinates found! Distinguishing (vpara, vperp) arrays...")
+            w_vel_arrays = w_abscissas[w_speed_inds]
+            if minimum(w_vel_arrays[1])<0 && minimum(w_vel_arrays[2])>0 # vpara can be negative. vperp cannot
+                verbose && println("ok!")
+                w_vpara_ind = w_speed_inds[1] # Order of abscissas in w_vel_arrays is the same as the order in w_speed_inds
+                w_vperp_ind = w_speed_inds[2] # Order of abscissas in w_vel_arrays is the same as the order in w_speed_inds
+            elseif minimum(w_vel_arrays[2]<0 && minimum(w_vel_arrays[1]>0)) # vpara can be negative. vperp cannot
+                verbose && println("ok!")
+                w_vpara_ind = w_speed_inds[2] # Order of abscissas in w_vel_arrays is the same as the order in w_speed_inds
+                w_vperp_ind = w_speed_inds[1] # Order of abscissas in w_vel_arrays is the same as the order in w_speed_inds
+            else
+                verbose && println("")
+                @warn "Could not distinguish (vpara,vperp) arrays from weight function abscissas. Assuming abscissa with index $(w_speed_inds[1]) to be vpara and abscissa with index $(w_speed_inds[2]) to be vperp."
+                w_vpara_ind = w_speed_inds[1] # Order of abscissas in w_vel_arrays is the same as the order in w_speed_inds
+                w_vperp_ind = w_speed_inds[2] # Order of abscissas in w_vel_arrays is the same as the order in w_speed_inds
+            end
+            verbose && println("is_vpara_vperp(): Returning true... ")
+            return (returnExtra ? (true, w_vpara_ind, w_vperp_ind) : true)
+        end
+    end
+
+    function is_EpRz(w_abscissas::Vector{Vector{T}} where {T<:Real}, w_abscissas_units::Vector{String}; verbose=false, returnExtra=false)
+        if length(w_abscissas_units)!=5
+            verbose && println("is_EpRz(): Number of reconstruction space abscissas is not equal to 4. Returning false... ")
+            return (returnExtra ? (false, 0, 0, 0, 0, [], []) : false)
+        end
+        units_1 = w_abscissas_units[2] # The second dimension of the weight matrix is the first dimension of the reconstruction space
+        units_2 = w_abscissas_units[3] # The third dimension of the weight matrix is the second dimension of the reconstruction space
+        units_3 = w_abscissas_units[4] # The fourth dimension of the weight matrix is the third dimension of the reconstruction space
+        units_4 = w_abscissas_units[5] # The fifth dimension of the weight matrix is the fourth dimension of the reconstruction space
+
+        units_tot = vcat(units_1, units_2, units_3, units_4)
+        w_energy_ind = findall(x-> x in keys(ENERGY_UNITS) || x in keys(ENERGY_UNITS_LONG), units_tot)
+        w_pitch_ind = findall(x-> x in keys(DIMENSIONLESS_UNITS) || x in keys(DIMENSIONLESS_UNITS_LONG), units_tot)
+        w_Rz_inds = findall(x-> x in keys(LENGTH_UNITS) || x in keys(LENGTH_UNITS_LONG), units_tot)
+
+        if !(length(w_energy_ind)==1 && length(w_pitch_ind)==1 && length(w_Rz_inds)==2)
+            verbose && println("is_EpRz(): (E,p,R,z) coordinates not found. Returning false... ")
+            return (returnExtra ? (false, 0, 0, 0, 0, [], []) : false)
+        else
+            w_energy_ind .+= 1 # To align it with the original w_abscissas and w_abscissas_units indices
+            w_pitch_ind .+= 1 # To align it with the original w_abscissas and w_abscissas_units indices
+            w_Rz_inds .+= 1 # To align it with the original w_abscissas and w_abscissas_units indices
+
+            verbose && print("is_EpRz(): (E,p,R,z) coordinates found! Distinguishing (R,z) arrays... ")
+            w_RnZ_arrays = w_abscissas[w_Rz_inds]
+            if minimum(w_RnZ_arrays[2])<0 && minimum(w_RnZ_arrays[1])>0 # If the second LENGTH_UNITS abscissa has negative elements, and the first one does not..
+                verbose && println("ok!")
+                w_R_ind = w_Rz_inds[1] # Order of abscissas in w_RnZ_arrays is the same as the order in w_Rz_inds
+                w_z_ind = w_Rz_inds[2] # Order of abscissas in w_RnZ_arrays is the same as the order in w_Rz_inds
+                R_of_interests = w_RnZ_arrays[1] # The first LENGTH_UNITS abscissa is very likely to be the R grid points...
+                z_of_interests = w_RnZ_arrays[2] # ...and the second LENGTH_UNITS abscissa is very likely to be the z grid points
+            elseif minimum(w_RnZ_arrays[1])<0 && minimum(w_RnZ_arrays[2])>0 # If it's the other way around...
+                verbose && println("ok!")
+                w_R_ind = w_Rz_inds[2] # Order of abscissas in w_RnZ_arrays is the same as the order in w_Rz_inds
+                w_z_ind = w_Rz_inds[1] # Order of abscissas in w_RnZ_arrays is the same as the order in w_Rz_inds
+                R_of_interests = w_RnZ_arrays[2] # ...it's very likely to be the other way around.
+                z_of_interests = w_RnZ_arrays[1] # ...it's very likely to be the other way around.
+            else
+                verbose && println("")
+                @warn "Could not deduce (R,z) arrays from weight function abscissas. Assuming abscissa with index $(w_Rz_inds[1]) to be R and abscissa with index $(w_Rz_inds[2]) to be z."
+                w_R_ind = w_Rz_inds[1] # Order of abscissas in w_RnZ_arrays is the same as the order in w_Rz_inds
+                w_z_ind = w_Rz_inds[2] # Order of abscissas in w_RnZ_arrays is the same as the order in w_Rz_inds
+                R_of_interests = w_RnZ_arrays[1]
+                z_of_interests = w_RnZ_arrays[2]
+            end
+            verbose && println("is_EpRz(): Returning true... ")
+            return (returnExtra ? (true, w_energy_ind[1], w_pitch_ind[1], w_R_ind, w_z_ind, R_of_interests, z_of_interests) : true)
+        end
+    end
+
+    function get_energy_abscissa(w_abscissas::Vector{Vector{T}} where {T<:Real}, w_abscissas_units::Vector{String}; verbose=false, returnExtra=false)
+        # Assume there is only one energy abscissa
+        w_energy_ind = findfirst(x-> x in keys(ENERGY_UNITS) || x in keys(ENERGY_UNITS_LONG), w_abscissas_units)
+        if isnothing(w_energy_ind)
+            verbose && println("No energy abscissa found in input abscissas! Returning nothing... ")
+            return returnExtra ? (nothing,nothing) : nothing
+        end
+
+        return returnExtra ? (w_abscissas[w_energy_ind], w_energy_ind) : w_abscissas[w_energy_ind]
+    end
+
+    function get_pitch_abscissa(w_abscissas::Vector{Vector{T}} where {T<:Real}, w_abscissas_units::Vector{String}; verbose=false, returnExtra=false)
+        w_dimensionless_inds = findall(x-> x in keys(DIMENSIONLESS_UNITS) || x in keys(DIMENSIONLESS_UNITS_LONG), w_abscissas_units)
+    
+        if isempty(w_dimensionless_inds)
+            verbose && println("No dimensionless abscissa found in input abscissas! Returning nothing...")
+            return returnExtra ? (nothing,nothing) : nothing
+        end
+    
+        w_pitch_ind = 0
+        for w_dimensionless_ind in w_dimensionless_inds
+            w_abscissa = w_abscissas[w_dimensionless_ind]
+            if maximum(w_abscissa)<=1 && minimum(w_abscissa)>=-1
+                w_pitch_ind = w_dimensionless_ind
+                break # Assume there is only one pitch-like coordinate
             end
         end
+    
+        if w_pitch_ind==0
+            verbose && println("No pitch-like dimensionless abscissa found in input abscissas! Returning nothing...")
+            return returnExtra ? (nothing,nothing) : nothing
+        end
+    
+        return returnExtra ? (w_abscissas[w_pitch_ind], w_pitch_ind) : w_abscissas[w_pitch_ind]
+    end
+
+    function get_vpara_abscissa(w_abscissas::Vector{Vector{T}} where {T<:Real}, w_abscissas_units::Vector{String}; verbose=false, returnExtra=false)
+        w_speed_inds = findall(x-> units_are_speed(x), w_abscissas_units)
+        if isempty(w_speed_inds)
+            verbose && println("No speed abscissa found in input abscissas! Returning nothing...")
+            return returnExtra ? (nothing,nothing) : nothing
+        end
+        if length(w_speed_inds)>2
+            @warn "Impossible to determine vpara since more than two abscissas with unit of measurement 'speed' was found. Returning nothing... "
+            return returnExtra ? (nothing,nothing) : nothing
+        end
+
+        if length(w_speed_inds)==1
+            verbose && println("One abscissa with unit of measurement 'speed' was found. Assuming it is vpara. Returning... ")
+            return returnExtra ? (w_abscissas[w_speed_inds], w_speed_inds[1]) : w_abscissas[w_speed_inds]
+        end
+
+        # w_speed_inds must be length 2 then
+        w_speed_abscissa_1 = w_speed_inds[1]
+        w_speed_abscissa_2 = w_speed_inds[2]
+        if minimum(w_speed_abscissa_1)<0 # Must be vpara since vperp>= always holds
+            return returnExtra ? (w_speed_abscissa_1, w_speed_inds[1]) : w_speed_abscissa_1
+        elseif minimum(w_speed_abscissa_2)<0 # -||-
+            return returnExtra ? (w_speed_abscissa_2, w_speed_inds[2]) : w_speed_abscissa_2
+        else # Ambiguous
+            @warn "Cannot deduce vpara from w_abscissas and w_abscissas_units. Returning abscissas with smallest index as vpara."
+            return returnExtra ? (w_speed_abscissa_1, w_speed_inds[1]) : w_speed_abscissa_1
+        end
+    end
+
+    function get_vperp_abscissa(w_abscissas::Vector{Vector{T}} where {T<:Real}, w_abscissas_units::Vector{String}; verbose=false, returnExtra=false)
+        w_speed_inds = findall(x-> units_are_speed(x), w_abscissas_units)
+        if isempty(w_speed_inds)
+            verbose && println("No speed abscissa found in input abscissas! Returning nothing...")
+            return returnExtra ? (nothing,nothing) : nothing
+        end
+        if length(w_speed_inds)>2
+            @warn "Impossible to determine vperp since more than two abscissas with unit of measurement 'speed' was found. Returning nothing... "
+            return returnExtra ? (nothing,nothing) : nothing
+        end
+
+        if length(w_speed_inds)==1
+            verbose && println("One abscissa with unit of measurement 'speed' was found. Assuming it is vperp. Returning... ")
+            return returnExtra ? (w_abscissas[w_speed_inds], w_speed_inds[1]) : w_abscissas[w_speed_inds]
+        end
+
+        # w_speed_inds must be length 2 then
+        w_vpara_abscissa, w_vpara_ind = get_vpara_abscissa(w_abscissas, w_abscissas_units; verbose=verbose, returnExtra=returnExtra)
+        w_vperp_ind = filter(x-> x!=w_vpara_ind,w_speed_inds)[1]
+
+        return returnExtra ? (w_abscissas[w_vperp_ind], w_vperp_ind) : w_abscissas[w_vperp_ind]
     end
 end
-W_2D_KM15_orig = reshape(W_coarse_KM15,(length(Ed_array_S_KM15_orig),length(E_coarse)*length(p_coarse)))
-###########################################################
-for iEd in axes(W_coarse_KM15,1)
-    display(Plots.heatmap(E_coarse,p_coarse,W_coarse_KM15[iEd,:,:]'))
-end
-###########################################################
-# Compute the MPRu weight functions by multiplying the KM15_raw weight functions with the MPRu instrumental response
-# Then, interpolate onto a nice grid
-using PyCall
-py"""
-import numpy as np
 
-En_array_transf = np.loadtxt("/home/henrikj/Codes/OWCF/vc_data/MPRu/En_keV.txt")
-transf_mat = np.loadtxt("/home/henrikj/Codes/OWCF/vc_data/MPRu/matrix.txt")
-X_array_transf = np.loadtxt("/home/henrikj/Codes/OWCF/vc_data/MPRu/Xaxis_cm.txt")
-"""
-En_array_transf = py"En_array_transf"
-transf_mat = py"transf_mat"
-X_array_transf = py"X_array_transf"
-lo = findfirst(x-> x>minimum(Ed_array_W_KM15_raw),En_array_transf)
-hi = findlast(x-> x<maximum(Ed_array_W_KM15_raw),En_array_transf)
-W_MPRu_orig = zeros(length(X_array_transf),length(E_array),length(p_array))
-transf_mat_transp = transf_mat'
-for (iE,E) in enumerate(E_array), (ip,p) in enumerate(p_array)
-    nodes = (Ed_array_W_KM15_raw,)
-    itp = interpolate(nodes, W_KM15_raw[:,iE,ip], Gridded(Linear()))
-    W_KM15_raw_i = itp.(En_array_transf[lo:hi])
-    W_MPRu_orig[:,iE,ip] = (transf_mat_transp[:,lo:hi])*W_KM15_raw_i
-end
+append!(timestamps,time()) # The timestamp when the (possibly necessary) utility functions have been defined
+###########################################################################################################
+# SECTION 8: IF rescale_W WAS SET TO true IN THE START FILE, LOAD OR COMPUTE FAST-ION DISTRIBUTION(S).
+# USE THIS/THESE DISTRIBUTION(S) TOGETHER WITH THE WEIGHT MATRICES TO COMPUTE REFERENCE MEASUREMENTS.
+# COMPUTE RESCALING FACTORS TO BE ABLE TO RESCALE WEIGHT FUNCTIONS TO HAVE THE REFERENCE MEASUREMENTS MATCH 
+# THE EXPERIMENTAL MEASUREMENTS.
+println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
 
-nodes = (X_array_transf, E_array, p_array)
-itp = interpolate(nodes, W_MPRu_orig, Gridded(Linear()))
-W_coarse_MPRu = zeros(length(Ed_array_S_MPRu_orig),length(E_coarse),length(p_coarse)) # Pre-allocate 4D array
-numObadInds = 0
-for Edi=1:length(Ed_array_S_MPRu_orig)
-    for Ei=1:length(E_coarse)
-        for pi=1:length(p_coarse)
-            try
-                W_coarse_MPRu[Edi,Ei,pi] = itp(Ed_array_S_MPRu_orig[Edi],E_coarse[Ei],p_coarse[pi]) # Interpolate at 3D query point
-            catch
-                numObadInds += 1
-                debug && println("(Xpos: $(Edi), Ei: $(Ei), pi: $(pi)) <--- Interpolation failed for this index") # Print if failed (should not happen)
+if rescale_W
+    verbose && println("Computing rescale factors for weight functions... ")
+    if lowercase(String(rescale_W_type))=="mean"
+        verbose && println("---> mean(S)/mean(W*F_ref) will be used to rescale weight functions... ")
+        rescale_func = Statistics.mean # Set the mean() function as the rescale_func() function
+    elseif lowercase(String(rescale_W_type))=="maximum" || lowercase(String(rescale_W_type))=="max" 
+        verbose && println("---> max(S)/max(W*F_ref) will be used to rescale weight functions... ")
+        rescale_func = Base.maximum # Set the maximum() function as the rescale_func() function
+    else
+        error("rescale_W_type=$(rescale_W_type). Currently supported options include :MEAN and :MAXIMUM. Please correct and re-try.")
+    end
+    if lowercase(String(rescale_W_F_ref_source))=="file"
+        currently_supported_abscissas = "(E,p), (vpara, vperp), (E,p,R,z)" # UPDATE THIS WHEN NEEDED!
+        standard_rescale_W_error = "rescale_W_F_ref_source=$(rescale_W_F_ref_source) was specified, but weight function abscissas did not match any currently supported groups. Currently supported abscissas for weight functions include $(currently_supported_abscissas). Please change rescale_W_F_ref_source to :GAUSSIAN, or specify filepaths_W to be filepath(s) to file(s) containing weight functions with supported abscissas."
+        w_abscissas_units = W_abscissas_units[1] # Units of abscissas of first weight function matrix are the units of the abscissas of all weight functions matrices, because of section 5
+        w_abscissas = W_abscissas[1] # Abscissas of first weight function matrix are the abscissas of all weight functions matrices, because of section 5
+
+        verbose && println("---> rescale_W_F_ref_source=$(rescale_W_F_ref_source) was specified... ")
+        verbose && println("------> Checking weight function reconstruction space compatibility. Currently supported coordinate systems are $(currently_supported_abscissas)... ")
+        Ep_bool = is_energy_pitch(w_abscissas, w_abscissas_units)
+        VEL_bool = is_vpara_vperp(w_abscissas, w_abscissas_units)
+        EpRz_bool = is_EpRz(w_abscissas, w_abscissas_units)
+        # ADD MORE CHECKS HERE IN FUTURE VERSIONS, IF NEEDED <---------------------------------------------------------------------
+        if Ep_bool
+            w_rec_space = "(E,p)"
+            dummy_bool, w_energy_ind, w_pitch_ind = is_energy_pitch(w_abscissas, w_abscissas_units; returnExtra=true)
+            R_of_interests = vcat(units_conversion_factor(R_of_interest_units,"m")*R_of_interest) # R_of_interests will be the same, regardless of 2D coordinates
+            z_of_interests = vcat(units_conversion_factor(z_of_interest_units,"m")*z_of_interest) # z_of_interests will be the same, regardless of 2D coordinates
+        elseif VEL_bool
+            w_rec_space = "(vpara,vperp)"
+            dummy_bool, w_vpara_ind, w_vperp_ind = is_vpara_vperp(w_abscissas, w_abscissas_units; returnExtra=true)
+            R_of_interests = vcat(units_conversion_factor(R_of_interest_units,"m")*R_of_interest) # R_of_interests will be the same, regardless of 2D coordinates
+            z_of_interests = vcat(units_conversion_factor(z_of_interest_units,"m")*z_of_interest) # z_of_interests will be the same, regardless of 2D coordinates
+        elseif EpRz_bool
+            w_rec_space = "(E,p,R,z)"
+            dummy_bool, w_energy_ind, w_pitch_ind, w_R_ind, w_z_ind, R_of_interests, z_of_interests = is_EpRz(w_abscissas, w_abscissas_units; returnExtra=true)
+            R_of_interests = units_conversion_factor(w_abscissas_units[w_R_ind],"m") .*R_of_interests # Need unit of measurement meter for CDFto4D function (if that will be used)
+            z_of_interests = units_conversion_factor(w_abscissas_units[w_z_ind],"m") .*z_of_interests # Need unit of measurement meter for CDFto4D function (if that will be used)
+        else
+            error(standard_rescale_W_error)
+        end
+
+        verbose && println("------> Loading F_ref from file $(rescale_W_F_file_path)... ")
+        file_ext = lowercase(split(rescale_W_F_file_path,".")[end]) # Assume final part of filepath after "." is the file extension
+        if file_ext=="jld2"
+            F_ref, E_ref, p_ref, R_ref, z_ref = JLD2to4D(rescale_W_F_file_path)
+        elseif file_ext=="hdf5" || file_ext=="h5"
+            F_ref, E_ref, p_ref, R_ref, z_ref = h5to4D(rescale_W_F_file_path;backwards=h5file_of_nonJulia_origin)
+        elseif file_ext=="cdf"
+            F_ref, E_ref, p_ref, R_ref, z_ref = CDFto4D(rescale_W_F_file_path, R_of_interests, z_of_interests; btipsign=btipsign)
+        else
+            error("Input variable 'rescale_W_F_file_path' has unknown file extension ($(file_ext)). Accepted file extensions are .jld2, .hdf5, .h5 and .cdf. Please correct and re-try.")
+        end
+
+        if maximum(R_ref)>100.0 # Assume no tokamak has a major radius as large as 100 m...
+            verbose && println("------> Loaded F_ref from file $(rescale_W_F_file_path) is assumed to be given in cm^-3. Converting to m^-3... ")
+            R_ref = units_conversion_factor("cm","m") .* R_ref
+            z_ref = units_conversion_factor("cm","m") .* z_ref
+            F_ref = units_conversion_factor("cm^-3","m^-3") .* F_ref
+        end
+
+        if maximum(E_ref)>1.0e6 # Assume no tokamak has a fast-ion distribution with a maximum energy as great as 1.0e6 keV
+            verbose && println("------> Loaded F_ref from file $(rescale_W_F_file_path) is assumed to be given in eV^-1. Converting to keV^-1... ")
+            E_ref = units_conversion_factor("eV","keV") .* E_ref
+            F_ref = units_conversion_factor("eV^-1","keV^-1") .* F_ref
+        end
+
+        if w_rec_space=="(E,p)"
+            verbose && println("------> Computing W*F_ref assuming weight functions are given in (E,p) coordinates (or equivalent)... ")
+            w_energy_units = w_abscissas_units[w_energy_ind]
+            w_pitch_units = w_abscissas_units[w_pitch_ind]
+            w_energy_abscissa = w_abscissas[w_energy_ind]; nwE = length(w_energy_abscissa)
+            w_pitch_abscissa = w_abscissas[w_pitch_ind]; nwp = length(w_pitch_abscissa)
+
+            query_points_n_coords = Iterators.product(zip(w_energy_abscissa,1:nwE),zip(w_pitch_abscissa,1:nwp),zip(R_of_interests,1:1),zip(z_of_interests,1:1)) # R and z should already be 1-element Vectors with unit of measurement 'm'
+            F_ref_interpolated = zeros(nwE,nwp,1,1) # Pre-allocate the interpolated f(E,p) distribution
+
+            E_ref = units_conversion_factor("keV",w_energy_units) .*E_ref # Convert the energy units from keV (which we know the JLD2to4D, h5to4D and CDFto4D functions output) to w_energy_units
+            F_ref = units_conversion_factor("keV^-1",units_inverse(w_energy_units)) .*F_ref # Also, convert the fast-ion distribution using the inverse of the w_energy_units
+
+            nodes = (E_ref,p_ref,R_ref,z_ref)
+            itp = Interpolations.interpolate(nodes,F_ref,Gridded(Linear()))
+            etp = Interpolations.extrapolate(itp,Interpolations.Flat()) # If outside of interpolation region, use edge values to extrapolate
+            for query_point_n_coord in query_points_n_coords
+                point = map(x-> x[1],query_point_n_coord) # The point to interpolate at. E.g. (100.0,0.3) in energy (keV),pitch
+                coord = map(x-> x[2],query_point_n_coord) # The coordinate of that point. E.g. (53,14)
+                F_ref_interpolated[coord...] = etp(point...)
+            end
+            F_ref_interpolated = dropdims(F_ref_interpolated,dims=(3,4)) # From shape (nwE,nwp,1,1) to (nwE,nwp)
+            F_ref_interp_1D = reshape(F_ref_interpolated,(nwE*nwp,))
+
+            rescale_W_factors = ones(length(filepaths_W)) # Pre-allocate weight re-scale factors
+            for i in eachindex(filepaths_W)
+                WF = W[i]*F_ref_interp_1D # The weight function matrix (2D) multiplied with the (1D/vectorized) reference fast-ion distribution
+                rescale_W_factors[i] = rescale_func(S[i])/rescale_func(WF) # S[i] is the experimental data vector of (fast-ion) diagnostic 'i'
+            end
+        elseif w_rec_space=="(vpara,vperp)"
+            verbose && println("------> Using reference fast-ion distribution assuming weight functions are given in (vpara,vperp) coordinates (or equivalent)... ")
+            w_vpara_unit = w_abscissas_units[w_vpara_ind]
+            w_vperp_unit = w_abscissas_units[w_vperp_ind]
+            w_vpara_abscissa = w_abscissas[w_vpara_ind]; nwvpa = length(w_vpara_abscissa)
+            w_vperp_abscissa = w_abscissas[w_vperp_ind]; nwvpe = length(w_vpara_abscissa)
+            nfE = length(E_ref); nfp = length(p_ref)
+
+            nodes = (E_ref,p_ref,R_ref,z_ref)
+            itp = Interpolations.interpolate(nodes,F_ref,Gridded(Linear()))
+            etp = Interpolations.extrapolate(itp,Interpolations.Flat()) # If outside of interpolation region, use edge values to extrapolate
+            query_points_n_coords = Iterators.product(zip(E_ref,1:nfE),zip(p_ref,1:nfp),zip(R_of_interests,1:1),zip(z_of_interests,1:1))
+            F_ref_interpolated = zeros(nfE,nfp,1,1) # Pre-allocate the interpolated f(E,p) distribution
+            for query_point_n_coord in query_points_n_coords
+                point = map(x-> x[1],query_point_n_coord) # The point to interpolate at. E.g. (100.0,0.3) in energy (keV),pitch
+                coord = map(x-> x[2],query_point_n_coord) # The coordinate of that point. E.g. (53,14)
+                F_ref_interpolated[coord...] = etp(point...)
+            end
+            F_ref_interpolated = dropdims(F_ref_interpolated,dims=(3,4)) # From shape (nfE,nfp,1,1) to (nfE,nfp)
+
+            F_ref_VEL, vpara_ref, vperp_ref = Ep2VparaVperp(E_ref, p_ref, F_ref_interpolated; my_gcp=FI_species, needJac=true, returnAbscissas=true)
+            vpara_ref = units_conversion_factor("m_s^-1",w_vpara_unit) .*vpara_ref # Match the units of w_abscissas
+            vperp_ref = units_conversion_factor("m_s^-1",w_vperp_unit) .*vperp_ref # Match the units of w_abscissas
+            F_ref_VEL = units_conversion_factor("m^-2_s^2",units_inverse(w_vpara_unit)*"_"*units_inverse(w_vperp_unit)) .* F_ref_VEL
+
+            nodes = (vpara_ref,vperp_ref)
+            itp = Interpolations.interpolate(nodes,F_ref_VEL,Gridded(Linear()))
+            etp = Interpolations.extrapolate(itp,Interpolations.Flat())
+            query_points_n_coords = Iterators.product(zip(w_vpara_abscissa,1:nwvpa),zip(w_vperp_abscissa,1:nwvpe))
+            F_ref_VEL_interp = zeros(nwvpa,nwvpe)
+            for query_point_n_coord in query_points_n_coords
+                point = map(x-> x[1],query_point_n_coord) # The point to interpolate at. E.g. (-0.6e6,0.2e6) in vpara (m/s), vperp (m/s)
+                coord = map(x-> x[2],query_point_n_coord) # The coordinate of that point. E.g. (53,14)
+                F_ref_VEL_interp[coord] = etp(point...)
+            end
+            F_ref_VEL_interp_1D = reshape(F_ref_VEL_interp,(nwvpa*nwvpe,))
+
+            rescale_W_factors = ones(length(filepaths_W))
+            for i in eachindex(filepaths_W)
+                WF = W[i]*F_ref_VEL_interp_1D # The weight function matrix (2D) multiplied with the (1D/vectorized) reference fast-ion distribution
+                rescale_W_factors[i] = rescale_func(S[i])/rescale_func(WF) # S[i] is the experimental data vector of (fast-ion) diagnostic 'i'
+            end
+        elseif w_rec_space=="(E,p,R,z)"
+            verbose && println("------> Using reference fast-ion distribution assuming weight functions are given in (E,p,R,z) coordinates (or equivalent)... ")
+            w_energy_units = w_abscissas_units[w_energy_ind]
+            w_pitch_units = w_abscissas_units[w_pitch_ind]
+            w_R_units = w_abscissas_units[w_R_ind]
+            w_z_units = w_abscissas_units[w_z_ind]
+            w_energy_abscissa = w_abscissas[w_energy_ind]; nwE = length(w_energy_abscissa)
+            w_pitch_abscissa = w_abscissas[w_pitch_ind]; nwp = length(w_pitch_abscissa)
+            w_R_abscissa = w_abscissas[w_R_ind]; nwR = length(w_R_abscissa)
+            w_z_abscissa = w_abscissas[w_z_ind]; nwz = length(w_z_abscissa)
+
+            E_ref = units_conversion_factor("keV",w_energy_units) .*E_ref # Convert the energy units from keV (which we know the JLD2to4D, h5to4D and CDFto4D functions output) to w_energy_units
+            R_ref = units_conversion_factor("m",w_R_units) .*R_ref # Convert the R units from m (which we know the JLD2to4D, h5to4D and CDFto4D functions output) to w_R_units
+            z_ref = units_conversion_factor("m",w_z_units) .*z_ref # Convert the z units from m (which we know the JLD2to4D, h5to4D and CDFto4D functions output) to w_z_units
+            F_ref = units_conversion_factor("keV^-1_m^-3",units_inverse(w_energy_units)*"_"*units_inverse(w_R_units)*"_"*units_inverse(w_z_units)) .*F_ref # Also, convert the fast-ion distribution from keV^-1_m^-3 to the inverse of w_energy_units, w_R_units and w_z_units 
+
+            query_points_n_coords = Iterators.product(zip(w_energy_abscissa,1:nwE),zip(w_pitch_abscissa,1:nwp),zip(w_R_abscissa,1:nwR),zip(w_z_abscissa,1:nwz))
+            F_ref_interpolated = zeros(nwE,nwp,nwR,nwz) # Pre-allocate the interpolated f(E,p,R,z) distribution
+
+            nodes=(E_ref,p_ref,R_ref,z_ref)
+            itp = Interpolations.interpolate(nodes,F_ref,Gridded(Linear()))
+            etp = Interpolations.extrapolate(itp,Interpolations.Flat())
+            for query_point_n_coord in query_points_n_coords
+                point = map(x-> x[1],query_point_n_coord) # The point to interpolate at. E.g. (120.0,0.64,3.1,0.2) in E [keV], p [-], R [m], z [m] 
+                coord = map(x-> x[2],query_point_n_coord) # The coordinate of that point. E.g. (53,34,15,16)
+                F_ref_interpolated[coord...] = etp(point...)
+            end
+            F_ref_interp_1D = reshape(F_ref_interpolated,(nwE*nwp*nwR*nwz,))
+
+            rescale_W_factors = zeros(length(filepaths_W))
+            for i in eachindex(filepaths_W)
+                WF = W[i]*F_ref_interp_1D # The weight function matrix (2D) multiplied with the (1D/vectorized) reference fast-ion distribution
+                rescale_W_factors[i] = rescale_func(S[i])/rescale_func(WF) # S[i] is the experimental data vector of (fast-ion) diagnostic 'i'
+            end
+        elseif false # ADD MORE CHECKS HERE IN FUTURE VERSIONS, IF NEEDED <---------------------------------------------------------------------
+        else
+            error(standard_rescale_W_error)
+        end
+    elseif lowercase(String(rescale_W_F_ref_source))=="gaussian"
+        w_abscissas_units = W_abscissas_units[1] # Units of abscissas of first weight function matrix are the units of the abscissas of all weight functions matrices, because of section 5
+        w_abscissas = W_abscissas[1] # Abscissas of first weight function matrix are the abscissas of all weight functions matrices, because of section 5
+
+        verbose && println("---> rescale_W_F_ref_source=$(rescale_W_F_ref_source) was specified... ")
+        verbose && println("---> The average of the WF-products for $(5*10^(length(w_abscissas)-1)) Gaussian reference FI distributions will be used to rescale the weight functions...")
+        
+        rec_space_lengths = length.(w_abscissas[2:end])
+        rec_space_diffs = [x[1] for x in diff.(w_abscissas[2:end])] # Assume equidistant grids in reconstruction space
+        rec_space_extrema = [[x[1],x[2]] for x in extrema.(w_abscissas[2:end])]
+        F_ref_abscissas = [collect(range(x[1],stop=x[2],length=10)) for x in rec_space_extrema] # Same abscissas as reconstruction space, but a 10x10x...x10 grid
+        std_abscissas = [collect(range(0.05*x[1],stop=0.25*x[1],length=5)) for x in diff.(rec_space_extrema)] # For each reconstruction space dimension, a set of standard deviations from 0.05 to 0.25 times the width of the dimension
+        gauss_abscissas = vcat(F_ref_abscissas,std_abscissas) # Put together rec space abscissas and their standard deviations
+        gauss_coords = Iterators.product(gauss_abscissas...) # Create an iterator of the product between all elements
+        rec_space_minima = [x[1] for x in rec_space_extrema]
+        rec_space_maxima = [x[2] for x in rec_space_extrema]
+        WF_avg = [zeros(size(W[i],1)) for i in 1:length(filepaths_W)] # Pre-allocate WF_avg. The number of diagnostic measurement bins for each diagnostic
+        for gauss_coord in gauss_coords # For all the Gaussians...
+            l = length(gauss_coord)
+            mu = [m for m in gauss_coord[1:l/2]] # The first half will be from F_ref_abscissas (Tuple to Vector)
+            std = [s for s in gauss_coord[(l/2)+1:end]] # The second half will be from std_abscissas (Tuple to Vector)
+            F_gauss = gaussian(mu, std; mn=rec_space_minima, mx=rec_space_maxima, n=rec_space_lengths, floor_level=0.001) # Set all valus below 0.001*maximum(F_gauss) to zero
+            F_gauss = (rescale_W_F_gaus_N_FI_tot/sum(reduce(*,rec_space_diffs) .*F_gauss)) .*F_gauss # Rescale F_gauss to integrate to rescale_W_F_gaus_N_FI_tot
+            F_gauss_1D = reshape(F_gauss,(reduce(*,rec_space_lengths),))
+            for i in 1:length(filepaths_W) # For all diagnostics...
+                WF_avg[i] += W[i]*F_gauss_1D # The weight function matrix (2D) multiplied with the (1D/vectorized) reference fast-ion distribution
             end
         end
+        WF_avg ./= length(gauss_coords)
+        rescale_W_factors = [rescale_func(S[i])/rescale_func(wf) for (i,wf) in enumerate(WF_avg)] # WF_avg will have same length as S and W (and filepaths_S and filepaths_W)
+    else
+        error("'rescale_W' was set to true but 'rescale_W_F_ref_source' was not specified correctly. Currently supported options include :FILE and :GAUSSIAN. Please correct and re-try.")
     end
+else
+    verbose && println("Weight functions will NOT be rescaled... ")
+    rescale_W_factors = ones(length(filepaths_W))
 end
-W_2D_MPRu_orig = reshape(W_coarse_MPRu,(length(Ed_array_S_MPRu_orig),length(E_coarse)*length(p_coarse)))
-###########################################################
-for iEd in axes(W_coarse_MPRu,1)
-    display(Plots.heatmap(E_coarse,p_coarse,W_coarse_MPRu[iEd,:,:]'))
-end
-###########################################################
-# Compute test Maxwellian fast-ion distribution
-# Compute test Maxwellian fast-ion distribution
-# Compute test Maxwellian fast-ion distribution
-E0 = 200.0 # keV 
-δE = 50
-p0 = 0.5 # -
-δp = 0.15
-f_test = zeros(length(E_coarse),length(p_coarse))
-for (iE,E) in enumerate(E_coarse)
-    for (ip,p) in enumerate(p_coarse)
-        ΔE = E - E0
-        Δp = p - p0
-        f_test[iE,ip] = exp(-(ΔE/δE)^2) * exp(-(Δp/δp)^2)
-    end
-end
-maximum(f_test)
-f_test = (1.0e19/sum(diff(E_coarse)[1]*diff(p_coarse)[1] .*f_test)) .*f_test
-f_test = map(x-> x<0.001*maximum(f_test) ? 0.0 : x, f_test)
-maximum(f_test)
-###########################################################
-# OR, load f_test as the TRANSP distribution, and interpolate onto grid of interest
-# OR, load f_test as the TRANSP distribution, and interpolate onto grid of interest
-# OR, load f_test as the TRANSP distribution, and interpolate onto grid of interest
-include("/home/henrikj/Codes/OWCF/misc/convert_units.jl")
-myfile = jldopen("/home/henrikj/Data/JET/TRANSP/99971/L72/99971L72_fi_2.jld2",false,false,false,IOStream)
-F_EpRz_TRANSP = myfile["F_ps"]
-E_array_TRANSP = myfile["energy"]
-p_array_TRANSP = myfile["pitch"]
-R_array_TRANSP = myfile["R"]
-z_array_TRANSP = myfile["z"]
-close(myfile)
-iR_TRANSP = argmin(abs.(R_array_TRANSP .- 100*R_of_interest))
-iz_TRANSP = argmin(abs.(z_array_TRANSP .- 100*z_of_interest))
-f_test_orig = units_conversion_factor("cm^-3","m^-3") .*F_EpRz_TRANSP[:,:,iR_TRANSP,iz_TRANSP] # TRANSP distribution is in cm^-3. Convert to m^-3
-nodes_TRANSP = (E_array_TRANSP,p_array_TRANSP)
-itp = Interpolations.interpolate(nodes_TRANSP,f_test_orig,Gridded(Linear()))
-etp = Interpolations.extrapolate(itp,Interpolations.Flat())
-f_test = zeros(length(E_coarse),length(p_coarse))
-for (iE,E) in enumerate(E_coarse)
-    for (ip,p) in enumerate(p_coarse)
-        f_test[iE,ip] = etp(E,p)
-    end
-end
-###########################################################
-# Plot test distribution (Maxwellian)
-Plots.heatmap(E_coarse,p_coarse,f_test',title="Ground truth")
-###########################################################
-# Compute and plot synthetic signal
-f_1D = reshape(f_test,(length(E_coarse)*length(p_coarse),1))
-S_synth_KM14_clean = dropdims(W_2D_KM14_orig * f_1D,dims=2)
-Plots.plot(Ed_array_S_KM14_orig,S_synth_KM14_clean)
-###########################################################
-# Add noise to the signal. Superimpose it on signal plot
-k = 0.1
-b = 0.05
-include("extra/dependencies.jl")
-S_synth_KM14_noisy, err_synth_KM14 = add_noise(S_synth_KM14_clean, b; k=k)
-Plots.plot!(Ed_array_S_KM14_orig,S_synth_KM14_noisy)
-###########################################################
-S_synth_KM15_clean = dropdims(W_2D_KM15_orig * f_1D,dims=2)
-Plots.plot!(Ed_array_S_KM15_orig, S_synth_KM15_clean)
-S_synth_KM15_noisy, err_synth_KM15 = add_noise(S_synth_KM15_clean, b; k=k)
-Plots.plot!(Ed_array_S_KM15_orig,S_synth_KM15_noisy)
-###########################################################
-S_synth_MPRu_clean = dropdims(W_2D_MPRu_orig * f_1D,dims=2)
-Plots.plot(Ed_array_S_MPRu_orig,S_synth_MPRu_clean)
-S_synth_MPRu_noisy, err_synth_MPRu = add_noise(S_synth_MPRu_clean, b; k=k)
-Plots.plot!(Ed_array_S_MPRu_orig,S_synth_MPRu_noisy)
-###########################################################
-# Remnant code from earlier version
-function nonunique2(x::AbstractArray{T}) where T
-    xs = sort(x)
-    duplicatevector = T[]
-    for i=2:length(xs)
-        if (isequal(xs[i],xs[i-1]) && (length(duplicatevector)==0 || !isequal(duplicatevector[end],xs[i])))
-            push!(duplicatevector,xs[i])
-        end
-    end
-    duplicatevector
-end
-###########################################################
-using NetCDF
-"""
-read_ncdf(filepath; vars=nothing)
 
-# Function description here
-"""
-function read_ncdf(filepath::String; wanted_keys=nothing)
+append!(timestamps,time()) # The timestamp when the weight function rescale factors have been computed
+###########################################################################################################
+# SECTION 9: IF :COLLISIONS WAS INCLUDED IN THE regularization INPUT VARIABLE, AND THE RECONSTRUCTION 
+# SPACE IS A SPACE IN WHICH COLLISIONS REGULARIZATION IS SUPPORTED, COMPUTE SLOWING-DOWN BASIS FUNCTIONS
+println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
 
-    d = Dict()
-    d["err"] = 1
-    if isfile(filepath)
-        d["err"] = 0
-        NetCDF.open(filepath) do nc
-            cdf_variables = nc.vars
-            if !(wanted_keys==nothing)
-                for wanted_key in wanted_keys
-                    if wanted_key in keys(cdf_variables)
-                        values = NetCDF.readvar(nc,wanted_key)
-                        if () == size(values) # If the size of values is 0 (i.e. values is a scalar)
-                            d[wanted_key] = first(values) # Take the 'first' element, parse a float and store it in d with key 'wanted_key'
-                        else
-                            if typeof(values) <: Vector{NetCDF.ASCIIChar}
-                                values = reduce(*,map(x-> "$(x)",values)) # Concatenate all ASCII characters into one string
-                            end
-                            d[wanted_key] = values # Parse all elements in values as floats and store them as an array in d with key 'wanted_key'
-                        end
+if "collisions" in lowercase.(String.(regularization))
+    COMPATIBLE_OPTIONS = [is_energy_pitch, is_vpara_vperp] # ADD MORE CHECKS HERE IN FUTURE VERSIONS, IF NEEDED <---------------------------------------------------------------------
+    verbose && print(":COLLISIONS included in 'regularization' input variable. Performing safety checks... ")
+    if sum([f(W_abscissas[1],W_abscissas_units[1]) for f in COMPATIBLE_OPTIONS])==0 # Is the reconstruction space NOT in any of the COMPATIBLE_OPTIONS?
+        error(":COLLISIONS was specified in 'regularization' input variable, but reconstruction space is not compatible. Current compatible options include (E,p) and (vpara,vperp). Please correct and re-try.")
+    end
+    if !(length(regularization_thermal_ion_temp)==length(regularization_thermal_ion_dens)==length(regularization_thermal_ion_species))
+        error("The lengths of the 'regularization_thermal_ion_temp', 'regularization_thermal_ion_dens' and 'regularization_thermal_ion_species' input variables were not equal. Please correct and re-try.")
+    end
+    verbose && println("ok!")
+    verbose && print("---> Loading magnetic equilibrium from $(regularization_equil_filepath)... ")
+    M, wall = read_geqdsk(regularization_equil_filepath,clockwise_phi=false) # Assume the phi-direction is pointing counter-clockwise when tokamak is viewed from above. This is true for almost all coordinate systems used in the field of plasma physics
+    psi_axis, psi_bdry = psi_limits(M)
+    verbose && println("ok!")
+
+    verbose && println("---> Computing normalized poloidal flux coordinate (rho_pol) for (R_of_interest, z_of_interest) input variables... ")
+    if length(W_abscissas_units[1])==3
+        R_of_interests = vcat(units_conversion_factor(R_of_interest_units,"m") .* R_of_interest) # Converting to meters to match Equilibrium.jl package standard
+        z_of_interests = vcat(units_conversion_factor(z_of_interest_units,"m") .* z_of_interest) # Converting to meters to match Equilibrium.jl package standard
+        rho_of_interests = vcat(sqrt((M(R_of_interest,z_of_interest)-psi_axis)/(psi_bdry-psi_axis)))
+    else
+        # CODE FUTURE CASES HERE (3D, 4D ETC)
+    end
+
+    verbose && println("---> Preparing thermal ion data... ")
+    thermal_ion_temperatures = zeros(length(regularization_thermal_ion_species),length(rho_of_interests)) # Ready for future versions with many rho_of_interest values
+    thermal_ion_densities = zeros(length(regularization_thermal_ion_species),length(rho_of_interests)) # Ready for future versions with many rho_of_interest values
+    
+    for (i,ion) in enumerate(regularization_thermal_ion_species)
+        verbose && println("------> Preparing thermal ion temperature data for species $(ion)... ")
+        if (typeof(regularization_thermal_ion_temp[i]) <: Real)
+            verbose && println("---------> Found an ion temperature of $(regularization_thermal_ion_temp[i]) keV. Incorporating... ")
+            thermal_ion_temperatures[i,:] = repeat(vcat(regularization_thermal_ion_temp[i]),length(rho_of_interests))
+        elseif (typeof(regularization_thermal_ion_temp[i]) <: String)
+            if !isfile(regularization_thermal_ion_temp[i])
+                error("regularization_thermal_ion_temp element with index $(i) was not specified correctly. $(regularization_thermal_ion_temp[i]) is not a valid filepath. Please correct and re-try.")
+            end
+            local file_ext; file_ext = split(regularization_thermal_ion_temp[i],".")[end] # Assume last part of String after "." is the file extension
+            if lowercase(file_ext)=="jld2"
+                local myfile; myfile = jldopen(regularization_thermal_ion_temp[i],false,false,false,IOStream)
+                local rho_array; rho_array = myfile["rho_pol"]
+                local temp_array; temp_array = myfile["thermal_temp"]
+                close(myfile)
+                local itp; itp = Interpolations.interpolate((rho_array,),temp_array,Gridded(Linear()))
+                local etp; etp = Interpolations.extrapolate(itp,0.0) # Assume vacuum scrape-off layer
+                T_is = etp.(rho_of_interests) # T_i values at the rho_pol values of interest
+                verbose && println("---------> Computed ion temperature(s) of $(T_is) keV")
+                verbose && println("---------> at ρ_{pol}=$(round.(rho_of_interests,sigdigits=4))")
+                verbose && println("---------> i.e. R = $(round.(R_of_interests,sigdigits=4)) meters")
+                verbose && println("---------> i.e. z = $(round.(z_of_interests,sigdigits=4)) meters")
+                verbose && println("---------> by loading $(regularization_thermal_ion_temp[i]) . Incorporating temperature(s)... ")
+                thermal_ion_temperatures[i,:] = T_is
+            elseif lowercase(file_ext)=="cdf"
+                if (typeof(regularization_timepoint) <: Real)
+                    local t_mid; t_mid = Float64.(regularization_timepoint)
+                elseif (typeof(regularization_timepoint) <: String)
+                    if !isfile(regularization_timepoint)
+                        local t_mid; t_mid = regularization_timepoint # Assume format "XX.XXXX" or "XX,XXXX"
+                    else
+                        local t_mid; t_mid = (read_ncdf(regularization_timepoint,wanted_keys=["TIME"]))["TIME"] # Assume TRANSP-NUBEAM output file
                     end
+                else
+                    error("regularization_timepoint input variable has invalid type. Expected Float64, Int64 or String. regularization_timepoint input variable needed to load ion temperature data from $(regularization_thermal_ion_temp[i]). Please correct and re-try.")
+                end
+                local etp; etp = getTempProfileFromTRANSP(t_mid,regularization_thermal_ion_temp[i],regularization_thermal_ion_species[i])
+                T_is = etp.(rho_of_interests)
+                verbose && println("---------> Computed ion temperature(s) of $(T_is) keV")
+                verbose && println("---------> at ρ_{pol}=$(round.(rho_of_interests,sigdigits=4))")
+                verbose && println("---------> i.e. R = $(round.(R_of_interests,sigdigits=4)) meters")
+                verbose && println("---------> i.e. z = $(round.(z_of_interests,sigdigits=4)) meters")
+                verbose && println("---------> by loading $(regularization_thermal_ion_temp[i]) . Incorporating temperature(s)... ")
+                thermal_ion_temperatures[i,:] = T_is
+            else
+                error("regularization_thermal_ion_temp element with index $(i) was not specified correctly. $(regularization_thermal_ion_temp[i]) has an invalid file extension. Expected .jld2 or .cdf. Please correct and re-try.")
+            end
+        else
+            error("regularization_thermal_ion_temp element with index $(i) was not specified correctly. It is an invalid type $(regularization_thermal_ion_temp[i]). Please correct and re-try.")
+        end
+
+        verbose && println("------> Preparing thermal ion density data for species $(ion)... ")
+        if (typeof(regularization_thermal_ion_dens[i]) <: Real)
+            verbose && println("---------> Found an ion density of $(regularization_thermal_ion_dens[i]) m^-3. Incorporating... ")
+            thermal_ion_densities[i,:] = repeat(vcat(regularization_thermal_ion_dens[i]),length(rho_of_interests))
+        elseif (typeof(regularization_thermal_ion_dens[i]) <: String)
+            if !isfile(regularization_thermal_ion_dens[i])
+                error("regularization_thermal_ion_dens element with index $(i) was not specified correctly. $(regularization_thermal_ion_dens[i]) is not a valid filepath. Please correct and re-try.")
+            end
+            local file_ext; file_ext = split(regularization_thermal_ion_dens[i],".")[end] # Assume last part of String after "." is the file extension
+            if lowercase(file_ext)=="jld2"
+                local myfile; myfile = jldopen(regularization_thermal_ion_dens[i],false,false,false,IOStream)
+                local rho_array; rho_array = myfile["rho_pol"]
+                local dens_array; dens_array = myfile["thermal_dens"]
+                close(myfile)
+                local itp; itp = Interpolations.interpolate((rho_array,),dens_array,Gridded(Linear()))
+                local etp; etp = Interpolations.extrapolate(itp,0.0) # Assume vacuum scrape-off layer
+                n_is = etp.(rho_of_interests) # n_i values at the rho_pol values of interest
+                verbose && println("---------> Computed ion densitie(s) of $(n_is) m^-3")
+                verbose && println("---------> at ρ_{pol}=$(round.(rho_of_interests,sigdigits=4))")
+                verbose && println("---------> i.e. R = $(round.(R_of_interests,sigdigits=4)) meters")
+                verbose && println("---------> i.e. z = $(round.(z_of_interests,sigdigits=4)) meters")
+                verbose && println("---------> by loading $(regularization_thermal_ion_dens[i]) . Incorporating densitie(s)... ")
+                thermal_ion_densities[i,:] = n_is
+            elseif lowercase(file_ext)=="cdf"
+                if (typeof(regularization_timepoint) <: Real)
+                    local t_mid; t_mid = Float64.(regularization_timepoint)
+                elseif (typeof(regularization_timepoint) <: String)
+                    if !isfile(regularization_timepoint)
+                        local t_mid; t_mid = regularization_timepoint # Assume format "XX.XXXX" or "XX,XXXX"
+                    else
+                        local t_mid; t_mid = (read_ncdf(regularization_timepoint,wanted_keys=["TIME"]))["TIME"] # Assume TRANSP-NUBEAM output file
+                    end
+                else
+                    error("regularization_timepoint input variable has invalid type. Expected Float64, Int64 or String. regularization_timepoint input variable needed to load ion density data from $(regularization_thermal_ion_dens[i]). Please correct and re-try.")
+                end
+                local etp; etp = getDensProfileFromTRANSP(t_mid,regularization_thermal_ion_dens[i],regularization_thermal_ion_species[i])
+                n_is = etp.(rho_of_interests)
+                verbose && println("---------> Computed ion densities(s) of $(n_is) m^-3")
+                verbose && println("---------> at ρ_{pol}=$(round.(rho_of_interests,sigdigits=4))")
+                verbose && println("---------> i.e. R = $(round.(R_of_interests,sigdigits=4)) meters")
+                verbose && println("---------> i.e. z = $(round.(z_of_interests,sigdigits=4)) meters")
+                verbose && println("---------> by loading $(regularization_thermal_ion_dens[i]) . Incorporating densitie(s)... ")
+                thermal_ion_densities[i,:] = n_is
+            else
+                error("regularization_thermal_ion_dens element with index $(i) was not specified correctly. $(regularization_thermal_ion_dens[i]) has an invalid file extension. Expected .jld2 or .cdf. Please correct and re-try.")
+            end
+        else
+            error("regularization_thermal_ion_dens element with index $(i) was not specified correctly. It is an invalid type $(regularization_thermal_ion_dens[i]). Please correct and re-try.")
+        end
+    end
+    # CODE ELECTRON TEMPERATURE AND DENSITY
+    verbose && println("---> Preparing thermal electron data... ")
+    thermal_electron_temperatures = zeros(length(rho_of_interests)) # Ready for future versions with many rho_of_interest values
+    thermal_electron_densities = zeros(length(rho_of_interests)) # Ready for future versions with many rho_of_interest values
+    
+    verbose && println("------> Preparing thermal electron temperature data... ")
+    if (typeof(regularization_thermal_electron_temp) <: Real)
+        verbose && println("---------> Found an electron temperature of $(regularization_thermal_electron_temp) keV. Incorporating... ")
+        thermal_electron_temperatures = repeat(vcat(regularization_thermal_electron_temp),length(rho_of_interests))
+    elseif (typeof(regularization_thermal_electron_temp) <: String)
+        if !isfile(regularization_thermal_electron_temp)
+            error("regularization_thermal_electron_temp was not specified correctly. $(regularization_thermal_electron_temp) is not a valid filepath. Please correct and re-try.")
+        end
+        file_ext = split(regularization_thermal_electron_temp,".")[end] # Assume last part of String after "." is the file extension
+        if lowercase(file_ext)=="jld2"
+            myfile = jldopen(regularization_thermal_electron_temp,false,false,false,IOStream)
+            rho_array = myfile["rho_pol"]
+            temp_array = myfile["thermal_temp"]
+            close(myfile)
+            itp = Interpolations.interpolate((rho_array,),temp_array,Gridded(Linear()))
+            etp = Interpolations.extrapolate(itp,0.0) # Assume vacuum scrape-off layer
+            T_es = etp.(rho_of_interests) # T_i values at the rho_pol values of interest
+            verbose && println("---------> Computed electron temperature(s) of $(T_es) keV")
+            verbose && println("---------> at ρ_{pol}=$(round.(rho_of_interests,sigdigits=4))")
+            verbose && println("---------> i.e. R = $(round.(R_of_interests,sigdigits=4)) meters")
+            verbose && println("---------> i.e. z = $(round.(z_of_interests,sigdigits=4)) meters")
+            verbose && println("---------> by loading $(regularization_thermal_electron_temp) . Incorporating temperature(s)... ")
+            thermal_electron_temperatures = T_es
+        elseif lowercase(file_ext)=="cdf"
+            if (typeof(regularization_timepoint) <: Real)
+                t_mid = Float64.(regularization_timepoint)
+            elseif (typeof(regularization_timepoint) <: String)
+                if !isfile(regularization_timepoint)
+                    t_mid = regularization_timepoint # Assume format "XX.XXXX" or "XX,XXXX"
+                else
+                    t_mid = (read_ncdf(regularization_timepoint,wanted_keys=["TIME"]))["TIME"] # Assume TRANSP-NUBEAM output file
                 end
             else
-                for (key,_) in cdf_variables
-                    values = NetCDF.readvar(nc,key)
-                    if () == size(values) # If the size of values is 0 (i.e values is a scalar)
-                        d[key] = first(values) # Take the 'first' element, parse a float and store it in d with key 'wanted_key'
-                    else
-                        if typeof(values) <: Vector{NetCDF.ASCIIChar}
-                            values = reduce(*,map(x-> "$(x)",values)) # Concatenate all ASCII characters into one string
-                        end
-                        d[key] = values # Parse all elements in values as floats and store them as an array in d with key 'wanted_key'
-                    end
+                error("regularization_timepoint input variable has invalid type. Expected Float64, Int64 or String. regularization_timepoint input variable needed to load electron temperature data from $(regularization_thermal_electron_temp). Please correct and re-try.")
+            end
+            etp = getTempProfileFromTRANSP(t_mid,regularization_thermal_electron_temp,"e")
+            T_es = etp.(rho_of_interests)
+            verbose && println("---------> Computed electron temperature(s) of $(T_es) keV")
+            verbose && println("---------> at ρ_{pol}=$(round.(rho_of_interests,sigdigits=4))")
+            verbose && println("---------> i.e. R = $(round.(R_of_interests,sigdigits=4)) meters")
+            verbose && println("---------> i.e. z = $(round.(z_of_interests,sigdigits=4)) meters")
+            verbose && println("---------> by loading $(regularization_thermal_electron_temp) . Incorporating temperature(s)... ")
+            thermal_electron_temperatures = T_es
+        else
+            error("regularization_thermal_electron_temp was not specified correctly. $(regularization_thermal_electron_temp) has an invalid file extension. Expected .jld2 or .cdf. Please correct and re-try.")
+        end
+    else
+        error("regularization_thermal_electron_temp was not specified correctly. It is an invalid type $(regularization_thermal_electron_temp). Please correct and re-try.")
+    end
+    
+    verbose && println("------> Preparing thermal electron density data... ")
+    if (typeof(regularization_thermal_electron_dens) <: Real)
+        verbose && println("---------> Found an electron density of $(regularization_thermal_electron_dens) m^-3. Incorporating... ")
+        thermal_electron_densities = repeat(vcat(regularization_thermal_electron_dens),length(rho_of_interests))
+    elseif (typeof(regularization_thermal_electron_dens) <: String)
+        if !isfile(regularization_thermal_electron_dens)
+            error("regularization_thermal_electron_dens was not specified correctly. $(regularization_thermal_electron_dens) is not a valid filepath. Please correct and re-try.")
+        end
+        file_ext = split(regularization_thermal_electron_dens,".")[end] # Assume last part of String after "." is the file extension
+        if lowercase(file_ext)=="jld2"
+            myfile = jldopen(regularization_thermal_electron_dens,false,false,false,IOStream)
+            rho_array = myfile["rho_pol"]
+            dens_array = myfile["thermal_dens"]
+            close(myfile)
+            itp = Interpolations.interpolate((rho_array,),dens_array,Gridded(Linear()))
+            etp = Interpolations.extrapolate(itp,0.0) # Assume vacuum scrape-off layer
+            n_es = etp.(rho_of_interests) # n_e values at the rho_pol values of interest
+            verbose && println("---------> Computed electron densitie(s) of $(n_es) m^-3")
+            verbose && println("---------> at ρ_{pol}=$(round.(rho_of_interests,sigdigits=4))")
+            verbose && println("---------> i.e. R = $(round.(R_of_interests,sigdigits=4)) meters")
+            verbose && println("---------> i.e. z = $(round.(z_of_interests,sigdigits=4)) meters")
+            verbose && println("---------> by loading $(regularization_thermal_electron_dens) . Incorporating densitie(s)... ")
+            thermal_electron_densities = n_es
+        elseif lowercase(file_ext)=="cdf"
+            if (typeof(regularization_timepoint) <: Real)
+                t_mid = Float64.(regularization_timepoint)
+            elseif (typeof(regularization_timepoint) <: String)
+                if !isfile(regularization_timepoint)
+                    t_mid = regularization_timepoint # Assume format "XX.XXXX" or "XX,XXXX"
+                else
+                    t_mid = (read_ncdf(regularization_timepoint,wanted_keys=["TIME"]))["TIME"] # Assume TRANSP-NUBEAM output file
+                end
+            else
+                error("regularization_timepoint input variable has invalid type. Expected Float64, Int64 or String. regularization_timepoint input variable needed to load electron density data from $(regularization_thermal_electron_dens). Please correct and re-try.")
+            end
+            etp = getDensProfileFromTRANSP(t_mid,regularization_thermal_electron_dens,"e")
+            n_es = etp.(rho_of_interests)
+            verbose && println("---------> Computed electron densities(s) of $(n_es) m^-3")
+            verbose && println("---------> at ρ_{pol}=$(round.(rho_of_interests,sigdigits=4))")
+            verbose && println("---------> i.e. R = $(round.(R_of_interests,sigdigits=4)) meters")
+            verbose && println("---------> i.e. z = $(round.(z_of_interests,sigdigits=4)) meters")
+            verbose && println("---------> by loading $(regularization_thermal_electron_dens) . Incorporating densitie(s)... ")
+            thermal_electron_densities = n_es
+        else
+            error("regularization_thermal_electron_dens was not specified correctly. $(regularization_thermal_electron_dens) has an invalid file extension. Expected .jld2 or .cdf. Please correct and re-try.")
+        end
+    else
+        error("regularization_thermal_electron_dens was not specified correctly. It is an invalid type $(regularization_thermal_electron_dens). Please correct and re-try.")
+    end
+
+    verbose && print("---> Computing slowing-down (collision physics) basis functions...")
+    if is_energy_pitch(W_abscissas[1],W_abscissas_units[1])
+        n_e = thermal_electron_densities[1] # We know it must be a 1-element Vector because reconstruction space is (E,p)
+        T_e = thermal_electron_temperatures[1] # -||-
+        thermal_ion_densities_at_rho = thermal_ion_densities[:,1] # -||-
+        thermal_ion_temperatures_at_rho = thermal_ion_temperatures[:,1] # -||-
+
+        verbose && println("for (E,p) space with grid point extrema:")
+        w_E_abscissa, w_E_ind = get_energy_abscissa(W_abscissas[1][2:end],W_abscissas_units[1][2:end]; returnExtra=true) # First dimension is always the measurement bin centers
+        verbose && println("------> (E_min,E_max)=$(round.(extrema(w_E_abscissa),sigdigits=4)) $(W_abscissas_units[1][w_E_ind+1])") # +1 because get_energy_abscissa() returns index shifted by 1, due to not including measurement bin centers abscissa as function input
+        w_p_abscissa = get_pitch_abscissa(W_abscissas[1][2:end],W_abscissas_units[1][2:end]) # First dimension is always the measurement bin centers
+        verbose && println("------> (p_min,p_max)=$(round.(extrema(w_p_abscissa),sigdigits=4))")
+        dE = diff(w_E_abscissa)[1]; dp = diff(w_p_abscissa)[1] # Assume equidistant (E,p) grid
+
+        E_inj_array = w_E_abscissa[1:1:end-1] .+ diff(w_E_abscissa)[1]/2 # Assume uniform energy grid
+        p_inj_array = w_p_abscissa[1:1:end-1] .+ diff(w_p_abscissa)[1]/2 # Assume uniform pitch grid
+
+        verbose && println("------> Computing... ")
+        F_SD = zeros(length(w_E_abscissa)*length(w_p_abscissa),length(E_inj_array)*length(p_inj_array))
+        F_SD_coords = CartesianIndices((length(E_inj_array),length(p_inj_array)))
+        for (ic,c) in enumerate(F_SD_coords)
+            iE = c[1]; ip = c[2]; E_inj = E_inj_array[iE]; p_inj = p_inj_array[ip]
+            f_SD = slowing_down_function(E_inj, p_inj, w_E_abscissa, w_p_abscissa, n_e, T_e, FI_species, regularization_thermal_ion_species, thermal_ion_densities_at_rho, thermal_ion_temperatures_at_rho; dampen=true, damp_type=:erfc, sigma=2.0)
+            f_SD = f_SD ./sum((dE*dp) .*f_SD) # Normalize the basis function so they integrate to 1.0
+            F_SD[:,ic] .= reshape(f_SD,(length(w_E_abscissa)*length(w_p_abscissa),1))
+        end
+    elseif is_vpara_vperp(W_abscissas[1],W_abscissas_units[1])
+        v2E_rel = (v-> inv(1000*GuidingCenterOrbits.e0)*getSpeciesMass(FI_species)*((GuidingCenterOrbits.c0)^2)*(sqrt(1/(1-(v/(GuidingCenterOrbits.c0))^(2)))-1)) # A one-line function to transform from relativistic speed (m/s) to energy (keV)
+
+        n_e = thermal_electron_densities[1] # We know it must be a 1-element Vector because reconstruction space is (vpara,vperp)
+        T_e = thermal_electron_temperatures[1] # -||-
+        thermal_ion_densities_at_rho = thermal_ion_densities[:,1] # -||-
+        thermal_ion_temperatures_at_rho = thermal_ion_temperatures[:,1] # -||-
+
+        verbose && println("for (vpara,vperp) space with grid point extrema:")
+        w_vpara_abscissa, w_vpara_ind = get_vpara_abscissa(W_abscissas[1][2:end],W_abscissas_units[1][2:end]; returnExtra=true); nwvpa = length(w_vpara_abscissa)
+        verbose && println("------> (vpara_min,vpara_max)=$(round.(extrema(w_vpara_abscissa),sigdigits=4)) $(W_abscissas_units[1][w_vpara_ind+1])") # +1 because get_vpara_abscissa() returns index shifted by 1, due to not including measurement bin centers abscissa as function input
+        w_vperp_abscissa, w_vperp_ind = get_vperp_abscissa(W_abscissas[1][2:end],W_abscissas_units[1][2:end]; returnExtra=true); nwvpe = length(w_vperp_abscissa)
+        verbose && println("------> (vperp_min,vperp_max)=$(round.(extrema(w_vperp_abscissa),sigdigits=4)) $(W_abscissas_units[1][w_vperp_ind+1])") # +1 because get_vperp_abscissa() returns index shifted by 1, due to not including measurement bin centers abscissa as function input
+        dvpa = diff(w_vpara_abscissa)[1]; dvpe = diff(w_vperp_abscissa)[1] # Assume equidistant (vpara,vperp) grid
+
+        # To find minimum and maximum of (E,p) grid for
+        VEL_points = Iterators.product(w_vpara_abscissa, w_vperp_abscissa)
+        min_E, max_E = Inf, -Inf
+        min_p, max_p = Inf, -Inf
+        for VEL_point in VEL_points
+            v = sqrt(VEL_point[1]^2 + VEL_point[2]^2)
+            p = VEL_point[1]/v
+            E = v2E_rel(v)
+            if E<min_E
+                global min_E; min_E = E
+            end
+            if E>max_E
+                global max_E; max_E = E
+            end
+            if p<min_p
+                global min_p; min_p = p
+            end
+            if p>max_p
+                global max_p; max_p = p
+            end
+        end
+        E_SD_array = collect(range(min_E,stop=max_E,length=sqrt(nwvpa*nwvpe)))
+        verbose && println("------> Inferred (E_min,E_max)=$(round.(extrema(E_SD_array),sigdigits=4))")
+        p_SD_array = collect(range(min_p,stop=max_p,length=sqrt(nwvpa*nwvpe)))
+        dE = diff(E_SD_array)[1]; dp = diff(p_SD_array)[1]
+        verbose && println("------> Inferred (p_min,p_max)=$(round.(extrema(p_SD_array),sigdigits=4))")
+
+        E_inj_array = E_SD_array[1:1:end-1] .+ diff(E_SD_array)[1]/2
+        p_inj_array = p_SD_array[1:1:end-1] .+ diff(p_SD_array)[1]/2
+
+        verbose && println("------> Computing... ")
+        F_SD = zeros(length(w_vpara_abscissa)*length(w_vperp_abscissa),length(E_inj_array)*length(p_inj_array))
+        F_SD_coords = CartesianIndices((length(E_inj_array),length(p_inj_array)))
+        for (ic,c) in enumerate(F_SD_coords)
+            iE = c[1]; ip = c[2]; E_inj = E_inj_array[iE]; p_inj = p_inj_array[ip]
+            f_SD_Ep = slowing_down_function(E_inj, p_inj, E_SD_array, p_SD_array, n_e, T_e, FI_species, regularization_thermal_ion_species, thermal_ion_densities_at_rho, thermal_ion_temperatures_at_rho; dampen=true, damp_type=:erfc, sigma=2.0)
+            f_SD_VEL, vpara_SD_array, vperp_SD_array = Ep2VparaVperp(E_SD_array, p_SD_array, f_SD_Ep; my_gcp=getGCP(FI_species)(0.0,0.0,0.0,0.0), needJac=true, returnAbscissas=true)
+            local nodes; nodes = (vpara_SD_array, vperp_SD_array)
+            local itp; itp = Interpolations.interpolate(nodes,f_SD_VEL,Gridded(Linear()))
+            local etp; etp = Interpolations.extrapolate(itp,Interpolations.Flat())
+            f_SD = zeros(length(w_vpara_abscissa),length(w_vperp_abscissa))
+            for (ivpa,vpa) in enumerate(w_vpara_abscissa)
+                for (ivpe,vpe) in enumerate(w_vperp_abscissa)
+                    f_SD[ivpa,ivpe] = etp(vpa,vpe)
+                end
+            end
+            f_SD = f_SD ./sum((dvpa*dvpe) .*f_SD) # Normalize the basis function so they integrate to 1.0
+            F_SD[:,ic] .= reshape(f_SD,(length(w_vpara_abscissa)*length(w_vperp_abscissa),1))
+        end
+    elseif false # <----- ADD MORE OPTIONS HERE IN FUTURE VERSIONS!!!
+    else
+        error("This error should be impossible to reach. How did you do that?")
+    end
+    F_SD_safe = reduce(hcat,filter(col-> sum(col)!=0.0 && sum(isnan.(col))==0, eachcol(F_SD))) # Filter out all basis functions that are NOT identically zero and do NOT contain NaNs, and hcat them back into a matrix
+else
+    verbose && println("No collision physics regularization included.")
+end
+
+append!(timestamps,time()) # The timestamp when the collision physics basis functions have been computed
+###########################################################################################################
+# SECTION 10: ENFORCE THE NOISE FLOOR
+println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
+
+verbose && println("Enforcing a noise floor of $(noise_floor_factor). All error values smaller than $(noise_floor_factor)*maximum(S) will be set to $(noise_floor_factor)*maximum(S)... ")
+for (i,s) in enumerate(S)
+    noise_floor_i = maximum(s)*noise_floor_factor
+    verbose && print("---> Diagnostic $(i) has a noise floor of $(noise_floor_i)... ")
+    below_noise_floor_inds = findall(x-> x<noise_floor_i, S_errs[i])
+    if isempty(below_noise_floor_inds)
+        verbose && println("no error values affected.")
+    else
+        println("")
+        verbose && println("------> Found $(length(below_noise_floor_inds)) error values smaller than $(noise_floor_i). Re-setting... ")
+        S_errs[i][below_noise_floor_inds] .= noise_floor_i
+    end
+end
+
+append!(timestamps,time()) # The timestamp when the noise floor has been enforced
+###########################################################################################################
+# SECTION 11: EXCLUDE UNWANTED MEASUREMENT BINS
+println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
+
+if !(length(excluded_measurement_intervals)==length(excluded_measurement_units)==length(filepaths_S))
+    @warn "The lengths of input variables 'excluded_measurement_intervals' and 'excluded_measurement_units' were not equal to 'filepaths_S'. Cannot execute exclusion of unwanted measurement bins. All measurement bins will be included for all diagnostics."
+else
+    verbose && println("Performing exclusion of unwanted measurement bins... ")
+    for i in eachindex(excluded_measurement_units)
+        verbose && println("---> For diagnostic $(i)... ")
+        excluded_measurement_intervals_i = excluded_measurement_intervals[i]
+        excluded_measurement_units_i = excluded_measurement_units[i]
+        W_i = W[i]
+        S_i = S[i]
+        S_errs_i = S_errs[i]
+        S_abscissas_units_i = S_abscissas_units[i]
+        S_abscissas_i = S_abscissas[i]
+        ucf_i = units_conversion_factor(excluded_measurement_units_i,S_abscissas_units_i)
+        bad_inds_i = []
+        for interval in excluded_measurement_intervals_i
+            interval_min = ucf_i*interval[1]
+            interval_max = ucf_i*interval[2]
+            bad_inds_ii = findall(xx-> (xx>=interval_min && xx<=interval_max),S_abscissas_i)
+            verbose && println("------> Identified $(length(bad_inds_ii)) measurements in excluded region (min,max)=($(interval_min),$(interval_max)) $(S_abscissas_units_i)") 
+            append!(bad_inds_i, bad_inds_ii)
+        end
+        bad_inds_i_nozero = deepcopy(bad_inds_i)
+        if exclude_zero_measurements
+            zero_inds = findall(x-> x==0.0, S_i)
+            if !isempty(zero_inds)
+                verbose && println("---> For diagnostic $(i), found $(length(zero_inds)) measurements equal to 0")
+                append!(bad_inds_i, zero_inds)
+            end
+        end
+        bad_inds_i = unique(bad_inds_i) # The indices of the excluded measurement intervals
+        good_inds_i = filter(xx -> !(xx in bad_inds_i), collect(1:length(S_abscissas_i))) # The indices of all measurement bins to keep
+        verbose && println("---> A total of $(length(bad_inds_i)) ($(length(bad_inds_i_nozero))+$(length(zero_inds))) measurement bin centers will be excluded for diagnostic $(i)...")
+        S[i] = S_i[good_inds_i] # Update measurements
+        S_errs[i] = S_errs_i[good_inds_i] # Update errors/uncertainties
+        S_abscissas[i] = S_abscissas_i[good_inds_i] # Update measurement abscissa
+        W[i] = W_i[good_inds_i,:] # Update weight function matrix
+    end
+end
+
+append!(timestamps,time()) # The timestamp when unwanted measurements have been excluded
+###########################################################################################################
+# SECTION 12: IF REQUESTED, INCLUDE 1st ORDER TIKHONOV AS REGULARIZATION FOR THE INVERSE PROBLEM
+# THIS SECTION MIGHT BE CHANGED IN THE FUTURE TO INCLUDE MORE FORMS OF REGULARIZATIONS AND PRIORS
+println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
+
+rec_space_abscissas = W_abscissas[1][2:end]
+#rec_space_abscissas_diff = map(x-> x[1], diff.(rec_space_abscissas)) # Assume rectangular grid with equidistant grid point spacing
+rec_space_size = Tuple(length.(rec_space_abscissas)) # The size of the reconstruction space, e.g. (33,52,12). All w abscissas are the same (because of sections 4 and 5), hence [1]. First w abscissa is the diagnostic measurement bins, hence [2:end].
+rec_space_coords = CartesianIndices(rec_space_size) # All reconstruction space coordinates. E.g. [(1,1,1), (1,1,2), ..., (N1,N2,N3)] where Ni is the number of grid points in the i:th reconstruction space dimension
+verbose && println("Creating list of reconstruction space coordinates (length=$(length(rec_space_coords))=$(reduce(*,map(x-> "x$(x)",rec_space_size))[2:end]))... ")
+
+if "firsttikhonov" in lowercase.(String.(regularization))
+    verbose && println(":FIRSTTIKHONOV included in 'regularization' input variable. Adding 1st order Tikhonov regularization to the inverse solving algorithm... ")
+    L1 = Vector{SparseMatrixCSC{Float64,Int64}}(undef,length(rec_space_size)) # All finite difference matrices (one for each dimension) (A Vector of sparce matrices (SparseMatrixCSC) CSC means 'compressed sparse column')
+    for idim=1:length(rec_space_size) # For each dimension
+        l1 = spzeros(length(rec_space_coords),length(rec_space_coords)) # The finite difference matrix for a specific dimension (idim)
+        for (i,rec_space_coord_i) in enumerate(rec_space_coords) # For every reconstruction space point (every row in the finite difference matrix)
+            for (j,rec_space_coord_j) in enumerate(rec_space_coords) # -||- (for every column in the finite difference matrix)
+                if sum(Tuple(rec_space_coord_j) .- Tuple(rec_space_coord_i))==1 && (rec_space_coord_j[idim]-rec_space_coord_i[idim])==1 # If the coordinates differ by one (neighbours with j coordinate larger than i coordinate) and the difference is in the right dimension (idim)
+                    l1[i,i] = -1 # Construct the forward difference matrix
+                    l1[i,j] = 1 # Construct the forward difference matrix
+                    break # Only one such nearest neighbour for every row, so move on to the next row
                 end
             end
         end
-    else
-        error("FILE DOES NOT EXIST: "*filepath)
+        L1[idim] = l1 # The finite difference matrix for this particular dimension
     end
-    return d
-end
-###########################################################
-# Create SD basis functions
-include("extra/dependencies.jl")
-include("misc/temp_n_dens.jl")
-my_dict = read_ncdf("/home/henrikj/Data/JET/TRANSP/99971/L72/99971L72_fi_2.cdf",wanted_keys=["TIME"])
-t_mid = my_dict["TIME"]
-R_of_interest = 2.8989
-z_of_interest = 0.27561
-M, wall = read_geqdsk("/home/henrikj/Data/JET/eqdsk/99971/g99971_474-48.9.eqdsk",clockwise_phi=false)
-psi_axis, psi_bdry = psi_limits(M)
-rho_of_interest = sqrt((M(R_of_interest,z_of_interest)-psi_axis)/(psi_bdry-psi_axis))
-ne_itp = getDensProfileFromTRANSP(t_mid,"/home/henrikj/Data/JET/TRANSP/99971/L72/99971L72.cdf","e")
-nD_itp = getDensProfileFromTRANSP(t_mid,"/home/henrikj/Data/JET/TRANSP/99971/L72/99971L72.cdf","D")
-nT_itp = getDensProfileFromTRANSP(t_mid,"/home/henrikj/Data/JET/TRANSP/99971/L72/99971L72.cdf","T")
-n_e = ne_itp(rho_of_interest)
-n_D = nD_itp(rho_of_interest)
-n_T = nT_itp(rho_of_interest)
-Te_itp = getTempProfileFromTRANSP(t_mid,"/home/henrikj/Data/JET/TRANSP/99971/L72/99971L72.cdf","e")
-TD_itp = getTempProfileFromTRANSP(t_mid,"/home/henrikj/Data/JET/TRANSP/99971/L72/99971L72.cdf","D")
-TT_itp = getTempProfileFromTRANSP(t_mid,"/home/henrikj/Data/JET/TRANSP/99971/L72/99971L72.cdf","T")
-T_e = Te_itp(rho_of_interest)
-T_D = TD_itp(rho_of_interest)
-T_T = TT_itp(rho_of_interest)
-###########################################################
-# Test upgraded Debye length function
-λ_D = debye_length(n_e, T_e, ["T","D"], [n_T,n_D], [T_T, T_D])
-###########################################################
-include("extra/dependencies.jl")
-E0_array = E_coarse[1:1:end-1] .+ diff(E_coarse)[1]/2
-p0_array = p_coarse[2:1:end-1]
-F_SD = zeros(length(E_coarse)*length(p_coarse),length(E0_array)*length(p0_array))
-F_SD_c_inds = CartesianIndices((length(E0_array),length(p0_array)))
-i_SD = 1
-E_oi = 250.0
-iE_oi = argmin(abs.(E0_array .- E_oi))
-p_oi = 0.0
-ip_oi = argmin(abs.(p0_array .- p_oi))
-for (ic,c) in enumerate(F_SD_c_inds)
-    iE = c[1]; ip = c[2]; E_0 = E0_array[iE]; p_0 = p0_array[ip]
-    #println("$(round(100*i_SD/(length(E_coarse)*length(p_coarse)),digits=3)) %")
-    f_SD = slowing_down_function(E_0, p_0, E_coarse, p_coarse, n_e, T_e, "D", ["T","D"], [n_T, n_D], [T_T, T_D]; dampen=true, damp_type=:erfc, sigma=2.0)
-    #println(extrema(f_SD))
-    dE = diff(E_coarse)[1]
-    dp = diff(p_coarse)[1]
-    f_SD = f_SD ./sum((dE*dp) .*f_SD) # Normalize the basis function so they integrate to 1.0
-    F_SD[:,ic] .= reshape(f_SD,(length(E_coarse)*length(p_coarse),1))
-    i_SD += 1
-    if iE==iE_oi && ip==ip_oi
-        my_plt = Plots.heatmap(E_coarse,p_coarse,f_SD',fillcolor=cgrad([:white, :yellow, :orange, :red, :black]))
-        display(my_plt)
-    end
-end
-###########################################################
-anim = @animate for i in 1:25:size(F_SD,2)
-    f_SD = reshape(F_SD[:,i],(length(E_coarse),length(p_coarse)))
-    my_plt = Plots.heatmap(E_coarse,p_coarse,f_SD',fillcolor=cgrad([:white, :yellow, :orange, :red, :black]))
-    display(my_plt)
-end
-#gif(anim,"test.gif",fps=2)
-#rm("test.gif"; force=true)
-###########################################################
-function testyMcTestface(x::T) where T<:Real
-    return 2*x
-end
-###########################################################
-# Filter out all basis functions that are NOT identically zero and do NOT contain NaNs 
-# hcat them back into a matrix
-F_SD_new = reduce(hcat,filter(col-> sum(col)!=0.0 && sum(isnan.(col))==0, eachcol(F_SD)))
-###########################################################
-for i in 1:50:size(F_SD_new,2)
-    f_SD_new = reshape(F_SD_new[:,i],(length(E_coarse),length(p_coarse)))
-    my_plt = Plots.heatmap(E_coarse,p_coarse,f_SD_new',fillcolor=cgrad([:white, :yellow, :orange, :red, :black]))
-    display(my_plt)
-end
-###########################################################
-SD_prior = true
-if !SD_prior
-    # Without SD prior
-    W_SD_KM14_orig = W_2D_KM14_orig
-    W_SD_KM15_orig = W_2D_KM15_orig
-    W_SD_MPRu_orig = W_2D_MPRu_orig
+    L1 = vcat(L1...)
+    L = [L1]
+    priors = [zeros(size(L1,1))]
+    priors_name = ["1st order Tikhonov"]
 else
-    # With SD prior
-    W_SD_KM14_orig = W_2D_KM14_orig*F_SD_new
-    W_SD_KM15_orig = W_2D_KM15_orig*F_SD_new
-    W_SD_MPRu_orig = W_2D_MPRu_orig*F_SD_new
+    verbose && println("Creating regularization and prior skeleton (empty arrays)... ")
+    L = []
+    priors = []
+    priors_name = []
 end
-###########################################################
-# Rescale weight functions, if necessary
-# In final OWCF version, code an intelligent check, to 
-# determine if re-scaling is necessary
-# It could be a flag like: 
-# (car_W = true) && (typical_N_FI = 1.0e19)
-# 'car_W' stands for check and rescale weights
-# A sample of Maxwellians will then be created. They each have 'typical_N_FI'
-# as the value of their zeroth moment. Their signals will be computed and 
-# compared with the experimental data. If none of the signals are within an 
-# order of magnitude from the maximum of any of the experimental signals, 
-# the weight functions should be re-scaled as below
-rescale_func = maximum # mean
-W_2D_KM14_a = (rescale_func(S_exp_KM14_orig)/rescale_func(S_synth_KM14_clean)) .*W_SD_KM14_orig
-W_2D_KM15_a = (rescale_func(S_exp_KM15_orig)/rescale_func(S_synth_KM15_clean)) .*W_SD_KM15_orig
-W_2D_MPRu_a = (rescale_func(S_exp_MPRu_orig)/rescale_func(S_synth_MPRu_clean)) .*W_SD_MPRu_orig
-###########################################################
-# Try using the non-rescaled weight functions on the experimental data
-#W_2D_KM14_a = W_SD_KM14_orig#W_2D_KM14_orig
-#W_2D_KM15_a = W_SD_KM15_orig#W_2D_KM15_orig
-#W_2D_MPRu_a = W_SD_MPRu_orig#W_2D_MPRu_orig
-###########################################################
-# Prepare experimental data problem first
-noise_floor_factor = 1.0e-4
-noise_floor_KM14 = maximum(S_exp_KM14_orig)*noise_floor_factor
-noise_floor_KM15 = maximum(S_exp_KM15_orig)*noise_floor_factor
-noise_floor_MPRu = maximum(S_exp_MPRu_orig)*noise_floor_factor
-err_exp_KM14_a = replace(x-> (x<noise_floor_KM14) ? noise_floor_KM14 : x, err_exp_KM14_orig)
-err_exp_KM15_a = replace(x-> (x<noise_floor_KM15) ? noise_floor_KM15 : x, err_exp_KM15_orig)
-err_exp_MPRu_a = replace(x-> (x<noise_floor_MPRu) ? noise_floor_MPRu : x, err_exp_MPRu_orig)
-###########################################################
-using Base.Sort
 
-function smallestn(a, n)
-  sort(a; alg=Sort.PartialQuickSort(n))[1:n]
-end
-###########################################################
-# Exclude unwanted measurement bins from reconstruction
-good_inds_KM14 = findall(x-> !(x>=8.16 && x<=8.56),Ed_array_S_KM14_orig)
-good_inds_KM15 = findall(x-> !(x>=8.36 && x<=8.76),Ed_array_S_KM15_orig)
-good_inds_MPRu = findall(x-> !(x>= 23.7 && x<= 27.7),Ed_array_S_MPRu_orig)
-zero_inds_MPRu = findall(x-> iszero(x), S_exp_MPRu_orig)
-good_inds_MPRu = filter(x-> !(x in zero_inds_MPRu), good_inds_MPRu)
+append!(timestamps,time()) # The timestamp when the regularization matrices have been initialized
+###########################################################################################################
+# SECTION 13: EXCLUDE ALL RECONSTRUCTION SPACE POINTS FOR WHICH THE WEIGHT MATRICES OF ALL DIAGNOSTICS ARE ZERO
+# PLEASE NOTE! THIS ALSO TAKES CARE OF INVALID ORBITS, SHOULD THE RECONSTRUCTION SPACE BE E.G. ORBIT SPACE 
+# OR CONSTANTS-OF-MOTION SPACE.
+println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
 
-W_2D_KM14_b = W_2D_KM14_a[good_inds_KM14,:]
-W_2D_KM15_b = W_2D_KM15_a[good_inds_KM15,:]
-W_2D_MPRu_b = W_2D_MPRu_a[good_inds_MPRu,:]
-err_exp_KM14_b = err_exp_KM14_a[good_inds_KM14]
-err_exp_KM15_b = err_exp_KM15_a[good_inds_KM15]
-err_exp_MPRu_b = err_exp_MPRu_a[good_inds_MPRu]
-S_exp_KM14_a = S_exp_KM14_orig[good_inds_KM14]
-S_exp_KM15_a = S_exp_KM15_orig[good_inds_KM15]
-S_exp_MPRu_a = S_exp_MPRu_orig[good_inds_MPRu]
-# Put together one large weight matrix and measurement vector
-W_hat = vcat(W_2D_KM14_b ./err_exp_KM14_b, W_2D_KM15_b ./err_exp_KM15_b, W_2D_MPRu_b ./err_exp_MPRu_b) #W_hat = vcat(W_2D_KM14 ./err_exp_KM14, W_2D_KM15 ./err_exp_KM15, W_2D_MPRu ./err_exp_MPRu)
-s_hat = vcat(S_exp_KM14_a ./err_exp_KM14_b, S_exp_KM15_a ./err_exp_KM15_b, S_exp_MPRu_a ./err_exp_MPRu_b)
-###########################################################
-# Add 0th order Tikhonov
-L0 = zeros(size(W_hat,2),size(W_hat,2)) #L0 = zeros(length(f_1D),length(f_1D))
-for i=1:size(W_hat,2)#length(f_1D)
-    for j=1:size(W_hat,2)#length(f_1D)
-        if i==j
-            L0[i,j] = 1.0
+verbose && println("Finding reconstruction space points for which the weight matrix (column) is zero (no sensitivity), for all diagnostics... ")
+rec_space_zero_dict = Dict() # A Dict of CartesianIndex to keep track of all reconstruction space coordinates for which the weight matrix is zero (the whole column is zero), and for how many diagnostics
+for w in W # For all weight matrices (all diagnostics)
+    for (j,c) in enumerate(eachcol(w)) # For each column in the weight matrix (and the column index j)
+        if sum(c)==0 # If the sum of the column is zero
+            if haskey(rec_space_zero_dict,rec_space_coords[j]) # Increase the corresponding reconstruction space coordinate dictionary element by 1
+                rec_space_zero_dict[rec_space_coords[j]] += 1
+            else # To avoid errors, separate the cases when the dictionary key is created, and when it's not
+                rec_space_zero_dict[rec_space_coords[j]] = 1
+            end
         end
     end
 end
-###########################################################
-# Add 1st order Tikhonov
-#L1 = zeros(length(W_hat),length(W_hat))
-#for i=1:length(W_hat)
-#    for j=1:length(W_hat)
-#        if (i-j)==1
-#            L1[i,j] = 1.0
-#        end
-#        if (i-j)==-1
-#            L1[i,j] = -1.0
-#        end
-#    end
-#end
-#L1[1,:] .= 0.0
-#L1[:,end] .= 0.0
-#spy(L1)
-###########################################################
-#Normalize everything
-Whm = maximum(W_hat)
-W_hh = W_hat ./Whm
-shm = maximum(s_hat)
-s_hh = s_hat ./shm
-L_orig = L0
-f0 = zeros(size(W_hat,2))#zeros(size(L_orig,1))
-###########################################################
-# SOLVE THE EXPERIMENTAL DATA PROBLEM
-using SCS, Convex
-using LinearAlgebra
-lambda_values = 10 .^(range(-3,stop=3.0,length=20))
-x_sols = zeros(length(lambda_values))
-p_sols = zeros(length(lambda_values))
-F_sols = zeros(length(f0),length(lambda_values))
-for (il,lambda) in enumerate(lambda_values)
-    println("lambda: $(lambda)")
-    L = lambda*L_orig
-    x = Convex.Variable(length(f0))
-
-    problem = Convex.minimize(Convex.sumsquares(vcat(W_hh,L) * x - vcat(s_hh,f0)), [x >= 0]) # FOR SD PRIOR, THIS SHOULD BE F_SD_new*x >= 0 !!!
-
-    solve!(problem, SCS.Optimizer)
-
-    x_sols[il] = norm(dropdims(x.value,dims=2))
-    p_sols[il] = norm(W_hh*dropdims(x.value,dims=2) - s_hh)
-    F_sols[:,il] = (shm/Whm) .*dropdims(x.value,dims=2)
-end
-###########################################################
-# Plot L-curve
-Plots.plot(p_sols,x_sols)
-Plots.scatter!([p_sols[1]],[x_sols[1]],label="Start")
-Plots.scatter!([p_sols[end]],[x_sols[end]],label="End")
-###########################################################
-using Interpolations
-p_itp = Interpolations.interpolate(p_sols, BSpline(Cubic()))
-x_itp = Interpolations.interpolate(x_sols, BSpline(Cubic()))
-p_prim = map(x-> Vector(Interpolations.gradient(p_itp,x))[1],eachindex(p_sols))
-x_prim = map(x-> Vector(Interpolations.gradient(x_itp,x))[1],eachindex(x_sols))
-p_prim_itp = Interpolations.interpolate(p_prim, BSpline(Cubic()))
-x_prim_itp = Interpolations.interpolate(x_prim, BSpline(Cubic()))
-p_primprim = map(x-> Vector(Interpolations.gradient(p_prim_itp,x))[1],eachindex(p_sols))
-x_primprim = map(x-> Vector(Interpolations.gradient(x_prim_itp,x))[1],eachindex(x_sols))
-
-Plots.plot(p_itp)
-Plots.plot!(p_prim)
-Plots.plot!(p_primprim)
-Plots.plot(x_itp)
-Plots.plot!(x_prim)
-Plots.plot!(x_primprim)
-gamma = zeros(length(p_sols))
-for i in eachindex(p_sols)
-    gamma[i] = (x_primprim[i]*p_prim[i] - x_prim[i]*p_primprim[i])/((x_prim[i]*x_prim[i] + p_prim[i]*p_prim[i])^(3/2))
-end
-ilm = argmax(gamma)
-Plots.plot(gamma)
-###########################################################
-plot_inds = 1:length(lambda_values) #15:33 # [24] #
-anim = @animate for i=plot_inds
-    Sr_KM14 = W_2D_KM14_b*F_sols[:,i]
-    myplt_KM14 = Plots.plot(Ed_array_S_KM14_orig[good_inds_KM14], Sr_KM14,title="$(i): log10(λ)=$(round(log10(lambda_values[i]),sigdigits=4))",label="WF*")
-    myplt_KM14 = Plots.scatter!(myplt_KM14, Ed_array_S_KM14_orig,S_exp_KM14_orig ,label="S")
-    Sr_KM15 = W_2D_KM15_b*F_sols[:,i]
-    myplt_KM15 = Plots.plot(Ed_array_S_KM15_orig[good_inds_KM15], Sr_KM15,title="$(i): log10(λ)=$(round(log10(lambda_values[i]),sigdigits=4))",label="WF*")
-    myplt_KM15 = Plots.scatter!(myplt_KM15, Ed_array_S_KM15_orig,S_exp_KM15_orig ,label="S")
-    Sr_MPRu = W_2D_MPRu_b*F_sols[:,i]
-    myplt_MPRu = Plots.plot(Ed_array_S_MPRu_orig[good_inds_MPRu],Sr_MPRu ,title="$(i): log10(λ)=$(round(log10(lambda_values[i]),sigdigits=4))",label="WF*")
-    myplt_MPRu = Plots.scatter!(myplt_MPRu, Ed_array_S_MPRu_orig,S_exp_MPRu_orig ,label="S")
-    myplt_tot_1 = Plots.plot(myplt_KM14, myplt_KM15, myplt_MPRu, layout=(1,3))
-
-    if SD_prior
-        Fr_2D = reshape(F_SD_new*F_sols[:,i],length(E_coarse),length(p_coarse))#reshape(F_sols[:,i],size(f_test))
-    else
-        Fr_2D = reshape(F_sols[:,i],length(E_coarse),length(p_coarse))
+if !isempty(rec_space_zero_dict)
+    bad_inds = []
+    for key in keys(rec_space_zero_dict)
+        if rec_space_zero_dict[key]==length(W) # If the reconstruction space point has zero sensitivity, for all diagnostics
+            verbose && println("---> The reconstruction space point (bad point) $([W_abscissas[1][i+1][key[i]] for i in 1:length(key)]) with units $([W_abscissas_units[1][i+1] for i in 1:length(key)]) has no sensitivity for all diagnostics. Excluding from reconstruction... ")
+            append!(bad_inds, findfirst(x-> x==key, rec_space_coords))
+        end
+    end
+    bad_inds = unique(bad_inds) # Should be redundant, but just in case
+    good_inds = filter(x-> !(x in bad_inds), collect(1:length(rec_space_coords)))
+    
+    rec_space_coords = rec_space_coords[good_inds] # Update the list of reconstruction space coordinates, to be able to correctly inflate tomographic reconstruction vector to full N-dimensional array
+    for (i,w) in enumerate(W)
+        verbose && println("------> Excluding $(length(bad_points)) bad points from the weight matrix of diagnostic $(i)... ")
+        W[i] = w[:,good_inds]
+    end
+    if "collisions" in lowercase.(String.(regularization)) # Exclude bad points from slowing-down (collision physics) basis functions
+        verbose && println("------> Excluding $(length(bad_points)) bad points from the slowing-down (collision physics) basis functions... ")
+        F_SD_safe = F_SD_safe[good_inds,:]
     end
 
-    normf_max_Fr_2D = floor(log10(maximum(Fr_2D)))
-    normf_max_F_sols = floor(log10(maximum(F_sols[:,i])))
-    gi = findall(x-> x<250.0,E_coarse)
-    myplt = Plots.heatmap(E_coarse[gi],p_coarse,Fr_2D[gi,:]' ./(10^normf_max_Fr_2D),title="$(i): log10(λ)=$(round(log10(lambda_values[i]),sigdigits=4)) [x 10^$(Int(normf_max_Fr_2D))]",fillcolor=cgrad([:white, :yellow, :orange, :red, :black]))
-    #myplt0 = Plots.plot(F_sols[:,i] ./(10^normf_max_F_sols))
-    myplt0 = Plots.heatmap(E0_array,p0_array,reshape(F_sols[:,i] ./(10^normf_max_F_sols),(length(E0_array),length(p0_array)))',title="$(i): SD coefficients value [x 10^$(Int(normf_max_F_sols))]",fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]),xticks=[50,100,150,200],yticks=[-1.0,-0.5,0.0,0.5,1.0],ylims=(-1.0,1.0))
-    p0, pN = extrema(p_sols); diffP = abs(pN-p0)
-    x0, xN = extrema(x_sols); diffX = abs(xN-x0)
-    l_mag = sqrt((p_sols[i]-p0)*(p_sols[i]-p0)/(diffP*diffP)+(x_sols[i]-x0)*(x_sols[i]-x0)/(diffX*diffX))
-    myplt1 = Plots.plot([0,p_sols[i]],[0,x_sols[i]],color=:black,title="||L_n||=$(round(l_mag,sigdigits=4))",label="")
-    myplt1 = Plots.plot!(p_sols,x_sols,xlims=(minimum(p_sols)-0.05*diffP, maximum(p_sols)+0.05*diffP),ylims=(minimum(x_sols)-0.05*diffX, maximum(x_sols)+0.05*diffX),label="")
-    myplt1 = Plots.scatter!(myplt1, [p_sols[1]],[x_sols[1]],label="Start")
-    myplt1 = Plots.scatter!(myplt1, [p_sols[end]],[x_sols[end]],label="End")
-    myplt1 = Plots.scatter!(myplt1, [p_sols[ilm]],[x_sols[ilm]],label="gamma_max")
-    myplt1 = Plots.scatter!(myplt1, [p_sols[i]],[x_sols[i]],label="$(round(log10(lambda_values[i]),sigdigits=4))")
-    myplt_tot_2 = Plots.plot(left_margin=8Plots.mm, myplt, myplt0, myplt1,layout=(1,3))
-    myplt_tot = Plots.plot(myplt_tot_1, myplt_tot_2, layout=(2,1),size=(1500,900))
-    display(myplt_tot)  
-    #display(myplt)
+    if !isempty(priors) # If not empty, exclude bad points from the regularization matrices and priors
+        verbose && println("------> Excluding $(length(bad_points)) bad points from the regularization matrices and priors... ")
+        for (i,l) in enumerate(L)
+            L[i] = l[good_inds,good_inds]
+            priors[i] = (priors[i])[good_inds]
+        end
+    end
+else
+    verbose && println("---> No such reconstruction space points found.")
 end
-gif(anim,"test_SD_rescale_with_new_TRANSP_WF.gif",fps=1)
-###########################################################
-Ni = plot_inds[26]
-Fr_2D = reshape(F_SD_new*F_sols[:,Ni],length(E_coarse),length(p_coarse))#reshape(F_sols[:,i],size(f_test))
-gi = findall(x-> x<250.0,E_coarse)
-E_array_for_saving = E_coarse[gi]
-p_array_for_saving = p_coarse
-lambda_for_saving = lambda_values[Ni]
-F_2D_for_saving = Fr_2D[gi,:]
-myfile = jldopen("99971_rec_SD_withRot_c3.jld2",true,true,false,IOStream)
-write(myfile,"F",F_2D_for_saving)
-write(myfile,"E_array",E_array_for_saving)
-write(myfile,"p_array",p_array_for_saving)
-write(myfile,"lambda",lambda_for_saving)
+
+# BUG. THE SIZE OF THE REGULARIZATION MATRICES L AND W WILL NOT MATCH IF SD IS INCLUDED
+# BUG.
+# BUG. 
+append!(timestamps,time()) # The timestamp when reconstruction space points with zero sensitivity for all diagnostics have been excluded from the problem
+###########################################################################################################
+# SECTION 14: INCLUDE COLLISIONAL PHYSICS BY MULTIPLYING THE WEIGHT MATRICES WITH THE SLOWING-DOWN BASIS FUNCTIONS
+println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
+
+if "collisions" in lowercase.(String.(regularization)) # Don't need all the safety checks here, it was already taken care of in section 9
+    verbose && println("Multiplying weight matrices with slowing-down (collision physics) matrix to include collision physics as prior information/regularization... ")
+    for (i,w) in enumerate(W)
+        verbose && print("---> For diagnostic $(i)... ")
+        W[i] = w*F_SD_safe
+        verbose && println("ok!")
+    end
+else
+    verbose && println("No collision physics basis functions included.")
+end
+
+append!(timestamps,time()) # The timestamp when the weight matrices have been transformed using collision physics
+###########################################################################################################
+# SECTION 15: RESCALE WEIGHT FUNCTIONS
+println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
+
+if rescale_W
+    verbose && println("Rescaling weight matrices using computed rescale factors... ")
+    for (i,r) in enumerate(rescale_W_factors)
+        verbose && print("---> Rescaling weight matrix for diagnostic $(i) with a factor of $(round(r,sigdigits=4))... ")
+        W[i] = r .*W[i]
+        verbose && println("ok!")
+    end
+end
+
+append!(timestamps,time()) # The timestamp when the weight matrices have been rescaled
+###########################################################################################################
+# SECTION 16: NORMALIZE ALL WEIGHT MATRICES AND MEASUREMENTS BY THE MEASUREMENT ERRORS
+println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
+
+verbose && println("Normalizing all weight matrices and measurements by the measurement uncertainties... ")
+W_hat = Vector{Matrix{Float64}}(undef,length(filepaths_W))
+S_hat = Vector{Vector{Float64}}(undef,length(filepaths_S))
+for (i,w) in enumerate(W)
+    W_hat[i] = w ./ S_errs[i]
+    S_hat[i] = S[i] ./ S_errs[i]
+end
+
+append!(timestamps,time()) # The timestamp when the weight matrices and measurements have been normalized
+###########################################################################################################
+# SECTION 17: CONCATENATE ALL MEASUREMENTS AND BUILD TOTAL WEIGHT MATRIX
+println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
+
+verbose && println("Concatenating all diagnostic measurements into one long S vector... ")
+S_hat_long = vcat(S_hat...)
+
+verbose && println("Concatenating all weight matrices into one big W matrix... ")
+W_hat_long = vcat(W_hat...)
+
+append!(timestamps,time()) # The timestamp when the total weight matrices and measurement vector have been built
+###########################################################################################################
+# SECTION 18: IF Oth ORDER TIKHONOV IS INCLUDED IN THE regularization INPUT VARIABLE, CREATE MATRIX
+println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
+
+if "zerotikhonov" in lowercase.(String.(regularization))
+    verbose && println(":ZEROTIKHONOV included in 'regularization' input variable. Adding 0th order Tikhonov regularization to the inverse solving algorithm... ")
+    append!(L, [sparse(1.0(SparseArrays.I),length(rec_space_coords),length(rec_space_coords))]) # Sparse identity matrix
+    append!(priors, [zeros(length(rec_space_coords))])
+    append!(priors_name, ["0th order Tikhonov"])
+else
+    verbose && println("No 0th order Tikhonov regularization included.")
+end
+
+# The check below is only relevant in future versions where a general prior can be used!
+!(sum(diff(length.(priors)))==0) && error("The number of reconstruction space points should be equal for all priors, i.e. [N,...,N]. Instead, $(length.(priors)) was found. Please correct and re-try.")
+
+append!(timestamps,time()) # The timestamp when/if the 0th order Tikhonov regularization has been included
+###########################################################################################################
+# SECTION 19: NORMALIZE WEIGHT MATRIX AND SIGNAL TO ORDER UNITY
+println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
+
+verbose && println("Normalizing weight matrix W and measurements S to order unity... ")
+Whm = maximum(W_hat_long)
+Shm = maximum(S_hat_long)
+W_hh = W_hat_long ./Whm
+S_hh = S_hat_long ./Shm
+
+append!(timestamps,time()) # The timestamp when the weight matrices and signals have been normalized to order unity
+###########################################################################################################
+# SECTION 20: SOLVE THE INVERSE PROBLEM
+println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
+
+if !(length(nr_array)==length(regularization))
+    @warn "length(nr_array) ($(length(nr_array))) was not equal to length(regularization) ($(length(regularization))). Elements in 'nr_array' can therefore not be related to the elements in 'regularization'. A default number of 20 grid points will therefore be used for all regularization types ($(regularization))"
+    nr_array = Int64.(20 .*ones(length(regularization)))
+end
+
+# nr_array[i] should specify the number of λ grid points for regularization[i]
+verbose && println("Preparing $(length(priors)) regularization strength (hyper-parameter) logarithmic range(s) from 10^-3 to 10^3... ")
+hyper_arrays = []
+for ir in eachindex(priors) # For all regularizations/priors that require a hyper-parameter...
+    nr = 0
+    if priors_name[ir]=="1st order Tikhonov"
+        nr = nr_array[findfirst(x-> x=="firsttikhonov",lowercase.(String.(regularization)))]
+    end
+    if priors_name[ir]=="0th order Tikhonov"
+        nr = nr_array[findfirst(x-> x=="zerotikhonov",lowercase.(String.(regularization)))]
+    end
+    append!(hyper_arrays,[10 .^(range(-3.0,stop=3.0,length=nr))])
+    verbose && println("---> $(priors_name[ir]) with $(nr) λ grid points... ")
+end
+hyper_points = Iterators.product(hyper_arrays...)
+
+verbose && println("Concatenating all priors into one long prior vector... ")
+prior = vcat(priors...)
+
+verbose && println("Pre-allocating solution arrays and L-curve quantities... ")
+sols = zeros(length(rec_space_coords),length(hyper_points))
+sols_rawnorm = zeros(length(hyper_points))
+sols_datafit = zeros(length(hyper_points))
+
+nonneg = false
+if "nonneg" in lowercase.(String.(constraints))
+    verbose && println(":NONNEG found in input variable 'constraints'. Inverse problem will be solved with non-negativity constraint... ")
+    nonneg = true
+end
+
+collision_physics_reg = false
+if "collisions" in lowercase.(String.(regularization))
+    collision_physics_reg = true # Just a bool to speed up computations
+end
+
+verbose && println("Solving inverse problem... ")
+for (i,hp) in enumerate(hyper_points)
+    verbose && println("---> for regularization hyper-parameter point $(round.(vcat(hp...),sigdigits=4)) ($([pn for pn in priors_name]))... ")
+    L_i = Matrix(vcat((vcat(hp...) .*L)...)) # Multiply hyper-parameter values with the corresponding regularization matrices. Then, concatenate into one big regularization matrix
+    x = Convex.Variable(length(rec_space_coords))
+
+    # In future versions, this will be coded more elegantly
+    if !nonneg && !collision_physics_reg # Case 1
+        problem = Convex.minimize(Convex.sumsquares(vcat(W_hh,L_i) * x - vcat(S_hh,prior)), [])
+    end
+    if nonneg && !collision_physics_reg # Case 2
+        problem = Convex.minimize(Convex.sumsquares(vcat(W_hh,L_i) * x - vcat(S_hh,prior)), [x >= 0])
+    end
+    if !nonneg && collision_physics_reg # Case 3 (identical to Case 1)
+        problem = Convex.minimize(Convex.sumsquares(vcat(W_hh,L_i) * x - vcat(S_hh,prior)), [])
+    end
+    if nonneg && collision_physics_reg # Case 4
+        problem = Convex.minimize(Convex.sumsquares(vcat(W_hh,L_i) * x - vcat(S_hh,prior)), [F_SD_safe*x >= 0])
+    end
+
+    solve!(problem, SCS.Optimizer; silent=true)
+
+    sol_i = dropdims(x.value,dims=2) # One redundant dimension is returned by the solve!() method
+
+    sols[:,i] = (Shm/Whm) .*sol_i
+    sols_rawnorm[i] = norm(sol_i)
+    sols_datafit[i] = norm(W_hh*sol_i - S_hh)
+end
+
+append!(timestamps,time()) # The timestamp when the inverse problem has been solved
+###########################################################################################################
+# SECTION 21: COMPUTE OPTIMAL L-CURVE VALUE
+println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
+
+verbose && println("Computing optimal L-curve value... ")
+sols_datafit_itp = Interpolations.interpolate(sols_datafit, BSpline(Cubic())) # Create a Cubic spline interpolation, so that you can...
+sols_rawnorm_itp = Interpolations.interpolate(sols_rawnorm, BSpline(Cubic())) # -||-
+sols_datafit_prim = map(x-> Vector(Interpolations.gradient(sols_datafit_itp,x))[1],eachindex(sols_datafit)) # ...easily compute the derivative
+sols_rawnorm_prim = map(x-> Vector(Interpolations.gradient(sols_rawnorm_itp,x))[1],eachindex(sols_rawnorm)) # -||-
+sols_datafit_prim_itp = Interpolations.interpolate(sols_datafit_prim, BSpline(Cubic())) # Create a Cubic spline interpolation of the derivative, so that you can...
+sols_rawnorm_prim_itp = Interpolations.interpolate(sols_rawnorm_prim, BSpline(Cubic())) # -||-
+sols_datafit_primprim = map(x-> Vector(Interpolations.gradient(sols_datafit_prim_itp,x))[1],eachindex(sols_datafit)) # ...easily compute the second derivative
+sols_rawnorm_primprim = map(x-> Vector(Interpolations.gradient(sols_rawnorm_prim_itp,x))[1],eachindex(sols_rawnorm)) # -||-
+
+sdf = sols_datafit; sdfp = sols_datafit_prim; sdfpp = sols_datafit_primprim # Create abbreviations for easy overview of for-loop below
+srn = sols_rawnorm; srnp = sols_rawnorm_prim; srnpp = sols_rawnorm_primprim # -||-
+gamma = zeros(size(sols,2)) # The curvature of the L-curve, pre-allocated
+for i=1:size(sols,2)
+    gamma[i] = (srnpp[i]*sdfp[i] - srnp[i]*sdfpp[i])/((srnp[i]*srnp[i] + sdfp[i]*sdfp[i])^(3/2)) # Curvature formula
+end
+ilm = argmax(gamma) # Index of L-curve maximum curvature
+
+append!(timestamps,time()) # The timestamp when the optimal L-curve value has been computed
+###########################################################################################################
+# SECTION 22: PLOT SOLUTIONS AND RELATED QUANTITIES, IF SPECIFIED
+println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
+
+date_and_time = split("$(Dates.now())","T")[1]*"at"*split("$(Dates.now())","T")[2][1:5] # Might be needed immidiately below, and definitely when saving output data
+if plot_solutions || gif_solutions
+    verbose && plot_solutions && println("Creating .png files of solutions... ")
+    verbose && gif_solutions && println("Creating .gif file of solutions... ")
+
+    # Collect hyper_points iterators, for element indexing purposes
+    hyper_points = collect(hyper_points)
+
+    # Pre-compute these quantities, needed for plots
+    sdf0, sdfN = extrema(sdf); sdf_diff = abs(sdfN-sdf0) # sdf = sols_datafit ||S-WF|| (please see above)
+    srn0, srnN = extrema(srn); srn_diff = abs(srnN-srn0) # srn = sols_rawnorm ||F|| (please see above)
+
+    rec_space_dims = tuple(eachindex(rec_space_size)...) # The dimensions of the reconstruction space numbered, e.g. (1,2,3)
+    rec_space_diff = map(x-> x[1],diff.(W_abscissas[1][2:end])) # The grid spacings of the reconstruction space, e.g. [5.0,0.01,0.04,0.05]. Assume equidistant grid
+
+    verbose && println("---> Pre-computing plot quantities and layouts... ")
+    if length(W)==1
+        layout_WF = (1,1)
+    elseif length(W)==2
+        layout_WF = (1,2)
+    elseif length(W)==3
+        layout_WF = (1,3)
+    elseif length(W)>3 && mod(length(W),3)==0
+        layout_WF = (Int64(length(W)/3),3)
+    elseif length(W)>3 && !(mod(length(W),3)==0)
+        layout_WF = (ceil(length(W)/3),3)
+    else
+        error("This should be impossible to reach! (unless you have no diagnostics...?)")
+    end
+    if length(rec_space_size)==1 || length(rec_space_size)==2 # The 1- and 2-dimensional cases can be plotted in a single plot (no subplots)
+        layout_F = (1,1)
+    elseif length(rec_space_size)==3 # If the dimensionality of the reconstruction space is 3.. Currently, the two supported cases are (E,pm,Rm) and (E,mu,Phi). Neither requires a Jacobian when integrating
+        layout_F = (1,3)
+        plot_coords = [(1,2),(1,3),(2,3)] # Plot the 2-combinations of all indices, excluding duplicates and self-combinations
+    elseif length(rec_space_size)==4 # If the dimensionality of the reconstruction space is 4... Currently, the only supported case is (E,p,R,z). More to be added in future versions
+        layout_F = (2,3)
+        if is_EpRz(W_abscissas[1], W_abscissas_units[1])
+            dummy_bool, w_energy_ind, w_pitch_ind, w_R_ind, w_z_ind, R_array, z_array = is_EpRz(W_abscissas[1],W_abscissas_units[1]; returnExtra=true)
+            w_energy_ind -= 1; w_pitch_ind -=1; w_R_ind -= 1; w_z_ind -=1 # All indices need to be adjusted by 1, since return of is_EpRz() is given relative to the elements of W_abscissas, whose first element always is the diagnostics measurement bins
+            dE = rec_space_diff[w_energy_ind]; dp = rec_space_diff[w_pitch_ind]; dR = rec_space_diff[w_R_ind]; dz = rec_space_diff[w_z_ind]
+            two_pi_R_jacobian = 2*pi .*reshape(R_array,tuple([(xx-> xx==w_R_ind ? length(R_array) : 1) for ir in 1:4]...)) # The R grid points, but reshaped as a 4D array with the R values placed in the correct dimension. All other dimensions have length 1
+            plot_no_jac_coords = [(w_energy_ind, w_R_ind), (w_pitch_ind, w_R_ind), (w_R_ind, w_z_ind)] # These will not need the jacobian when plotting
+            plot_jac_coords = [(w_energy_ind, w_pitch_ind),(w_energy_ind, w_z_ind),(w_pitch_ind, w_z_ind)] # These will need the jacobian when plotting (since we integrate over R)
+        elseif false # <--- ADD MORE 4D COORDINATE CASES HERE IN FUTURE VERSIONS
+        else
+            @warn "Currently, only (E,p,R,z) coordinates are supported for plotting of 4D fast-ion distributions. An empty subfigure will be plotted instead."
+            layout_F = (1,1)
+        end
+    elseif false # <--- HIGHER-DIMENSIONAL CASES WILL BE SUPPORTED IN FUTURE VERSIONS
+    else
+        @warn "Plotting of a 5D or 6D fast-ion distribution is currently not supported. An empty subfigure will be plotted instead."
+        layout_F = (1,1)
+    end
+
+    verbose && println("---> Plotting solutions... ")
+    plot_inds = 1:length(hyper_points)
+    anim = @animate for i=plot_inds
+        sol_i = sols[:,i]
+        hp = hyper_points[i]
+
+        # CREATE THE L-CURVE SUBFIGURE, which will be at the top of the plot stack
+        l_mag = sqrt(((sdf[i]-sdf0)^2)/(sdf_diff^2)+((srn[i]-srn0)^2)/(srn_diff^2))
+        plt_dummy = Plots.plot(axis=([], false)) # Dummy plot, for white space
+        plt_L_curve = Plots.plot([0,sdf[i]],[0,srn[i]],color=:black,title="||L_n||=$(round(l_mag,sigdigits=4))",label="")
+        plt_L_curve = Plots.plot!(plt_L_curve, sdf,srn,xlims=(minimum(sdf)-0.05*sdf_diff, maximum(sdf)+0.05*sdf_diff),ylims=(minimum(srn)-0.05*srn_diff, maximum(srn)+0.05*srn_diff),label="")
+        plt_L_curve = Plots.scatter!(plt_L_curve, [sdf[1]],[srn[1]],label="Start")
+        plt_L_curve = Plots.scatter!(plt_L_curve, [sdf[end]],[srn[end]],label="End")
+        plt_L_curve = Plots.scatter!(plt_L_curve, [sdf[ilm]],[srn[ilm]],label="Max curvature")
+        plt_L_curve = Plots.scatter!(plt_L_curve, [sdf[i]],[srn[i]],label="", title="$(i): log10(λ)=$(round.(log10.(vcat(hp...)),sigdigits=4))")
+        subfig_L_curve = Plots.plot(plt_L_curve, plt_dummy, layout=(1,2))
+
+        # CREATE THE S vs WF SUBFIGURE, which will be in the middle of the plot stack
+        WF_plots = Vector{Any}(undef,length(W))
+        for (iw,w) in enumerate(W)
+            WF = w*sol_i
+            wf_plot = Plots.plot(S_abscissas[iw], WF, title="Diagnostic $(iw)",label="WF*", linewidth=2.5)
+            wf_plot = Plots.scatter!(wf_plot, S_abscissas[iw], S[iw], label="S")
+            wf_plot = Plots.yerror!(wf_plot, S_abscissas[iw], S[iw]; label="", yerror=S_errs[iw])
+            wf_plot = Plots.plot!(wf_plot, xlabel=S_abscissas_units[iw], ylabel=S_units[iw])
+            WF_plots[iw] = wf_plot
+        end
+        subfig_WF = Plots.plot(WF_plots..., layout=layout_WF)
+
+        # CREATE THE FAST-ION DISTRIBUTION SUBFIGURE, which will be at the bottom of the plot stack
+        # If slowing-down basis function coefficients, compute fast-ion distribution
+        if collision_physics_reg
+            F_vec = F_SD_safe*sol_i
+        else
+            F_vec = sol_i
+        end
+        # Reshape into inflated fast-ion distribution
+        F = zeros(rec_space_size) # Pre-allocate the inflated fast-ion distribution
+        for (ic,c) in enumerate(rec_space_coords)
+            F[c] = F_vec[ic]
+        end
+        if length(rec_space_size)==1 # If the dimensionality of the reconstruction space is 1
+            F_plots = [Plots.plot(W_abscissas[1][2],F,xlabel=W_abscissas_units[1][2],ylabel="Fast-ion distribution [ion/$(W_abscissas_units[1][2])]", title="FI distr. [ion/$(W_abscissas_units[1][2])]",label="")]
+        elseif length(rec_space_size)==2 # If the dimensionality of the reconstruction space is 2
+            F_plots = [Plots.heatmap(W_abscissas[1][2],W_abscissas[1][3],transpose(F),xlabel=W_abscissas_units[1][2],ylabel=W_abscissas_units[1][3], title="FI distr. [ion/($(W_abscissas_units[1][2])*$(W_abscissas_units[1][3]))]",fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]))]
+        elseif length(rec_space_size)==3 # -||- is 3. Currently, the two supported cases are (E,pm,Rm) and (E,mu,Phi). Neither requires a Jacobian when integrating
+            F_plots = Vector{any}(undef,3) # Pre-allocate vector with plots
+            for plot_coord in plot_coords
+                ix = plot_coord[1]; x = W_abscissas[1][ix+1]; x_units = W_abscissas_units[1][ix+1] # +1 because W_abscissas and W_abscissas_units has a first dimension of diagnostic measurement bins
+                iy = plot_coord[2]; y = W_abscissas[1][iy+1]; y_units = W_abscissas_units[1][iy+1] # +1 because W_abscissas and W_abscissas_units has a first dimension of diagnostic measurement bins
+                iz = filter(xx-> !(xx==ix || xx==iy), rec_space_dims)
+                F_sub = dropdims(sum(rec_space_diff[iz...] .*F,dims=iz),dims=iz)
+                F_plot = Plots.heatmap(x,y,F_sub; xlabel=x_units, ylabel=y_units, title="FI distr. [ion/($(x_units)*$(y_units))]", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]))
+                append!(F_plots,F_plot)
+            end
+        elseif length(rec_space_size)==4 # -||- is 4. Currently, the only supported case is (E,p,R,z). Suitable Jacobian is computed prior to plot for-loop
+            if is_EpRz(W_abscissas[1], W_abscissas_units[1])
+                F_plots = Vector{any}(undef,6) # Pre-allocate vector with plots
+                for plot_no_jac_coord in plot_no_jac_coords
+                    ix = plot_coord[1]; x = W_abscissas[1][ix+1]; x_units = W_abscissas_units[1][ix+1] # +1 because W_abscissas and W_abscissas_units has a first dimension of diagnostic measurement bins
+                    iy = plot_coord[2]; y = W_abscissas[1][iy+1]; y_units = W_abscissas_units[1][iy+1] # +1 because W_abscissas and W_abscissas_units has a first dimension of diagnostic measurement bins
+                    izs = filter(xx-> !(xx==ix || xx==iy), rec_space_dims)
+                    F_sub = dropdims(sum(reduce(*,rec_space_diffs[[izs...]]) .*F,dims=izs),dims=izs)
+                    F_plot = Plots.heatmap(x,y,F_sub; xlabel=x_units, ylabel=y_units, title="FI distr. [ion/($(x_units)*$(y_units))]", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]))
+                    append!(F_plots,F_plot)
+                end
+                for plot_jac_coord in plot_jac_coords
+                    ix = plot_jac_coord[1]; x = W_abscissas[1][ix+1]; x_units = W_abscissas_units[1][ix+1] # +1 because W_abscissas and W_abscissas_units has a first dimension of diagnostic measurement bins
+                    iy = plot_jac_coord[2]; y = W_abscissas[1][iy+1]; y_units = W_abscissas_units[1][iy+1] # +1 because W_abscissas and W_abscissas_units has a first dimension of diagnostic measurement bins
+                    izs = filter(xx-> !(xx==ix || xx==iy), rec_space_dims)
+                    F_sub = dropdims(sum(reduce(*,rec_space_diffs[[izs...]]) .*two_pi_R_jacobian .*F,dims=izs),dims=izs)
+                    F_plot = Plots.heatmap(x,y,F_sub; xlabel=x_units, ylabel=y_units, title="FI distr. [ion/($(x_units)*$(y_units))]", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]))
+                    append!(F_plots,F_plot)
+                end
+            elseif false # <--- ADD MORE 4D COORDINATE OPTIONS HERE IN FUTURE VERSIONS
+            else
+                plt_dummy = Plots.plot(axis=([],false)) # Dummy plot, for white space
+                F_plots = [plt_dummy]
+            end
+        elseif false # <--- ADD MORE 5D- and 6D-DIMENSIONAL OPTIONS HERE IN FUTURE VERSIONS
+        else
+            plt_dummy = Plots.plot(axis=([], false)) # Dummy plot, for white space
+            F_plots = [plt_dummy]
+        end
+        subfig_F = Plots.plot(F_plots..., layout=layout_F)
+        
+        lwf = layout_WF[1]
+        lf = layout_F[1]
+        ltot = Plots.@layout([a; b; c]) 
+        fig_tot = Plots.plot(subfig_L_curve, subfig_WF, subfig_F, size=(800,400+400*lwf+400*lf), layout=ltot, left_margin=6Plots.mm, dpi=600)
+        display(fig_tot)
+
+        if plot_solutions
+            verbose && println("------> Saving .png file for plot $(i) of $(length(hyper_points))... ")
+            png(fig_tot,folderpath_out*"solInvProb_resultsPlot_$(i)_of_$(length(hyper_points))_$(date_and_time)")
+        end
+    end
+    if gif_solutions
+        verbose && println("---> Saving .gif file... ")
+        gif(anim,folderpath_out*"solInvProb_resultsPlots_$(date_and_time).gif",fps=2)
+    end
+end
+
+append!(timestamps,time()) # The timestamp when the results figures have been plotted
+###########################################################################################################
+# SECTION 23: SAVE RECONSTRUCTION AND RELATED QUANTITIES
+println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
+
+verbose && println("Saving inverse problem solution and related quantities... ")
+verbose && println("---> Inflating solutions to save-ready (N+R)-dimensional format... ")
+hyper_space_size = ()
+tot_space_size = deepcopy(rec_space_size) # Total space = reconstruction space + hyper-parameter space
+for hyper_array in hyper_arrays
+    global tot_space_size; global hyper_space_size
+    hyper_space_size = tuple(hyper_space_size[:]..., length(hyper_array))
+    tot_space_size = tuple(tot_space_size[:]..., length(hyper_array))
+end
+sols_inflated = zeros(tot_space_size) # Pre-allocate the save-ready (N+R)-dimensional format
+ilm_hyper_coord = zeros(Int64, length(hyper_points[1])) # The hyper-point coordinate of the maximum L-curve curvature
+ilm_hyper_point = zeros(length(hyper_points[1])) # The hyper-point of the maximum L-curve curvature
+sol_ilm = zeros(rec_space_size) # The inflated solution at the maximum L-curve curvature
+for i=1:length(hyper_points) # For each solution. Not the most efficient. But ok, since the total number of hyper-points/solutions will always be relatively small (<1000)
+    verbose && println("------> Inflating solution $(i) of $(length(hyper_points))... ")
+    sol_i = sols[:,i]
+    # If slowing-down basis function coefficients, compute fast-ion distribution
+    if collision_physics_reg
+        sol_i = F_SD_safe*sol_i
+    end
+    hp = hyper_points[i]
+    hp = vcat(hp...) # Tuple to Vector
+    hp_indices = zeros(Int64, length(hp))
+    for (ip,reg_strength) in enumerate(hp)
+        hp_indices[ip] = findfirst(x-> x==reg_strength,hyper_arrays[ip])
+    end
+    if i==ilm # If it's the hyper-point with maximum L-curve curvature (happens only once)
+        ilm_hyper_coord[:] = hp_indices # Save its coordinate (in hyper space)
+        ilm_hyper_point[:] = hp # Save it
+        for (ic,c) in enumerate(rec_space_coords)
+            totc = vcat(Tuple(c)...,hp_indices...)
+            sols_inflated[totc...] = sol_i[ic] # Add to the inflated ((N+R)-dimensional) array of solutions (.= must be used, otherwise Julia breakes. Even though no broadcasting will ever be used here)
+            sol_ilm[c] = sol_i[ic] # Construct the inflated (N-dimensional) solution
+        end
+    else # Otherwise.. (note: This should be the most efficient approach, to have the i==ilm check be performed only length(hyper_points) times, instead of length(hyper_points)*length(rec_space_coords) times)
+        for (ic,c) in enumerate(rec_space_coords)
+            totc = vcat(Tuple(c)...,hp_indices...)
+            sols_inflated[totc...] = sol_i[ic] # Add to the inflated ((N+R)-dimensional) array of solutions (.= must be used, otherwise Julia breakes. Even though no broadcasting will ever be used here)
+        end
+    end
+end
+if collision_physics_reg
+    verbose && println("---> Inflating collision physics basis functions to N-dimensional format... ")
+    F_SD_safe_inflated = zeros(tuple(rec_space_size[:]...,size(F_SD_safe,2)))
+    for i=1:size(F_SD_safe,2)
+        verbose && println("------> Inflating basis function $(i) of $(size(F_SD_safe,2))... ")
+        for (ic,c) in enumerate(rec_space_coords)
+            totc = vcat(Tuple(c)...,i)
+            F_SD_safe_inflated[totc...] = F_SD_safe[ic,i]
+        end
+    end
+end
+verbose && println("---> Creating unique output data file name... ")
+recSpaceGridSize = reduce(*,map(x-> "x$(x)",rec_space_size))[2:end]
+hyperParamGridSize = reduce(*,map(x-> "x$(x)",hyper_space_size))[2:end]
+filepath_output_orig = folderpath_out*"solInvProb_$(tokamak)_S_$(length(S))_$(length(S_hat_long))_W_$(length(W))_$(recSpaceGridSize)_$(hyperParamGridSize)_$(date_and_time)"
+filepath_output = deepcopy(filepath_output_orig)
+C = 1
+while isfile(filepath_output*".jld2") || isfile(filepath_output*".hdf5") # To take care of not overwriting files. Add _(1), _(2) etc
+    global filepath_output; global C
+    filepath_output = filepath_output_orig*"_($(Int64(C)))"
+    C += 1
+end
+verbose && println("---> Opening save file... ")
+if saveInHDF5format
+    verbose && println("------> Output data will be saved to file $(filepath_output*".hdf5")... ")
+    myfile = h5open(filepath_output*".hdf5","w")
+else
+    verbose && println("------> Output data will be saved to file $(filepath_output*".jld2")... ")
+    myfile = jldopen(filepath_output*".jld2",true,true,false,IOStream)
+end
+verbose && println("---> Saving output data... ")
+write(myfile,"sols",sols_inflated)
+for (i,ab) in enumerate(W_abscissas[1][2:end])
+    if saveInHDF5format
+        ab = Float64.(ab) # Convert from Real to Float64, since .hdf5 files cannot handle Real types
+    end
+    write(myfile,"sols_abscissa_$(i)",ab)
+    write(myfile,"sols_abscissa_$(i)_units",W_abscissas_units[1][i+1])
+end
+for (i,hp_ab) in enumerate(hyper_arrays)
+    write(myfile,"sols_hyper_abscissa_$(i)",hp_ab)
+end
+write(myfile,"FI_species",FI_species)
+for (i,s_ab_units) in enumerate(S_abscissas_units)
+    write(myfile,"measurement_bin_units_$(i)",s_ab_units)
+end
+write(myfile,"l_curve_x",sdf)
+write(myfile,"l_curve_y",srn)
+write(myfile,"l_curve_opt_index",ilm)
+write(myfile,"l_curve_opt_hyper_point",ilm_hyper_point)
+write(myfile,"l_curve_opt_hyper_coord",ilm_hyper_coord)
+write(myfile,"l_curve_opt_sol",sol_ilm)
+write(myfile,"filepath_start",filepath_start)
+if rescale_W
+    write(myfile,"rescale_W_factors",rescale_W_factors)
+end
+if collision_physics_reg
+    write(myfile,"coll_phys_basis",F_SD_safe_inflated)
+    write(myfile,"coll_phys_thermal_species",regularization_thermal_ion_species)
+    write(myfile,"coll_phys_Ti",thermal_ion_temperatures)
+    write(myfile,"coll_phys_ni",thermal_ion_densities)
+    write(myfile,"coll_phys_Te",thermal_electron_temperatures)
+    write(myfile,"coll_phys_ne",thermal_electron_densities)
+    write(myfile,"coll_phys_rho",rho_of_interests)
+end
 close(myfile)
-###########################################################
-# Redo the reconstruction. But for the synthetic case
-# For comparison and sanity check
-replace!(x-> (x==0.0) ? 1.0 : x, err_synth_KM14)
-replace!(x-> (x==0.0) ? 1.0 : x, err_synth_KM15)
-replace!(x-> (x==0.0) ? 1.0 : x, err_synth_MPRu)
-# W_2D_KM14, W_2D_KM15 and W_2D_MPRu are f*cked here 
-# Because of normalize to fit experimental data
-W_hat = vcat(W_SD_KM14_orig ./err_exp_KM14, W_SD_KM15_orig ./err_exp_KM15, W_SD_MPRu_orig ./err_exp_MPRu) #vcat(W_2D_KM14_orig ./err_synth_KM14, W_2D_KM15_orig ./err_synth_KM15, W_2D_MPRu_orig ./err_synth_MPRu)
-s_hat = vcat(S_synth_KM14_noisy ./err_synth_KM14, S_synth_KM15_noisy ./err_synth_KM15, S_synth_MPRu_noisy ./err_synth_MPRu)
-Whm = maximum(W_hat)
-W_hh = W_hat ./Whm
-shm = maximum(s_hat)
-s_hh = s_hat ./shm
-f0 = zeros(size(L_orig,1))
-x_sols_synth = zeros(length(lambda_values))
-p_sols_synth = zeros(length(lambda_values))
-F_sols_synth = zeros(length(f0),length(lambda_values))
-for (il,lambda) in enumerate(lambda_values)
-    println("lambda: $(lambda)")
-    L = lambda*L0
-    x = Convex.Variable(length(f0))
 
-    problem = Convex.minimize(Convex.sumsquares(vcat(W_hh,L) * x - vcat(s_hh,f0)), [x >= 0])
+append!(timestamps,time()) # The timestamp when the output data has been saved
+###########################################################################################################
+# SECTION 24: PRINT COMPLETION STATEMENT AND STATS
+println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
 
-    solve!(problem, SCS.Optimizer)
+append!(timestamps,time()) # The final timestamp of the solveInverseProblem.jl script
+timediffs = diff(timestamps)
+timesum = sum(timediffs)
+timekeys = Dict()
+timekeys[0] = ("Loading Julia packages",timediffs[1],100*timediffs[1]/timesum) # SECTION 0
+timekeys[1] = ("Performing safety checks",timediffs[2],100*timediffs[2]/timesum) # SECTION 1
+timekeys[2] = ("Loading measurements",timediffs[3],100*timediffs[3]/timesum) # SECTION 2
+timekeys[3] = ("Loading weight functions",timediffs[4],100*timediffs[4]/timesum) # SECTION 3
+timekeys[4] = ("Performing abscissa units checks",timediffs[5],100*timediffs[5]/timesum) # SECTION 4
+timekeys[5] = ("Interpolating weight functions onto common reconstruction space grid",timediffs[6],100*timediffs[6]/timesum) # SECTION 5
+timekeys[6] = ("Constructing 2D weight matrices from weight functions, and interpolating to match diagnostics measurement bin centers",timediffs[7],100*timediffs[7]/timesum) # SECTION 6
+timekeys[7] = ("Defining utility functions (if needed)",timediffs[8],100*timediffs[8]/timesum) # SECTION 7
+timekeys[8] = ("Computing weight functions rescale factors (if requested)",timediffs[9],100*timediffs[9]/timesum) # SECTION 8
+timekeys[9] = ("Computing collision physics basis functions (if requested)",timediffs[10],100*timediffs[10]/timesum) # SECTION 9
+timekeys[10] = ("Enforcing a noise floor on the measurement uncertainties",timediffs[11],100*timediffs[11]/timesum) # SECTION 10
+timekeys[11] = ("Excluding unwanted measurement bins",timediffs[12],100*timediffs[12]/timesum) # SECTION 11
+timekeys[12] = ("Initializing regularization matrices and 1st order Tikhonov matrix (if requested)",timediffs[13],100*timediffs[13]/timesum) # SECTION 12
+timekeys[13] = ("Excluding reconstruction space points with zero sensitivity",timediffs[14],100*timediffs[14]/timesum) # SECTION 13
+timekeys[14] = ("Multiplying weight matrices by collision physics basis function (if requested)",timediffs[15],100*timediffs[15]/timesum) # SECTION 14
+timekeys[15] = ("Rescaling weight matrices (if requested)",timediffs[16],100*timediffs[16]/timesum) # SECTION 15
+timekeys[16] = ("Normalize measurements by uncertainties",timediffs[17],100*timediffs[17]/timesum) # SECTION 16
+timekeys[17] = ("Concatenating all weight matrices and measurements",timediffs[18],100*timediffs[18]/timesum) # SECTION 17
+timekeys[18] = ("Compute and include 0th order Tikhonov matrix (if requested)",timediffs[19],100*timediffs[19]/timesum) # SECTION 18
+timekeys[19] = ("Normalizing weight matrix and measurements to order unity",timediffs[20],100*timediffs[20]/timesum) # SECTION 19
+timekeys[20] = ("Solving the inverse problem",timediffs[21],100*timediffs[21]/timesum) # SECTION 20
+timekeys[21] = ("Computing optimal L-curve regularization strength",timediffs[22],100*timediffs[22]/timesum) # SECTION 21
+timekeys[22] = ("Plotting solutions",timediffs[23],100*timediffs[23]/timesum) # SECTION 22
+timekeys[23] = ("Saving output data",timediffs[24],100*timediffs[24]/timesum) # SECTION 23
 
-    x_sols_synth[il] = norm(dropdims(x.value,dims=2))
-    p_sols_synth[il] = norm(W_hh*dropdims(x.value,dims=2) - s_hh)
-    F_sols_synth[:,il] = (shm/Whm) .*dropdims(x.value,dims=2)
+println("------------------------------ solveInverseProblem.jl completed successfully! ------------------------------")
+println("---> Total script run time: $(round(timesum,sigdigits=5)) seconds, where")
+for key in sort([k for k in keys(timekeys)]) # To get the keys sorted correctly
+    println("------> SECTION $(key). $(timekeys[key][1]) took $(round(timekeys[key][2],sigdigits=3)) seconds ($(round(timekeys[key][3],sigdigits=3)) %)")
 end
-###########################################################
-# Check the synthetic reconstruction
-for i=1:length(lambda_values)
-    Sr = W_hh*F_sols_synth[:,i]#W_hh*F_sols_synth[:,i]
-    myplt = Plots.plot(Sr ./maximum(Sr),title="$(i): log10(λ)=$(log10(lambda_values[i]))",label="ŴF*")
-    myplt = Plots.plot!(s_hh ./maximum(s_hh),label="Ŝ")
-    display(myplt)
-end
-for i=1:length(lambda_values)
-    Sr_KM14 = W_2D_KM14*F_SD_new*F_sols_synth[:,i]
-    myplt = Plots.plot(Ed_array_S_KM14,Sr_KM14 ./maximum(Sr_KM14),title="$(i): log10(λ)=$(log10(lambda_values[i]))",label="WF*")
-    myplt = Plots.plot!(Ed_array_S_KM14,S_synth_KM14_noisy ./maximum(S_synth_KM14_noisy),label="S")
-    display(myplt)
-end
-for i=1:length(lambda_values)
-    Sr_KM15 = W_2D_KM15*F_SD_new*F_sols_synth[:,i]
-    myplt = Plots.plot(Ed_array_S_KM15,Sr_KM15 ./maximum(Sr_KM15),title="$(i): log10(λ)=$(log10(lambda_values[i]))",label="WF*")
-    myplt = Plots.plot!(Ed_array_S_KM15,S_synth_KM15_noisy ./maximum(S_synth_KM15_noisy),label="S")
-    display(myplt)
-end
-for i=1:length(lambda_values)
-    Sr_MPRu = W_2D_MPRu*F_SD_new*F_sols_synth[:,i]
-    myplt = Plots.plot(Ed_array_S_MPRu,Sr_MPRu ./maximum(Sr_MPRu),title="$(i): log10(λ)=$(log10(lambda_values[i]))",label="WF*")
-    myplt = Plots.plot!(Ed_array_S_MPRu,S_synth_MPRu_noisy ./maximum(S_synth_MPRu_noisy),label="S")
-    display(myplt)
-end
-for i=1:length(lambda_values)
-    Fr_2D = reshape(F_SD_new*F_sols_synth[:,i],size(f_test))
-    myplt = Plots.heatmap(E_coarse,p_coarse,Fr_2D',title="$(i): log10(λ)=$(log10(lambda_values[i]))")
-    p0, pN = extrema(p_sols_synth); diffP = abs(pN-p0)
-    x0, xN = extrema(x_sols_synth); diffX = abs(xN-x0)
-    l_mag = sqrt((p_sols_synth[i]-p0)*(p_sols_synth[i]-p0)/(diffP*diffP)+(x_sols_synth[i]-x0)*(x_sols_synth[i]-x0)/(diffX*diffX))
-    myplt1 = Plots.plot([0,p_sols_synth[i]],[0,x_sols_synth[i]],color=:black,title="||L_n||=$(round(l_mag,sigdigits=4))",label="")
-    myplt1 = Plots.plot!(p_sols_synth,x_sols_synth,xlims=(minimum(p_sols_synth)-0.05*diffP, maximum(p_sols_synth)+0.05*diffP),ylims=(minimum(x_sols_synth)-0.05*diffX, maximum(x_sols_synth)+0.05*diffX),label="")
-    myplt1 = Plots.scatter!(myplt1, [p_sols_synth[1]],[x_sols_synth[1]],label="Start")
-    myplt1 = Plots.scatter!(myplt1, [p_sols_synth[end]],[x_sols_synth[end]],label="End")
-    #myplt1 = Plots.scatter!(myplt1, [p_sols_synth[ilm]],[x_sols_synth[ilm]],label="gamma_max")
-    myplt1 = Plots.scatter!(myplt1, [p_sols_synth[i]],[x_sols_synth[i]],label="$(round(log10(lambda_values[i]),sigdigits=4))")
-    myplt_tot = Plots.plot(myplt,myplt1,layout=(1,2),size=(900,400))
-    display(myplt_tot)  
-end
+println("------------------------------------------------------------------------------------------------------------")
