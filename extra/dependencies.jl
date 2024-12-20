@@ -2471,9 +2471,10 @@ end
 
 """
     getOSTopoMap(M, E_array, pm_array, Rm_array)
-    getOSTopoMap(; kwargs... )
+    getOSTopoMap(-||- ; kwargs... )
 
 Compute the orbit-space topological map, given a grid spanned by the inputs E_array, pm_array and Rm_array.
+Output the topological map as a 3D Array of Int64.
 """
 function getOSTopoMap(M::AbstractEquilibrium, E_array::AbstractVector, pm_array::AbstractVector, Rm_array::AbstractVector; kwargs... )
     pm_inds_rep = repeat(CartesianIndices(pm_array),inner=length(Rm_array)) # To get all points
@@ -2483,6 +2484,21 @@ function getOSTopoMap(M::AbstractEquilibrium, E_array::AbstractVector, pm_array:
     for iE in eachindex(E_array)
         topoMap[iE,:,:] = getOSTopoMap(M, E_array[iE], pmRm_inds_array, pm_array, Rm_array; kwargs... )
     end
+    return Int64.(topoMap)
+end
+
+
+"""
+    getCOMTopoMap(M, E_array, mu_array, Pphi_array)
+    getCOMTopoMap(-||- ; kwargs...)
+
+Compute the constants-of-motion space topological map, given a grid spanned by the inputs E_array, mu_array and Pphi_array.
+Output the topological map as a 3D Array of Int64.
+"""
+function getCOMTopoMap(M::AbstractEquilibrium, E_array::AbstractVector, mu_vector::AbstractVector, Pphi_vector::AbstractVector)
+    # WRITE CODE HERE
+
+    topoMap = nothing # Dummy value for now
     return topoMap
 end
 
@@ -3215,7 +3231,7 @@ The keyword arguments are:
 function slowing_down_function(E_0::Real, p_0::Real, E_array::Vector{T} where {T<:Real}, p_array::Vector{T} where {T<:Real}, n_e::Real, T_e::Real, species_f::String, species_th_vec::Vector{String}, n_th_vec::Vector{T} where {T<:Real}, T_th_vec::Vector{T} where {T<:Real}; type::Symbol=:core, returnExtra::Bool=false, E_tail_length::Union{Nothing,Real}=nothing, sigma::Union{Nothing,Real}=nothing, kwargs...)
     m_f = getSpeciesMass(species_f) # Beam (fast) particle mass, kg
     E2v_rel = (E-> (GuidingCenterOrbits.c0)*sqrt(1-(1/(((E*1000*GuidingCenterOrbits.e0)/(m_f*(GuidingCenterOrbits.c0)^2))+1)^2))) # A one-line function to transform from energy (keV) to relativistic speed (m/s)
-    v2E_rel = (v-> (m_f*(GuidingCenterOrbits.c0)^2)*(sqrt(1/(1-(v/(GuidingCenterOrbits.c0))^(2)))-1)) # A one-line function to transform from relativistic speed (m/s) to energy (keV)
+    v2E_rel = (v-> inv(1000*GuidingCenterOrbits.e0)*m_f*((GuidingCenterOrbits.c0)^2)*(sqrt(1/(1-(v/(GuidingCenterOrbits.c0))^(2)))-1)) # A one-line function to transform from relativistic speed (m/s) to energy (keV)
 
     v_damp = nothing
     if !isnothing(E_tail_length)
