@@ -45,47 +45,12 @@
 #   l_curve_opt_index - The index of the L-curve point with the largest curvature. (l_curve_x[l_curve_opt_index], l_curve_y[l_curve_opt_index])
 #                       will then correpond to the L-curve point - Int64
 #   l_curve_opt_hyper_point - The hyper-parameter point corresponding to
-#verbose && println("---> Saving output data... ")
-#write(myfile,"sols",sols_inflated)
-#for (i,ab) in enumerate(W_abscissas[1][2:end])
-#    if saveInHDF5format
-#        ab = Float64.(ab) # Convert from Real to Float64, since .hdf5 files cannot handle Real types
-#    end
-#    write(myfile,"sols_abscissa_$(i)",ab)
-#    write(myfile,"sols_abscissa_$(i)_units",W_abscissas_units[1][i+1])
-#end
-#for (i,hp_ab) in enumerate(hyper_arrays)
-#    write(myfile,"sols_hyper_abscissa_$(i)",hp_ab)
-#end
-#write(myfile,"FI_species",FI_species)
-#for (i,s_ab_units) in enumerate(S_abscissas_units)
-#    write(myfile,"measurement_bin_units_$(i)",s_ab_units)
-#end
-#write(myfile,"l_curve_x",sdf)
-#write(myfile,"l_curve_y",srn)
-#write(myfile,"l_curve_opt_index",ilm)
-#write(myfile,"l_curve_opt_hyper_point",ilm_hyper_point)
-#write(myfile,"l_curve_opt_hyper_coord",ilm_hyper_coord)
-#write(myfile,"l_curve_opt_sol",sol_ilm)
-#write(myfile,"filepath_start",filepath_start)
-#if rescale_W
-#    write(myfile,"rescale_W_factors",rescale_W_factors)
-#end
-#if collision_physics_reg
-#    write(myfile,"coll_phys_basis",F_SD_safe_inflated)
-#    write(myfile,"coll_phys_thermal_species",regularization_thermal_ion_species)
-#    write(myfile,"coll_phys_Ti",thermal_ion_temperatures)
-#    write(myfile,"coll_phys_ni",thermal_ion_densities)
-#    write(myfile,"coll_phys_Te",thermal_electron_temperatures)
-#    write(myfile,"coll_phys_ne",thermal_electron_densities)
-#    write(myfile,"coll_phys_rho",rho_of_interests)
-#end
-#close(myfile)
+# DOCUMENTATION TO BE CONTINUED HERE IN NEXT UPDATES
 
 ### Other
 # 
 
-# Script written by Henrik Järleblad. Last maintained 2024-12-18.
+# Script written by Henrik Järleblad. Last maintained 2024-12-20.
 ###########################################################################################################
 
 # println section number tracker
