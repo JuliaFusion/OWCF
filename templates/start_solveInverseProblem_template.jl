@@ -14,10 +14,7 @@
 #
 ### The inputs are as follows:
 #
-# batch_job - If true, the script assumes that it will be executed via an HPC batch job. The script will act accordingly. - Bool
-# distributed - If true, parallel computing with multiple CPU cores will be used. - Bool
 # folderpath_OWCF - The path to where the OWCF folder is saved on your computer. End with '/' (or '\' if Windows) - String
-# numOcores - The number of CPU cores that will be used if distributed is set to true. - Int64
 # 
 # constraints - A Vector of Symbols, to specify what types of constraints that should be put on the fast-ion distribution
 #               when solving the inverse problem. Currently, the following option(s) is available:
@@ -208,37 +205,39 @@
 
 ## First you have to set the system specifications
 using Distributed # Needed, even though distributed might be set to false. This is to export all inputs to all workers right away, if needed.
-batch_job = false
-distributed = true
+#batch_job = false #CURRENTLY NOT AVAILABLE FOR solveInverseProblem.jl
+#distributed = true #CURRENTLY NOT AVAILABLE FOR solveInverseProblem.jl
 folderpath_OWCF = "" # OWCF folder path. Finish with '/'
-numOcores = 4 # When executing script via HPC cluster job, make sure you know how many cores you have requested for your batch job
+#numOcores = 4 #CURRENTLY NOT AVAILABLE FOR solveInverseProblem.jl # When executing script via HPC cluster job, make sure you know how many cores you have requested for your batch job
 
 ## Navigate to the OWCF folder and activate the OWCF environment
 cd(folderpath_OWCF)
 using Pkg
 Pkg.activate(".")
 
+#CURRENTLY NOT AVAILABLE FOR solveInverseProblem.jl
 ## If running as a batch job on a SLURM CPU cluster
-if batch_job && distributed
-    # Load the SLURM CPU cores
-    using ClusterManagers
-    addprocs(SlurmManager(numOcores))
-    hosts = []
-    pids = []
-    for i in workers()
-        host, pid = fetch(@spawnat i (gethostname(), getpid()))
-        push!(hosts, host)
-        push!(pids, pid)
-    end
-    @show hosts
-end
+#if batch_job && distributed
+#    # Load the SLURM CPU cores
+#    using ClusterManagers
+#    addprocs(SlurmManager(numOcores))
+#    hosts = []
+#    pids = []
+#    for i in workers()
+#        host, pid = fetch(@spawnat i (gethostname(), getpid()))
+#        push!(hosts, host)
+#        push!(pids, pid)
+#    end
+#    @show hosts
+#end
 
+#CURRENTLY NOT AVAILABLE FOR solveInverseProblem.jl
 ## If running locally and multi-threaded
-if !batch_job && distributed # Assume you are executing the script on a local laptop (/computer)
-    println("Adding processes... ")
-    addprocs(numOcores-(nprocs()-1)) # If you didn't execute this script as an HPC cluster job, then you need to add processors like this. Add all remaining available cores.
-    # The '-(nprocs()-1)' part is simply to ensure to extra processes are added, in case script needs to be restarted on a local computer
-end
+#if !batch_job && distributed # Assume you are executing the script on a local laptop (/computer)
+#    println("Adding processes... ")
+#    addprocs(numOcores-(nprocs()-1)) # If you didn't execute this script as an HPC cluster job, then you need to add processors like this. Add all remaining available cores.
+#    # The '-(nprocs()-1)' part is simply to ensure to extra processes are added, in case script needs to be restarted on a local computer
+#end
 
 ## -----------------------------------------------------------------------------
 @everywhere begin
