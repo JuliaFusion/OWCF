@@ -114,12 +114,13 @@ end
 # Save the data
 verbose && println("Saving results... ")
 date_and_time = split("$(Dates.now())","T")[1]*"at"*split("$(Dates.now())","T")[2][1:5]
-global filepath_output_orig = folderpath_o*"solovev_equilibrium_"*date_and_time
-global filepath_output = deepcopy(filepath_output_orig)
-global C = 1
+filepath_output_orig = folderpath_o*"solovev_equilibrium_"*date_and_time
+filepath_output = deepcopy(filepath_output_orig)
+C = 1
 while isfile(filepath_output*".jld2") # To take care of not overwriting files. Add _(1), _(2) etc
-    global filepath_output = filepath_output_orig*"_($(Int64(C)))"
-    global C += 1 # global scope, to surpress warnings
+    global filepath_output; global C # Declare global scope of specified variables
+    filepath_output = filepath_output_orig*"_($(Int64(C)))"
+    C += 1 # global scope, to surpress warnings
 end
 global filepath_output = filepath_output*".jld2"
 myfile = jldopen(filepath_output,true,true,false,IOStream)
