@@ -16,18 +16,20 @@
 #                                the instrumental response of the diagnostic. If paths to three .txt-files are specified, they should 
 #                                be specified together in a vector of three strings. That is,
 #                                
-#                                instrumental_response_filepath = ["/path/to/reponse/matrix.txt","/path/to/particle/inputs.txt","/path/to/diagnostic/outputs.txt"]
+#                                instrumental_response_filepath = ["/path/to/response/matrix.txt","/path/to/particle/inputs.txt","/path/to/diagnostic/outputs.txt"]
 #
-#                                The first string is the filepath to the response matrix. The size of the matrix is ni x no, where ni is the number of diagnostic input 
-#                                grid points and no is the number of output (actually being measured) grid points. The second string is the filepath to the input grid 
+#                                The first string is the filepath to the response matrix. The size of the matrix is 'ni x no', where 'ni' is the number of diagnostic input 
+#                                grid points and 'no' is the number of output (actually being measured) grid points. The second string is the filepath to the input grid 
 #                                points (vector). The third string is the filepath to the output grid points (vector). So, for example, for a proton recoil diagnostic, 
-#                                the input could be incoming neutron energies and the output could be proton impact positions. If, instead, the path to one .jld2 file 
-#                                is specified, it should be specified as 
+#                                the input should be incoming neutron energies (keV) and the output could be proton impact positions (e.g. cm). If, instead, the path to one 
+#                                .jld2 file is specified, it should be specified as 
 #
 #                                instrumental_response_filepath = "/path/to/diagnostic/response/data.jld2"
 #
-#                                The keys of the .jld2-file should then be "response_matrix", "input" and "output". Input data should be a vector of length ni, output 
-#                                data should be a vector of length no and response_matrix should be a matrix of size ni x no.
+#                                The keys of the .jld2-file should then be "response_matrix", "input" and "output". Input data should be a vector of length 'ni', output 
+#                                data should be a vector of length 'no' and response_matrix should be a matrix of size 'ni x no'.
+# instrumental_response_output_units - The units of measurement of the output grid points specified via the output in the 'instrumental_response_filepath' input variable.
+#                                      Please see the OWCF/misc/convert_units.jl script for a list of all acceptable units in the OWCF - String
 # Ed_min - The lower bound for the diagnostic energy grid (measurement grid) - Float64
 # Ed_max - The upper bound for the diagnostic energy grid (measurement grid) - Float64
 # Ed_diff - The width of the diagnostic energy bins (PLEASE NOTE! THIS WILL INDIRECTLY DEFINE THE NUMBER OF DIAGNOSTIC ENERGY GRID POINTS.) - Float64
@@ -84,7 +86,7 @@
 # file has been specified, the algorithm needs to know the fast-ion time window to extract data from.
 # That is only stored in the TRANSP .cdf fast-ion file
 
-# Script written by Henrik Järleblad. Last maintained 2022-10-11.
+# Script written by Henrik Järleblad. Last maintained 2025-01-07.
 ######################################################################################################
 
 ## First you have to set the system specifications
@@ -128,6 +130,7 @@ end
     diagnostic_filepath = "" # Currently supported: "TOFOR", "AB" and ""
     diagnostic_name = ""
     instrumental_response_filepath = "" # Should be the filepaths to three .txt-files or one .jld2-file. Otherwise, leave as ""
+    instrumental_response_output_units = "" # Should be specified as described in OWCF/misc/convert_units.jl. If instrumental_response_filepath=="", leave as ""
     Ed_min = 0000.0 # keV
     Ed_max = 0000.0 # keV
     Ed_diff = 00.0 # keV

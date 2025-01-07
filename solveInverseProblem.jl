@@ -19,38 +19,75 @@
 # -
 
 #### Saved files
-# solInvProb_[tokamak]_S_[numODiag]_[numOMeasure]_W_[numOW]_[recSpaceGridSize]_[hyperParamGridSize]_[date and time].jld2
+# The results output file will have the filename format:
+#   solInvProb_[date and time]_[tokamak]_S_[numODiag]_[numOMeasure]_W_[numOW]_[recSpaceGridSize]_[hyperParamGridSize].jld2
+# (or instead with a .hdf5 file extension if the 'saveInHDF5format' input variable was set to true in the start file)
 # where 
+#   - 'date and time' is the date and time at which the inverse problem was solved
 #   - 'tokamak' is the tokamak in which the inverse problem is solved. Specified in input file
 #   - 'numODiag' is the number of diagnostics used to solve the inverse problem
 #   - 'numOMeasure' is the total number of measurements used to solve the inverse problem
 #   - 'numOW' is the number of weight matrices used to solve the inverse problem (equal to numODiag)
 #   - 'recSpaceGridSize' is the size of the reconstruction space grid on which the fast-ion distribution is reconstructed
 #   - 'hyperParamGridSize' is the size of the hyper-parameter value(s) grid used to regularize the inverse problem
-#   - 'date and time' is the date and time at which the inverse problem was solved
-# This saved file will have the keys:
+# This results output file will have the keys:
 #   sols - The solutions to the inverse problem in inflated format, i.e. recSpaceGridSize x hyperParamGridSize - Array{Float64}
 #   sols_abscissa_i - where i is an integer >=1. The reconstruction space abscissas of the sols output data. E.g. sols_abscissa_i
 #                     contains the grid points corresponding to the i:th dimension of sols - Vector{Float64}
-#   sols_abscissa_i_units - where i is an integer >=1. The units of measurement of sols_abscissa_i - String
-#   sols_hyper_abscissa_i - where i is an integer >=1. The hyper-parameter values of the i:th regularization dimension of sols.
+#   sols_abscissa_units_i - where i is an integer >=1. The units of measurement of sols_abscissa_i - String
+#   sols_hyper_abscissa_j - where j is an integer >=1. The hyper-parameter values of the j:th regularization dimension of sols.
 #                           For example, if the reconstruction space is 2D and two hyper-parameters where needed to solved the inverse 
-#                           problem (e.g. the regularization strength for 0th Order Tikhonov and 1st Order Tikhonov, respectively) 
-#                           sols[:,:,i,j] corresponds to the solution with hyper-parameter values sols_hyper_abscissa_1[i] and 
-#                           sols_hyper_abscissa_2[j]. - Vector{Float64}
+#                           problem (e.g. the regularization strength for 0th order Tikhonov and 1st order Tikhonov, respectively) 
+#                           sols[:,:,j1,j2] corresponds to the solution with hyper-parameter values sols_hyper_abscissa_1[j1] and 
+#                           sols_hyper_abscissa_2[j2]. - Vector{Float64}
 #   FI_species - The particle species of the reconstructed fast-ion distribution - String
-#   measurement_bin_units_i - The units of the measurements of the i:th diagnostic used to solve the inverse problem - String
+#   S_k - where k is an integer >=1. The measurements of the k:th diagnostic used to solve the inverse problem - Vector{Float64}
+#   S_units_k - where k is an integer >=1. The units of S_k - String 
+#   S_err_k - where k is an integer >=1. The uncertainties of the S_k measurements. S_err_k[l] corresponds to the uncertainty 
+#             of measurement S_k[l] - Vector{Float64}
+#   S_err_units_k - where k is an integer >=1. The units of S_err_k - String
+#   S_abscissa_k - where k is an integer >=1. The measurement bin centers of S_k. S_abscissa_k[l] corresponds to the measurement 
+#                  bin center of S_k[l] - Vector{Float64}
+#   S_abscissa_units_k - where k is an integer >=1. The units of S_abscissa_k - String
 #   l_curve_x - The x-axis values of the L-curve of the solutions to the inverse problem, corresponding to ||S-WF|| - Vector{Float64}
 #   l_curve_y - The y-axis-values of the L-curve of the solutions to the inverse problem, corresponding to ||F|| - Vector{Float64}
 #   l_curve_opt_index - The index of the L-curve point with the largest curvature. (l_curve_x[l_curve_opt_index], l_curve_y[l_curve_opt_index])
-#                       will then correpond to the L-curve point - Int64
-#   l_curve_opt_hyper_point - The hyper-parameter point corresponding to
-# DOCUMENTATION TO BE CONTINUED HERE IN NEXT UPDATES
+#                       will then correpond to the L-curve point with the largest curvature - Int64
+#   l_curve_opt_hyper_point - The hyper-parameter point corresponding to the L-curve point with the largest curvature. I.e. the values of 
+#                             λ_h where h is an integer >=1 and λ_h is the regularization strength for regularization type h - Vector{Float64}
+#   l_curve_opt_sol - The solution to the inverse problem obtained using the l_curve_opt_hyper_point regularization strength(s). l_curve_opt_sol 
+#                     will be an array of size recSpaceGridSize. l_curve_opt_sol is equivalent to sols[:,...,:,j1,j2,...,jH] where :,...,: denotes 
+#                     all reconstruction space dimensions and jh = findfirst(x-> x==l_curve_opt_hyper_point[h],sols_hyper_abscissa_h) and h>=1 - Array{Float64}
+#   filepath_start - The filepath to the start file used to execute the solveInverseProblem.jl script - String
+#   If rescale_W was set to true
+#       rescale_W_factors - The factors used to rescale the weight functions to have WF_synth match the experimental data - Vector{Float64}
+#   If :COLLISIONS was included in the 'regularization' input variable
+#       coll_phys_basis - The collision physics basis functions used to solve the inverse problem. The basis functions are saved as a multi-dimensional 
+#                         array with size recSpaceGridSize x reduce(*, recSpaceGridSize) - Array{Float64}
+#       coll_phys_thermal_species - The list of thermal ion species used to compute the collision physics basis functions - Vector{String}
+#       coll_phys_Ti - The list of thermal ion temperatures used to compute the collision physics basis functions - Vector{Float64}
+#       coll_phys_ni - The list of thermal ion densities used to compute the collision physics basis functions - Vector{Float64}
+#       coll_phys_Te - The electron temperature used to compute the collision physics basis functions - Float64
+#       coll_phys_ne - The electron density used to compute the collision physics basis functions - Float64
+#       coll_phys_rho - The normalized poloidal flux coordinate(s) used to compute the collision physics basis functions - Vector{Float64}
+# If the 'plot_solutions' input variable was set to true in the start file, .png files will be saved showing plots of the solutions.
+# The filename format of those .png files will be:
+#   solInvProb_[date and time]_resultsPlot_[p]_of_[P].png
+# where
+#   - 'date and time' is the date and time at which the inverse problem was solved
+#   - 'p' is an integer 1<=p<=P 
+#   - 'P' is an integer equal to the reduce(*,hyperParamGridSize) (the total number of hyper-parameter points for all regularization combinations)
+# If the 'gif_solutions' input variable was set to true in the start file, a .gif file will be saved showing all .png files together as an animation.
+# The filename format of that .gif file will be:
+#   solInvProb_[date and time].gif
+# where 
+#   - 'date and time' is the date and time at which the inverse problem was solved
+# ALL OUTPUT FILES WILL BES SAVED IN THE 'folderpath_out' INPUT VARIABLE FOLDER, SPECIFIED IN THE START FILE.
 
 ### Other
 # 
 
-# Script written by Henrik Järleblad. Last maintained 2024-12-20.
+# Script written by Henrik Järleblad. Last maintained 2025-01-07.
 ###########################################################################################################
 
 # println section number tracker
@@ -203,16 +240,32 @@ for (i,f) in enumerate(filepaths_W)
         if !haskey(myfile,"W")
             error("In the filepaths_W input array, the $(f) file does not have a 'W' file key, even though '$(scriptSources_W[i])' was specified in the scriptSources_W input array. Please correct and re-try.")
         end
-        W_inflated[i] = read_func(myfile["W"])
-        Ed_vector = read_func(myfile["Ed_array"])
-        Ed_vector_units = read_func(myfile["Ed_array_units"])
-        E_vector = read_func(myfile["E_array"])
-        E_vector_units = "keV" # from calc2DWeights.jl, the energy grid points will always be in keV
-        p_vector = read_func(myfile["p_array"])
-        p_vector_units = "-" # from calc2DWeights.jl, the pitch grid points will always be dimensionless
+        Ed_array = read_func(myfile["Ed_array"])
+        Ed_array_units = read_func(myfile["Ed_array_units"])
+
+        if lowercase(coordinate_system)=="(vpara,vperp)"
+            W_inflated[i] = read_func(myfile["W_vel"])
+            D1_array = read_func(myfile["vpara_array"])
+            D1_array_units = "m_s^-1"
+            D2_array = read_func(myfile["vperp_array"])
+            D2_array_units = "m_s^-1"
+        elseif lowercase(coordinate_system)=="(e,p)"
+            W_inflated[i] = read_func(myfile["W"])
+            D1_array = read_func(myfile["E_array"])
+            D1_array_units = "keV" # from calc2DWeights.jl, the energy grid points will always be in keV
+            D2_array = read_func(myfile["p_array"])
+            D2_array_units = "-" # from calc2DWeights.jl, the pitch grid points will always be dimensionless
+        else
+            @warn "Element number $(i) of input variable Vector 'scriptSources_W' was specified as $(scriptSources_W[i]), but input variable 'coordinate_system' was incorrectly specified ($(coordinate_system)). Therefore, a coordinate system of (E,p) will be automatically assumed."
+            W_inflated[i] = read_func(myfile["W"])
+            D1_array = read_func(myfile["E_array"])
+            D1_array_units = "keV" # from calc2DWeights.jl, the energy grid points will always be in keV
+            D2_array = read_func(myfile["p_array"])
+            D2_array_units = "-" # from calc2DWeights.jl, the pitch grid points will always be dimensionless
+        end
         close(myfile)
-        W_abscissas[i] = [Ed_vector, E_vector, p_vector]
-        W_abscissas_units[i] = [Ed_vector_units, E_vector_units, p_vector_units]
+        W_abscissas[i] = [Ed_array, D1_array, D2_array]
+        W_abscissas_units[i] = [Ed_array_units, D1_array_units, D2_array_units]
     elseif sswi=="orbweights_2dto4d" || sswi=="orbweights_2dto4d.jl" || sswi=="calcorbweights" || sswi=="calcorbweights.jl" # Account for misinterpretation by user (include .jl file extension). PLEASE NOTE! THESE FILES SHOULD REALLY BE OUTPUT FILES FROM THE orbWeights_2Dto4D.jl SCRIPT. THE CODE BELOW JUST TAKES INTO ACCOUNT THAT USERS MIGHT BE CONFUSED
         if haskey(myfile,"W2D")
             error("In the filepaths_W input array, the $(f) file is an output file of the calcOrbWeights.jl script. This is not a file that you can specify as input to the solveInverseProblem.jl script. Even though one might think so. Please specify an output file of the OWCF/helper/orbWeights_2Dto4D.jl script instead.")
@@ -1677,12 +1730,12 @@ if plot_solutions || gif_solutions
 
         if plot_solutions
             verbose && println("------> Saving .png file for plot $(i) of $(length(hyper_points))... ")
-            png(fig_tot,folderpath_out*"solInvProb_resultsPlot_$(i)_of_$(length(hyper_points))_$(date_and_time)")
+            png(fig_tot,folderpath_out*"solInvProb_$(date_and_time)_resultsPlot_$(i)_of_$(length(hyper_points))")
         end
     end
     if gif_solutions
         verbose && println("---> Saving .gif file... ")
-        gif(anim,folderpath_out*"solInvProb_resultsPlots_$(date_and_time).gif",fps=2)
+        gif(anim,folderpath_out*"solInvProb_$(date_and_time).gif",fps=2)
     end
 end
 
@@ -1746,7 +1799,7 @@ end
 verbose && println("---> Creating unique output data file name... ")
 recSpaceGridSize = reduce(*,map(x-> "x$(x)",rec_space_size))[2:end]
 hyperParamGridSize = reduce(*,map(x-> "x$(x)",hyper_space_size))[2:end]
-filepath_output_orig = folderpath_out*"solInvProb_$(tokamak)_S_$(length(S))_$(length(S_hat_long))_W_$(length(W))_$(recSpaceGridSize)_$(hyperParamGridSize)_$(date_and_time)"
+filepath_output_orig = folderpath_out*"solInvProb_$(date_and_time)_$(tokamak)_S_$(length(S))_$(length(S_hat_long))_W_$(length(W))_$(recSpaceGridSize)_$(hyperParamGridSize)"
 filepath_output = deepcopy(filepath_output_orig)
 C = 1
 while isfile(filepath_output*".jld2") || isfile(filepath_output*".hdf5") # To take care of not overwriting files. Add _(1), _(2) etc
@@ -1769,14 +1822,19 @@ for (i,ab) in enumerate(W_abscissas[1][2:end])
         ab = Float64.(ab) # Convert from Real to Float64, since .hdf5 files cannot handle Real types
     end
     write(myfile,"sols_abscissa_$(i)",ab)
-    write(myfile,"sols_abscissa_$(i)_units",W_abscissas_units[1][i+1])
+    write(myfile,"sols_abscissa_units_$(i)",W_abscissas_units[1][i+1])
 end
 for (i,hp_ab) in enumerate(hyper_arrays)
     write(myfile,"sols_hyper_abscissa_$(i)",hp_ab)
 end
 write(myfile,"FI_species",FI_species)
-for (i,s_ab_units) in enumerate(S_abscissas_units)
-    write(myfile,"measurement_bin_units_$(i)",s_ab_units)
+for (j,s) in enumerate(S)
+    write(myfile,"S_$(j)",s)
+    write(myfile,"S_units_$(j)",S_units[j])
+    write(myfile,"S_err_$(j)",S_errs[j])
+    write(myfile,"S_err_units_$(j)",S_errs_units[j])
+    write(myfile,"S_abscissa_$(j)",S_abscissas[j])
+    write(myfile,"S_abscissa_units_$(j)",S_abscissas_units[j])
 end
 write(myfile,"l_curve_x",sdf)
 write(myfile,"l_curve_y",srn)

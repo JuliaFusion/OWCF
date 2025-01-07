@@ -74,7 +74,7 @@
 # Finally, this script has many 'if' statements and I would expect it to be able to be
 # optimized beyond its current state. This will be done in future version of the OWCF.
 
-# Script written by Henrik Järleblad. Last maintained 2023-11-07.
+# Script written by Henrik Järleblad. Last maintained 2025-01-07.
 ################################################################################################
 
 ## ---------------------------------------------------------------------------------------------
@@ -140,6 +140,7 @@ verbose && println("Loading Julia packages... ")
     include("misc/diag2tokamak.jl") # To deduce tokamak machines from diagnostic's specifications
     include("misc/availReacts.jl") # To examine fusion reaction and extract thermal and fast-ion species
     include("misc/rewriteReacts.jl") # To rewrite a fusion reaction from the A(b,c)D format to the A-b=c-D format
+    include("misc/convert_units.jl") # To be able to correctly work with units of measurement
     pushfirst!(PyVector(pyimport("sys")."path"), "") # To add the forward, transp_dists, transp_output and vcone modules (scripts in current path)
 end
 ## ---------------------------------------------------------------------------------------------
@@ -318,7 +319,7 @@ if fileext_FI=="cdf"
     YYYY = TIME_array[2]
     timepoint = XX*","*YYYY # Format XX,YYYY to avoid "." when including in filename of saved output
 end
-fileext_FI=="cdf" || fileext_thermal=="cdf"
+if fileext_thermal=="cdf"
     if fileext_FI_TRANSP_shot=="cdf"
         # If the user has specified a TRANSP .cdf file with pertaining NUBEAM fast-ion distribution data...
         # Load the time, and overwrite timepoint. TRANSP time data superseeds .eqdsk time data
@@ -839,12 +840,20 @@ myfile = jldopen(filepath_output,true,true,false,IOStream)
 write(myfile,"S",spec_tot)
 write(myfile,"Ed_array",Ed_array)
 if instrumental_response
+    write(myfile,"S_units",units_inverse(instrumental_response_output_units))
+    write(myfile,"Ed_array_units",instrumental_response_output_units)
     write(myfile,"S_raw",spec_raw)
+    write(myfile,"S_raw_units",calcProjVel ? units_inverse("m_s^-1") : units_inverse("keV")) # The raw output signal of calcSpec.jl is always in the inverse of m/s or keV
     write(myfile,"Ed_array_raw",Ed_array_raw)
+    write(myfile,"Ed_array_raw_units",calcProjVel ? "m_s^-1" : "keV") # The raw output abscissa of calcSpec.jl is always in m/s or keV
+else
+    write(myfile,"S_units",calcProjVel ? units_inverse("m_s^-1") : units_inverse("keV"))
+    write(myfile,"Ed_array_units",calcProjVel ? "m_s^-1" : "keV") # Otherwise, the output abscissa of calcSpec.jl is always in m/s or keV
 end
 if addNoise
     write(myfile,"S_clean",S_clean)
-    write(myfile,"noise",noise)
+    write(myfile,"err",noise)
+    write(myfile,"err_units",instrumental_response ? units_inverse(instrumental_response_output_units) : calcProjVel ? "m_s^-1" : "keV")
 end
 if fileext_FI=="h5" || fileext_FI=="jld2"
     write(myfile,"nfast",nfast)
