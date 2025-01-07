@@ -10,7 +10,7 @@
 # The computed reconstruction(s) will be saved as an (N+R)-dimensional array. N is the number of independent variables upon which 
 # the fast-ion distribution depend, i.e. f(x1, x2, ..., xN). R is the number of hyperparameters needed to realize the specified regularization scheme 
 # (please see the 'regularization' input parameter below). The exact shape of the (N+R)-dimensional array is determined via the 'n_array' and 
-# 'r_array' input variables (please see below). 
+# 'nr_array' input variables (please see below). 
 #
 ### The inputs are as follows:
 #
@@ -21,7 +21,11 @@
 #                   - :NONNEG - If included, a non-negativity constraint is enforced on the fast-ion distribution at all 
 #                               points of the grid (see the 'min_array', 'max_array' and 'n_array' input variables below) 
 #                               on which the fast-ion distribution will be reconstructed. Included by default.
-#               Include the above option in a Vector, or leave the Vector empty - Vector{Symbol}
+#               Include the above option(s) in a Vector, or leave the Vector empty - Vector{Symbol}
+# coordinate_system - If an element in 'scriptSources_W' (see below) is specified as "calc2DWeights", then as of the current 
+#                     OWCF version, the user needs to manually specify if the (E,p) or the (vpara,vperp) weight functions 
+#                     should be used (if both are saved in the same calc2DWeights.jl output file). This is done by 
+#                     specifying the 'coordinate_system' input variable to "(E,p)" or "(vpara,vperp)" - String
 # excluded_measurement_intervals - A Vector of Vectors of 2-tuples, i.e. [[(X1,X2),(X3,X4),...],[(Y1,Y2),(Y3,Y4),...],...].
 #                                Each element in the outermost Vector represents a set of excluded measurement intervals for the 
 #                                diagnostic with the corresponding element in the 'filepaths_W' and 'filepaths_S' 
@@ -201,6 +205,12 @@
 # h5file_of_nonJulia_origin - If .h5 or .hdf5 files are specified as input, and they were not created with the Julia programming language, the 
 #                             h5file_of_nonJulia_origin input variable might need to be set to true. This is because some languages reverse the array 
 #                             dimension order when saved as a .h5 or .hdf5 file. E.g. (E,p,R,z) sometimes become (z,R,p,E) - Bool
+
+### Other
+# Some lines below are commented out. This is because the inverse problem solving algorithm is currently single-CPU.
+# In future version, multi-core processing might be supported, and those lines will then be uncommented.
+
+# Script written by Henrik Järleblad. Last maintained 2025-01-07.
 #############################################################################################################################################################
 
 ## First you have to set the system specifications
@@ -242,6 +252,7 @@ Pkg.activate(".")
 ## -----------------------------------------------------------------------------
 @everywhere begin
     constraints = [:NONNEG]
+    coordinate_system = "" # As of the current OWCF version, specify as "(E,p)" or "(vpara,vperp)" if any of the elements in scriptSources_W are specified as "calc2DWeights"
     excluded_measurement_intervals = [[(,),...],[(,),...]]
     excluded_measurement_units = ["",""]
     exclude_zero_measurements = true
