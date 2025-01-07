@@ -255,8 +255,8 @@ class SpectrumCalculator:
 
         self._B_dir = B_dir
         self._n_samples = int(n_samples)
-        self.reaction = reaction
         self.product_state = product_state.lower() #!#        
+        self.reaction = reaction
         self.weights = None
 
         # 4*pi emission by default
