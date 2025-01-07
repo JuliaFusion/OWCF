@@ -865,13 +865,17 @@ if iiimax>1 # If we were supposed to compute more than one weight matrix...
         end
         if instrumental_response
             write(myfile,"W_raw",W_raw_total)
+            write(myfile,"Ed_array_units",instrumental_response_output_units)
             write(myfile,"Ed_array_raw",Ed_array_raw)
+            write(myfile,"Ed_array_raw_units",analytical2DWs ? "m_s^-1" : "keV") # The raw output abscissa of calc2DWeights.jl is always in m/s or keV
             write(myfile,"instrumental_response_input",instrumental_response_input)
             write(myfile,"instrumental_response_output",instrumental_response_output)
             write(myfile,"instrumental_response_matrix",instrumental_response_matrix)
             if saveVparaVperpWeights
                 write(myfile,"W_vel_raw",W_vel_raw_total)
             end
+        else
+            write(myfile,"Ed_array_units",analytical2DWs ? "m_s^-1" : "keV") # Otherwise, the output abscissa of calcSpec.jl is always in m/s or keV
         end
         if plasma_rot
             write(myfile, "plasma_rot_at_Rz", plasma_rot_at_Rz)

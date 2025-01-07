@@ -1,8 +1,8 @@
 ########################################## convert_units.jl #######################################
 # This script contains a record of all accepted units of measurement that can be handled by the 
 # OWCF. It also contains functions that computes conversion factors between different units of 
-# measurement. The base units are defined using the SI base units. Please see, for example,
-# https://en.wikipedia.org/wiki/SI_base_unit.
+# measurement, as well as other useful functions. The base units are defined using the SI base units. 
+# Please see, for example, https://en.wikipedia.org/wiki/SI_base_unit.
 #
 # PLEASE NOTE! Conversion for imperial units are currently NOT supported. Only metric units.
 #
@@ -11,11 +11,13 @@
 # 
 # To make compository units, please separate them with a "_". For example, "m_s^-1" is 'meters per 
 # second'.
-#
+
 ### Other
 # For angles, please use radians (rad) and NOT degrees (deg).
-#
-# Written by Henrik Järleblad. Last maintained 2024-10-31
+# PLEASE ALSO NOTE! The OWCF units are CASE SENSITIVE. Otherwise, for example, mJ (millijoule) and 
+# MJ (megajoule) cannot be told apart (mj and mj, if both lowercase).
+
+# Written by Henrik Järleblad. Last maintained 2025-01-07
 ###################################################################################################
 
 TIME_UNITS = Dict("ns"=>1.0e-9,"microsec"=>1.0e-6,"ms"=>1.0e-3,"s"=>1.0e0,"min"=>60e0,"h"=>3.6e3)
