@@ -743,40 +743,41 @@ for iii=1:iiimax
         global filepath_output = filepath_output*".jld2"
         list_o_saved_filepaths[iii] = filepath_output # Store a record of the saved file
         myfile_s = jldopen(filepath_output,true,true,false,IOStream)
-        write(myfile_s, "W", Wtot)
-        write(myfile_s, "E_array", vec(E_array))
-        write(myfile_s, "p_array", vec(p_array))
-        if instrumental_response
-            write(myfile_s, "Ed_array", instrumental_response_output)
-        else
-            write(myfile_s, "Ed_array", Ed_array)
-        end
-        write(myfile_s, "reaction_full", reaction_full)
-        write(myfile_s, "R", R_of_interest)
-        write(myfile_s, "z", z_of_interest)
-        if analytical2DWs
-            write(myfile_s, "analytical2DWs", analytical2DWs)
-        end
+        write(myfile_s,"W",Wtot)
+        write(myfile_s,"E_array",vec(E_array))
+        write(myfile_s,"p_array",vec(p_array))
         if saveVparaVperpWeights
-            write(myfile_s, "W_vel", W_vel)
-            write(myfile_s, "vpara_array", vpara_array)
-            write(myfile_s, "vperp_array", vperp_array)
+            write(myfile_s,"W_vel",W_vel)
+            write(myfile_s,"vpara_array",vpara_array)
+            write(myfile_s,"vperp_array",vperp_array)
         end
         if instrumental_response
-            write(myfile_s, "W_raw", Wtot_raw)
-            write(myfile_s, "Ed_array_raw",Ed_array)
-            write(myfile_s, "instrumental_response_input", instrumental_response_input)
-            write(myfile_s, "instrumental_response_output", instrumental_response_output)
-            write(myfile_s, "instrumental_response_matrix", instrumental_response_matrix)
+            write(myfile_s,"W_raw",Wtot_raw)
+            write(myfile_s,"Ed_array",instrumental_response_output)
+            write(myfile_s,"Ed_array_units",instrumental_response_output_units)
+            write(myfile_s,"Ed_array_raw",Ed_array)
+            write(myfile_s,"Ed_array_raw_units",analytical2DWs ? "m_s^-1" : "keV") # The raw output abscissa of calc2DWeights.jl is always in m/s or keV
+            write(myfile_s,"instrumental_response_input",instrumental_response_input)
+            write(myfile_s,"instrumental_response_output",instrumental_response_output)
+            write(myfile_s,"instrumental_response_matrix",instrumental_response_matrix)
             if saveVparaVperpWeights
-                write(myfile_s, "W_vel_raw", W_vel_raw)
+                write(myfile_s,"W_vel_raw",W_vel_raw)
             end
+        else
+            write(myfile_s,"Ed_array",Ed_array)
+            write(myfile_s,"Ed_array_units",analytical2DWs ? "m_s^-1" : "keV") # Otherwise, the output abscissa of calcSpec.jl is always in m/s or keV
+        end
+        if analytical2DWs
+            write(myfile_s,"analytical2DWs",analytical2DWs)
         end
         if plasma_rot
-            write(myfile_s, "plasma_rot_at_Rz", plasma_rot_at_Rz)
+            write(myfile_s,"plasma_rot_at_Rz",plasma_rot_at_Rz)
         end
-        write(myfile_s, "filepath_thermal_distr", filepath_thermal_distr)
-        write(myfile_s, "filepath_start", filepath_start)
+        write(myfile_s,"reaction_full",reaction_full)
+        write(myfile_s,"R",R_of_interest)
+        write(myfile_s,"z",z_of_interest)
+        write(myfile_s,"filepath_thermal_distr",filepath_thermal_distr)
+        write(myfile_s,"filepath_start",filepath_start)
         close(myfile_s)
     else
         verbose && println("Saving debugged quantities... ")
@@ -792,12 +793,7 @@ if iiimax>1 # If we were supposed to compute more than one weight matrix...
         E_array = myfile["E_array"]
         p_array = myfile["p_array"]
         Ed_array = myfile["Ed_array"]
-        reaction_full = myfile["reaction_full"]
-        R = myfile["R"]
-        z = myfile["z"]
-        if analytical2DWs
-            analytical2DWs = myfile["analytical2DWs"]
-        end
+        Ed_array_units = myfile["Ed_array_units"]
         if saveVparaVperpWeights
             W_vel_total = zeros(size(myfile["W_vel"]))
             vpara_array = myfile["vpara_array"]
@@ -806,6 +802,7 @@ if iiimax>1 # If we were supposed to compute more than one weight matrix...
         if instrumental_response
             W_raw_total = zeros(size(myfile["W_raw"]))
             Ed_array_raw = myfile["Ed_array_raw"]
+            Ed_array_raw_units = myfile["Ed_array_raw_units"]
             instrumental_response_input = myfile["instrumental_response_input"]
             instrumental_response_output = myfile["instrumental_response_output"]
             instrumental_response_matrix = myfile["instrumental_response_matrix"]
@@ -813,9 +810,15 @@ if iiimax>1 # If we were supposed to compute more than one weight matrix...
                 W_vel_raw_total = zeros(size(myfile["W_vel_raw"]))
             end
         end
+        if analytical2DWs
+            analytical2DWs = myfile["analytical2DWs"]
+        end
         if plasma_rot
             plasma_rot_at_Rz = myfile["plasma_rot_at_Rz"]
         end
+        reaction_full = myfile["reaction_full"]
+        R = myfile["R"]
+        z = myfile["z"]
         filepath_thermal_distr = myfile["filepath_thermal_distr"]
         filepath_start = myfile["filepath_start"]
         close(myfile)
@@ -852,12 +855,7 @@ if iiimax>1 # If we were supposed to compute more than one weight matrix...
         write(myfile,"E_array",E_array)
         write(myfile,"p_array",p_array)
         write(myfile,"Ed_array",Ed_array)
-        write(myfile,"reaction_full",reaction_full)
-        write(myfile,"R",R)
-        write(myfile,"z",z)
-        if analytical2DWs
-            write(myfile,"analytical2DWs",analytical2DWs)
-        end
+        write(myfile,"Ed_array_units",Ed_array_units)
         if saveVparaVperpWeights
             write(myfile,"W_vel",W_vel_total)
             write(myfile,"vpara_array",vpara_array)
@@ -865,21 +863,24 @@ if iiimax>1 # If we were supposed to compute more than one weight matrix...
         end
         if instrumental_response
             write(myfile,"W_raw",W_raw_total)
-            write(myfile,"Ed_array_units",instrumental_response_output_units)
             write(myfile,"Ed_array_raw",Ed_array_raw)
-            write(myfile,"Ed_array_raw_units",analytical2DWs ? "m_s^-1" : "keV") # The raw output abscissa of calc2DWeights.jl is always in m/s or keV
+            write(myfile,"Ed_array_raw_units",Ed_array_raw_units)
             write(myfile,"instrumental_response_input",instrumental_response_input)
             write(myfile,"instrumental_response_output",instrumental_response_output)
             write(myfile,"instrumental_response_matrix",instrumental_response_matrix)
             if saveVparaVperpWeights
                 write(myfile,"W_vel_raw",W_vel_raw_total)
             end
-        else
-            write(myfile,"Ed_array_units",analytical2DWs ? "m_s^-1" : "keV") # Otherwise, the output abscissa of calcSpec.jl is always in m/s or keV
+        end
+        if analytical2DWs
+            write(myfile,"analytical2DWs",analytical2DWs)
         end
         if plasma_rot
-            write(myfile, "plasma_rot_at_Rz", plasma_rot_at_Rz)
+            write(myfile,"plasma_rot_at_Rz",plasma_rot_at_Rz)
         end
+        write(myfile,"reaction_full",reaction_full)
+        write(myfile,"R",R)
+        write(myfile,"z",z)
         write(myfile,"filepath_thermal_distr",filepath_thermal_distr)
         write(myfile,"filepath_start",filepath_start)
         close(myfile)

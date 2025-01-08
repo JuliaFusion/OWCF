@@ -246,9 +246,9 @@ for (i,f) in enumerate(filepaths_W)
         if lowercase(coordinate_system)=="(vpara,vperp)"
             W_inflated[i] = read_func(myfile["W_vel"])
             D1_array = read_func(myfile["vpara_array"])
-            D1_array_units = "m_s^-1"
+            D1_array_units = "m_s^-1" # from calc2DWeights.jl, the vpara grid points will always be in m_s^-1
             D2_array = read_func(myfile["vperp_array"])
-            D2_array_units = "m_s^-1"
+            D2_array_units = "m_s^-1" # from calc2DWeights.jl, the vperp grid points will always be in m_s^-1
         elseif lowercase(coordinate_system)=="(e,p)"
             W_inflated[i] = read_func(myfile["W"])
             D1_array = read_func(myfile["E_array"])
@@ -274,17 +274,17 @@ for (i,f) in enumerate(filepaths_W)
             error("In the filepaths_W input array, the $(f) file does not have a 'W' file key, even though '$(scriptSources_W[i])' was specified in the scriptSources_W input array. Please correct and re-try.")
         end
         W_inflated[i] = read_func(myfile["W"])
-        Ed_vector = read_func(myfile["Ed_array"])
-        Ed_vector_units = read_func(myfile["Ed_array_units"])
-        E_vector = read_func(myfile["E_array"])
-        E_vector_units = "keV" # from calcOrbWeights.jl, the energy grid points will always be in keV
-        pm_vector = read_func(myfile["pm_array"])
-        pm_vector_units = "-" # from calcOrbWeights.jl, the pitch maximum grid points will always be dimensionless
-        Rm_vector = read_func(myfile["Rm_array"])
-        Rm_vector_units = "m" # from calcOrbWeights.jl, the major radius maximum grid points will always be in meters
+        Ed_array = read_func(myfile["Ed_array"])
+        Ed_array_units = read_func(myfile["Ed_array_units"])
+        E_array = read_func(myfile["E_array"])
+        E_array_units = "keV" # from calcOrbWeights.jl, the energy grid points will always be in keV
+        pm_array = read_func(myfile["pm_array"])
+        pm_array_units = "-" # from calcOrbWeights.jl, the pitch maximum grid points will always be dimensionless
+        Rm_array = read_func(myfile["Rm_array"])
+        Rm_array_units = "m" # from calcOrbWeights.jl, the major radius maximum grid points will always be in meters
         close(myfile)
-        W_abscissas[i] = [Ed_vector, E_vector, pm_vector, Rm_vector]
-        W_abscissas_units[i] = [Ed_vector_units, E_vector_units, pm_vector_units, Rm_vector_units]
+        W_abscissas[i] = [Ed_array, E_array, pm_array, Rm_array]
+        W_abscissas_units[i] = [Ed_array_units, E_array_units, pm_array_units, Rm_array_units]
     elseif sswi=="calc4dweights" || sswi=="calc4dweights.jl"
         # Due to its size, the calc4DWeights.jl case needs special treatment
         # This code can most likely only be run on clusters with a HUGE amount of RAM
@@ -293,20 +293,20 @@ for (i,f) in enumerate(filepaths_W)
         COL = read_func(myfile["COL"]) # Vector containing the corresponding column elements
         m_W = read_func(myfile["m_W"]) # Total number of rows (including zero elements not included in R and C) of the (E,p,R,z) weight matrix
         n_W = read_func(myfile["n_W"]) # Total number of columns (including zero elements not included in R and C) of the (E,p,R,z) weight matrix
-        Ed_vector = read_func(myfile["Ed_array"])
-        Ed_vector_units = read_func(myfile["Ed_array_units"])
-        E_vector = read_func(myfile["E_array"])
-        E_vector_units = "keV" # from calc4DWeights.jl, the energy grid points will always be in keV
-        p_vector = read_func(myfile["p_array"])
-        p_vector_units = "-" # from calc4DWeights.jl, the pitch grid points will always be dimensionless
-        R_vector = read_func(myfile["R_array"])
-        R_vector_units = "m" # from calc4DWeights.jl, the major radius grid points will always be in meters
-        z_vector = read_func(myfile["z_array"])
-        z_vector_units = "m" # from calc4DWeights.jl, the vertical coordinate grid points will always be in meters
+        Ed_array = read_func(myfile["Ed_array"])
+        Ed_array_units = read_func(myfile["Ed_array_units"])
+        E_array = read_func(myfile["E_array"])
+        E_array_units = "keV" # from calc4DWeights.jl, the energy grid points will always be in keV
+        p_array = read_func(myfile["p_array"])
+        p_array_units = "-" # from calc4DWeights.jl, the pitch grid points will always be dimensionless
+        R_array = read_func(myfile["R_array"])
+        R_array_units = "m" # from calc4DWeights.jl, the major radius grid points will always be in meters
+        z_array = read_func(myfile["z_array"])
+        z_array_units = "m" # from calc4DWeights.jl, the vertical coordinate grid points will always be in meters
         EpRz_coords = read_func(myfile["EpRz_coords"]) # The indices and (E,p,R,z) coordinates for all the columns of the (E,p,R,z) weight matrix (W_2D, see below)
         close(myfile)
         W_2D = dropzeros(sparse(append!(ROW,m_W),append!(COL,n_W),append!(VAL,0.0)))
-        W_5D = zeros(length(Ed_vector),length(E_array),length(p_array),length(R_array),length(z_array))
+        W_5D = zeros(length(Ed_array),length(E_array),length(p_array),length(R_array),length(z_array))
         verbose && println("Re-creating the 5D (Ed,E,p,R,z) weight function matrix... ")
         for iEd in 1:size(W_2D,1)
             for (i,c) in enumerate(EpRz_coords[:])
@@ -314,8 +314,8 @@ for (i,f) in enumerate(filepaths_W)
             end
         end
         W_inflated[i] = W_5D
-        W_abscissas[i] = [Ed_vector, E_vector, p_vector, R_vector, z_vector]
-        W_abscissas_units[i] = [Ed_vector_units, E_vector_units, p_vector_units, R_vector_units, z_vector_units]
+        W_abscissas[i] = [Ed_array, E_array, p_array, R_array, z_array]
+        W_abscissas_units[i] = [Ed_array_units, E_array_units, p_array_units, R_array_units, z_array_units]
     else
         # The general weight functions loading case
         W_inflated[i] = read_func(myfile["W"])
