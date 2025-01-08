@@ -959,15 +959,6 @@ for iii=1:iiimax
         write(myfile_s, "p_array", vec(p_array))
         write(myfile_s, "R_array", vec(R_array))
         write(myfile_s, "z_array", vec(z_array))
-        if instrumental_response
-            write(myfile_s, "Ed_array", instrumental_response_output)
-        else
-            write(myfile_s, "Ed_array", Ed_array)
-        end
-        write(myfile_s, "reaction_full", reaction_full)
-        if analytical4DWs
-            write(myfile_s, "analytical4DWs", analytical4DWs)
-        end
         if saveVparaVperpWeights
             ROW_vel, COL_vel, VAL_vel = findnz(Wtot_vel) # Extract rows, columns and values of non-zero indices of (vpara,vperp,R,z) weight matrix
             write(myfile_s, "VAL_vel", VAL_vel)
@@ -986,7 +977,10 @@ for iii=1:iiimax
             write(myfile_s, "COL_raw", COL_raw)
             write(myfile_s, "m_W_raw", Wtot_raw.m)
             write(myfile_s, "n_W_raw", Wtot_raw.n)
-            write(myfile_s, "Ed_array_raw",Ed_array)
+            write(myfile_s, "Ed_array", instrumental_response_output)
+            write(myfile_s, "Ed_array_units", instrumental_response_output_units)
+            write(myfile_s, "Ed_array_raw", Ed_array)
+            write(myfile_s, "Ed_array_raw_units", analytical4DWs ? "m_s^-1" : "keV")
             write(myfile_s, "instrumental_response_input", instrumental_response_input)
             write(myfile_s, "instrumental_response_output", instrumental_response_output)
             write(myfile_s, "instrumental_response_matrix", instrumental_response_matrix)
@@ -998,7 +992,14 @@ for iii=1:iiimax
                 write(myfile_s, "m_W_vel_raw", Wtot_vel_raw.m)
                 write(myfile_s, "n_W_vel_raw", Wtot_vel_raw.n)
             end
+        else
+            write(myfile_s, "Ed_array", Ed_array)
+            write(myfile_s, "Ed_array_units", analytical4DWs ? "m_s^-1" : "keV") # Otherwise, the output abscissa of calc4DWeights.jl is always in m/s or keV
         end
+        if analytical4DWs
+            write(myfile_s, "analytical4DWs", analytical4DWs)
+        end
+        write(myfile_s, "reaction_full", reaction_full)
         write(myfile_s, "filepath_thermal_distr", filepath_thermal_distr)
         close(myfile_s)
     else
@@ -1023,6 +1024,7 @@ if iiimax>1 # If we were supposed to compute more than one weight matrix...
         R_array = myfile["R_array"]
         z_array = myfile["z_array"]
         Ed_array = myfile["Ed_array"]
+        Ed_array_units = myfile["Ed_array_units"]
         reaction_full = myfile["reaction_full"]
         EpRz_coords = myfile["EpRz_coords"] # The indices and (E,p,R,z) coordinates for all the columns of the (E,p,R,z) weight matrix
         if analytical4DWs
@@ -1049,6 +1051,7 @@ if iiimax>1 # If we were supposed to compute more than one weight matrix...
             W_raw_total = dropzeros(sparse(append!(ROW_raw,m_W_raw),append!(COL_raw,n_W_raw),append!(VAL_raw_total,0.0))) # Make the corresponding sparse matrix (to be able to use addition on several matrices effectively). Add one dummy element to re-create correct size. Don't store it though, only the total matrix size.
             global W_raw_total
             Ed_array_raw = myfile["Ed_array_raw"]
+            Ed_array_raw_units = myfile["Ed_array_raw_units"]
             instrumental_response_input = myfile["instrumental_response_input"]
             instrumental_response_output = myfile["instrumental_response_output"]
             instrumental_response_matrix = myfile["instrumental_response_matrix"]
@@ -1125,6 +1128,7 @@ if iiimax>1 # If we were supposed to compute more than one weight matrix...
         write(myfile,"z_array",z_array)
         write(myfile,"EpRz_coords",EpRz_coords)
         write(myfile,"Ed_array",Ed_array)
+        write(myfile,"Ed_array_units",Ed_array_units)
         write(myfile,"reaction_full",reaction_full)
         if analytical4DWs
             write(myfile,"analytical4DWs",analytical4DWs)
@@ -1148,6 +1152,7 @@ if iiimax>1 # If we were supposed to compute more than one weight matrix...
             write(myfile,"m_W_raw",W_raw_total.m)
             write(myfile,"n_W_raw",W_raw_total.n)
             write(myfile,"Ed_array_raw",Ed_array_raw)
+            write(myfile,"Ed_array_raw_units",Ed_array_raw_units)
             write(myfile,"instrumental_response_input",instrumental_response_input)
             write(myfile,"instrumental_response_output",instrumental_response_output)
             write(myfile,"instrumental_response_matrix",instrumental_response_matrix)
