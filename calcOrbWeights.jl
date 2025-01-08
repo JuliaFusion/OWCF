@@ -655,16 +655,16 @@ for iii=1:iiimax
             if hi==length(instrumental_response_input)
                 @warn "Upper bound of instrumental response matrix input might not be high enough to cover weight function measurement bin range. Diagnostic response representation might be inaccurate."
             end
-            Wtot_withDiagResp = zeros(length(instrumental_response_output),size(Wtot,2))
+            Wtot_withInstrResp = zeros(length(instrumental_response_output),size(Wtot,2))
             instrumental_response_matrix = (instrumental_response_matrix[lo:hi,:])'
             for io=1:size(Wtot,2)
                 W = Wtot[:,io]
                 itp = LinearInterpolation(Ed_array,W)
                 W_itp = itp.(instrumental_response_input[lo:hi])
                 W_out = instrumental_response_matrix * W_itp # The diagnostic response
-                Wtot_withDiagResp[:,io] = W_out
+                Wtot_withInstrResp[:,io] = W_out
             end
-            Wtot = Wtot_withDiagResp # Update the outputs of calcOrbWeights.jl with the diagnostic response
+            Wtot = Wtot_withInstrResp # Update the outputs of calcOrbWeights.jl with the diagnostic response
             Ed_array = instrumental_response_output # Update the outputs of calcOrbWeights.jl with the diagnostic response
         end
     end
@@ -684,24 +684,27 @@ for iii=1:iiimax
         end
         global filepath_output = filepath_output*".jld2"
         myfile_s = jldopen(filepath_output,true,true,false,IOStream)
-        write(myfile_s, "W2D", Wtot)
-        write(myfile_s, "E_array", vec(E_array))
-        write(myfile_s, "pm_array", vec(pm_array))
-        write(myfile_s, "Rm_array", vec(Rm_array))
-        write(myfile_s, "Ed_array", Ed_array)
+        write(myfile_s,"W2D",Wtot)
+        write(myfile_s,"E_array",vec(E_array))
+        write(myfile_s,"pm_array",vec(pm_array))
+        write(myfile_s,"Rm_array",vec(Rm_array))
+        write(myfile_s,"Ed_array",Ed_array)
         if instrumental_response
-            write(myfile_s, "instrumental_response_input", instrumental_response_input)
-            write(myfile_s, "instrumental_response_output", instrumental_response_output)
-            write(myfile_s, "instrumental_response_matrix", instrumental_response_matrix)
+            write(myfile_s,"Ed_array_units",instrumental_response_output_units)
+            write(myfile_s,"instrumental_response_input",instrumental_response_input)
+            write(myfile_s,"instrumental_response_output",instrumental_response_output)
+            write(myfile_s,"instrumental_response_matrix",instrumental_response_matrix)
+        else
+            write(myfile_s,"Ed_array_units",analyticalOWs ? "m_s^-1" : "keV") # Otherwise, the output abscissa of calcSpec.jl is always in m/s or keV
         end
-        write(myfile_s, "reaction_full", reaction_full)
+        write(myfile_s,"reaction_full",reaction_full)
         if analyticalOWs
-            write(myfile_s, "analyticalOWs", analyticalOWs)
+            write(myfile_s,"analyticalOWs",analyticalOWs)
         end
-        write(myfile_s, "filepath_thermal_distr", filepath_thermal_distr)
-        write(myfile_s, "extra_kw_args", extra_kw_args)
+        write(myfile_s,"filepath_thermal_distr",filepath_thermal_distr)
+        write(myfile_s,"extra_kw_args",extra_kw_args)
         if !(og_filepath===nothing)
-            write(myfile_s, "og_filepath", og_filepath)
+            write(myfile_s,"og_filepath",og_filepath)
         end
         close(myfile_s)
         if include2Dto4D
