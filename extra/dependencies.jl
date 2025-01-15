@@ -27,27 +27,28 @@
 ###################################################################################################
 
 println("Loading the Julia packages for the OWCF dependencies... ")
+using Base.Iterators
+using Contour
 using Distributed
+using Distributions
 using EFIT
 using Equilibrium
-using GuidingCenterOrbits
-using ForwardDiff
-using LinearAlgebra
-using OrbitTomography
-using Optim
-using JLD2
-using HDF5
-using NetCDF
 using FileIO
+using ForwardDiff
+using GuidingCenterOrbits
+using HDF5
 using Interpolations
+using JLD2
+using LinearAlgebra
 using NearestNeighbors
-using Statistics
-using SharedArrays
-using ProgressMeter
-using Distributions
-using VoronoiDelaunay
+using NetCDF
+using OrbitTomography
 import OrbitTomography: orbit_grid
-using Base.Iterators
+using Optim
+using ProgressMeter
+using SharedArrays
+using Statistics
+using VoronoiDelaunay
 
 ###### Constants needed for dependencies ######
 
@@ -57,13 +58,13 @@ const ϵ0 = 8.8541878128e-12 # Permittivity of free space
 ###### Structures needed for dependencies ######
 
 """
-    grid(r2d,z2d,r,z,phi,nr,nz,nphi)
+    OWCF_grid(r2d,z2d,r,z,phi,nr,nz,nphi)
 
 A structure to represent an (R,z) grid in 2D, together with a 
 grid in the toroidal phi direction. The r2d and z2d fields are mesh 
 grids of the (R,z) grid points.
 """
-struct grid
+struct OWCF_grid
     r2d::Matrix{Float64}
     z2d::Matrix{Float64}
     r::Vector{Float64}
@@ -235,7 +236,7 @@ function rz_grid(rmin::Union{Int64,Float64}, rmax::Union{Int64,Float64}, nr::Int
     r2d = repeat(r,1,nz)
     z2d = repeat(z,1,nr)'
 
-    return grid(r2d,z2d,r,z,phi,nr,nz,nphi)
+    return OWCF_grid(r2d,z2d,r,z,phi,nr,nz,nphi)
 end
 
 ###### Particle species functions
@@ -690,14 +691,18 @@ end
 
 """
     mu_func(energy, B, Pϕ, Ψ, RBϕ)
-    mu_func(-||-; m=GuidingCenterOrbits.H2_amu*GuidingCenterOrbits.mass_u, q=1*GuidingCenterOrbits.e0)
+    mu_func(-||-; energy_in_keV=true, m=GuidingCenterOrbits.H2_amu*GuidingCenterOrbits.mass_u, q=1*GuidingCenterOrbits.e0)
 
 Compute the magnetic moment mu, given the fast-ion energy, magnetic field B, toroidal canonical angular momentum Pϕ, magnetic flux Ψ and flux function RBϕ.
-Use a 0-cap, meaning that all negative values are set to 0.
+Use a 0-cap, meaning that all negative values are set to 0. The keyword arguments are:
+- energy_in_keV - If true, the function will assume that the 'energy' input argument is given in kiloelectronvolt (keV). If false, assume Joule (J) - Bool
+- m - The particle mass (kg) - Float64
+- q - The particle charge (Coloumb) - Float64
 """
-function mu_func(energy::T, B::T, Pϕ::T, Ψ::T, RBϕ::T;m::Float64=GuidingCenterOrbits.H2_amu*GuidingCenterOrbits.mass_u, q::Float64=1*GuidingCenterOrbits.e0) where {T}
-    res = energy/B - (B/(2*m)) * ((Pϕ-q*Ψ)/RBϕ)^2
-    return (res > zero(energy)) ? res : zero(energy)
+function mu_func(energy::T, B::T, Pϕ::T, Ψ::T, RBϕ::T; energy_in_keV::Bool=true, m::Float64=GuidingCenterOrbits.H2_amu*GuidingCenterOrbits.mass_u, q::Float64=1*GuidingCenterOrbits.e0) where {T}
+    E = energy_in_keV ? energy*1000*GuidingCenterOrbits.e0 : energy # Else, assume energy is input in Joule
+    res = E/B - (B/(2*m)) * ((Pϕ-q*Ψ)/RBϕ)^2
+    return (res > zero(E)) ? res : zero(E)
 end
 
 """
@@ -1429,7 +1434,7 @@ function toSampleReady(F_EpRz::Array{Float64,4}, E_array::Array{Float64,1}, p_ar
 
     dims = size(fr) # Tuple
     verbose && println("toSampleReady(): Computing cumulative sum vector... ")
-    frdvols_cumsum_vector = cumsum(vec(fr .*dvols)) # Vector. Reaaally long vector
+    frdvols_cumsum_vector = cumsum(Vector(fr .*dvols)) # Vector. Reaaally long vector
     subs = CartesianIndices(dims) # 4D matrix
 
     return frdvols_cumsum_vector, subs, E_array, p_array, R_array, z_array, dE_array, dp_array, dR_array, dz_array, nfast
@@ -1639,6 +1644,15 @@ If 'plot' is set to false, then you can simply feed all integers into a 6 elemen
 have the valid orbits (stagnation, trapped, co-passing, counter-passing, potato and counter-stagnation) in bins 1 to 6.
 """
 function class2int(M::AbstractEquilibrium, o::GuidingCenterOrbits.Orbit;plot::Bool=true, distinguishLost::Bool=false, distinguishIncomplete::Bool=false)
+    if hasproperty(o.coordinate,:r) # If the orbit has an (E,pm,Rm) coordinate
+        Rm = o.coordinate.r
+    else # It must have an (E,mu,Pphi) coordinate
+        if isempty(o.path.r)
+            @warn "Orbit object input does not have an attached OrbitPath object with non-empty (R,z) path. Cannot uniquely infer integer identification number. For stagnation orbits, output might be erronous."
+            Rm = magnetic_axis(M)[1] # Just put it to magnetic axis, since we cannot know without computing the mu-contour
+        end
+        Rm = maximum(o.path.r)
+    end
     if (o.class == :lost) && distinguishLost
         return 7
     elseif (o.class == :incomplete) && distinguishIncomplete && plot
@@ -1647,11 +1661,11 @@ function class2int(M::AbstractEquilibrium, o::GuidingCenterOrbits.Orbit;plot::Bo
         return 2
     elseif o.class == :co_passing
         return 3
-    elseif (o.class == :stagnation && o.coordinate.r>=M.axis[1]) # Regular stagnation orbit
+    elseif (o.class == :stagnation && Rm>=magnetic_axis(M)[1]) # Regular stagnation orbit
         return 1
-    elseif (o.class == :stagnation && o.coordinate.r<M.axis[1] && plot) # Counterstagnation orbit
+    elseif (o.class == :stagnation && Rm<magnetic_axis(M)[1] && plot) # Counterstagnation orbit
         return 8
-    elseif (o.class == :stagnation && o.coordinate.r<M.axis[1] && !plot) # Counterstagnation orbit, but treat as normal stagnation orbit
+    elseif (o.class == :stagnation && Rm<magnetic_axis(M)[1] && !plot) # Counterstagnation orbit, but treat as normal stagnation orbit
         return 6
     elseif o.class == :potato
         return 5
@@ -1663,25 +1677,25 @@ function class2int(M::AbstractEquilibrium, o::GuidingCenterOrbits.Orbit;plot::Bo
 end
 
 """
-    map_orbits_OWCF(og, f, equidistant)
-    map_orbits_OWCF(-||-;weights=false)
+    OWCF_map_orbits(og, f, equidistant)
+    OWCF_map_orbits(-||-;weights=false)
 
 This function is the OWCF version of the original function map_orbits which already exists in the OrbitTomography.jl package.
 It has the ability to take non-equidistant 3D grid-points into account. If weights, then do not divide by phase-space volume.
 """
-function map_orbits_OWCF(grid::OrbitGrid, f::Vector, equidistant::Bool; weights::Bool=false)
+function OWCF_map_orbits(mygrid::OrbitGrid, f::Vector, equidistant::Bool; weights::Bool=false)
     if equidistant
-        return OrbitTomography.map_orbits(grid,f) # Use the normal map_orbits function
+        return OrbitTomography.map_orbits(mygrid,f) # Use the normal map_orbits function
     else
-        if length(grid.counts) != length(f)
+        if length(mygrid.counts) != length(f)
             throw(ArgumentError("Incompatible sizes"))
         end
 
         if !(weights)
-            dorb = get_orbel_volume(grid, equidistant) # Get the volumes of the voxels of the orbit grid
-            return [i == 0 ? zero(f[1]) : f[i]/(grid.counts[i]*dorb[i]) for i in grid.orbit_index] # This line is complicated...
+            dorb = get_orbel_volume(mygrid, equidistant) # Get the volumes of the voxels of the orbit grid
+            return [i == 0 ? zero(f[1]) : f[i]/(mygrid.counts[i]*dorb[i]) for i in mygrid.orbit_index] # This line is complicated...
         else
-            return [i == 0 ? zero(f[1]) : f[i]/(grid.counts[i]*1.0) for i in grid.orbit_index] # This line is complicated...
+            return [i == 0 ? zero(f[1]) : f[i]/(mygrid.counts[i]*1.0) for i in mygrid.orbit_index] # This line is complicated...
         end
     end
 end
@@ -1856,7 +1870,7 @@ function ps2os(M::AbstractEquilibrium, wall::Boundary, F_EpRz::Array{Float64,4},
     if performance
         verbose && println("Computing samples efficiently... ")
         dims = size(fr) # Tuple
-        frdvols_cumsum_vector = cumsum(vec(fr .*dvols)) # Vector. Reaaally long vector.
+        frdvols_cumsum_vector = cumsum(Vector(fr .*dvols)) # Vector. Reaaally long vector.
         subs = CartesianIndices(dims) # 4D matrix
         fr = nothing # Memory efficiency
         dvols = nothing # Memory efficiency
@@ -1924,7 +1938,7 @@ function ps2os(M::AbstractEquilibrium, wall::Boundary, F_EpRz::Array{Float64,4},
             if good_sample
                 o = get_orbit(M,GCP(E_sample[1],p_sample[1],R_sample[1],z_sample[1]); store_path=false, wall=wall, kwargs...)
                 if (o.coordinate.energy <= (og.energy[end]+dE_os_end/2) && o.coordinate.energy >= (og.energy[1]-dE_os_1/2)) # Make sure it's within the energy bounds (+one half grid cell)
-                    F_os_i = bin_orbits(og,vec([o.coordinate]),weights=vec([1.0]))
+                    F_os_i = bin_orbits(og,Vector([o.coordinate]),weights=Vector([1.0]))
                     class_distr_i = zeros(9)
                     class_distr_i[class2int(M,o; plot=true, distinguishLost=true, distinguishIncomplete=true)] = 1
                 else
@@ -2073,7 +2087,7 @@ function ps2os_performance(M::AbstractEquilibrium,
                 visualizeProgress && print("   $(o.class)")
                 visualizeProgress && print("   $(o.coordinate.energy)")
                 if (o.coordinate.energy <= (maximum(og.energy)+dE_os_end/2) && o.coordinate.energy >= (minimum(og.energy)-dE_os_1/2)) # Make sure it's within the energy bounds (+one half grid cell)
-                    F_os_i = bin_orbits(og,vec([o.coordinate]),weights=vec([1.0]))
+                    F_os_i = bin_orbits(og,Vector([o.coordinate]),weights=Vector([1.0]))
                     class_distr_i = zeros(9)
                     class_distr_i[class2int(M,o; plot=true, distinguishLost=true, distinguishIncomplete=true)] = 1
                 else
@@ -2144,7 +2158,7 @@ function sample_helper(M::AbstractEquilibrium, numOsamples::Int64, fr::AbstractA
                         if good_sample
                             o = get_orbit(M,GCP(E_sample[1],p_sample[1],R_sample[1],z_sample[1]); store_path=false, wall=wall, kwargs...) # Calculate the orbit
                             if (o.coordinate.energy <= (maximum(og.energy)+dE_os_end/2) && o.coordinate.energy >= (minimum(og.energy)-dE_os_1/2)) # Make sure it's within the energy bounds (+one half grid cell)
-                                F_os_i = bin_orbits(og,vec([o.coordinate]),weights=vec([1.0])) # Bin to the orbit grid
+                                F_os_i = bin_orbits(og,Vector([o.coordinate]),weights=Vector([1.0])) # Bin to the orbit grid
                                 class_distr_i = zeros(9)
                                 class_distr_i[class2int(M,o; plot=true, distinguishLost=true, distinguishIncomplete=true)] = 1
                             else
@@ -2170,7 +2184,7 @@ function sample_helper(M::AbstractEquilibrium, numOsamples::Int64, fr::AbstractA
                 if good_sample
                     o = get_orbit(M,GCP(E_sample[1],p_sample[1],R_sample[1],z_sample[1]); store_path=false, wall=wall, kwargs...) # Calculate the orbit
                     if (o.coordinate.energy <= (maximum(og.energy)+dE_os_end/2) && o.coordinate.energy >= (minimum(og.energy)-dE_os_1/2)) # Make sure it's within the energy bounds (+one half grid cell)
-                        F_os_i = bin_orbits(og,vec([o.coordinate]),weights=vec([1.0])) # Bin to the orbit grid
+                        F_os_i = bin_orbits(og,Vector([o.coordinate]),weights=Vector([1.0])) # Bin to the orbit grid
                         class_distr_i = zeros(9)
                         class_distr_i[class2int(M,o; plot=true, distinguishLost=true, distinguishIncomplete=true)] = 1
                     else
@@ -2234,7 +2248,7 @@ function performance_helper(M::AbstractEquilibrium, numOsamples::Int64, frdvols_
                         if good_sample
                             o = get_orbit(M,GCP(E_sample,p_sample,R_sample,z_sample); store_path=false, wall=wall, kwargs...) # Calculate the orbit
                             if (o.coordinate.energy <= (maximum(og.energy)+dE_os_end/2) && o.coordinate.energy >= (minimum(og.energy)-dE_os_1/2)) # Make sure it's within the energy bounds (+one half grid cell)
-                                F_os_i = bin_orbits(og,vec([o.coordinate]),weights=vec([1.0])) # Bin to the orbit grid
+                                F_os_i = bin_orbits(og,Vector([o.coordinate]),weights=Vector([1.0])) # Bin to the orbit grid
                                 class_distr_i = zeros(9)
                                 class_distr_i[class2int(M,o; plot=true, distinguishLost=true, distinguishIncomplete=true)] = 1
                             else
@@ -2270,7 +2284,7 @@ function performance_helper(M::AbstractEquilibrium, numOsamples::Int64, frdvols_
                 if good_sample
                     o = get_orbit(M,GCP(E_sample,p_sample,R_sample,z_sample); store_path=false, wall=wall, kwargs...) # Calculate the orbit
                     if (o.coordinate.energy <= (maximum(og.energy)+dE_os_end/2) && o.coordinate.energy >= (minimum(og.energy)-dE_os_1/2)) # Make sure it's within the energy bounds (+/- one half grid cell)
-                        F_os_i = bin_orbits(og,vec([o.coordinate]),weights=vec([1.0])) # Bin to the orbit grid
+                        F_os_i = bin_orbits(og,Vector([o.coordinate]),weights=Vector([1.0])) # Bin to the orbit grid
                         class_distr_i = zeros(9)
                         class_distr_i[class2int(M,o; plot=true, distinguishLost=true, distinguishIncomplete=true)] = 1
                     else
@@ -2453,7 +2467,7 @@ end
 Compute the orbit-sapce topological map for the energy slice specified by E (keV). Use pmRm_inds to iterate through the pm and Rm coordinates. 
 """
 function getOSTopoMap(M::AbstractEquilibrium, E::Float64, pmRm_inds_array::Vector{Tuple{CartesianIndex{1}, CartesianIndex{1}}}, pm_array::AbstractVector, Rm_array::AbstractVector; FI_species::String="D", wall::Union{Nothing,Boundary{Float64}}=nothing, distinguishLost::Bool=false, distinguishIncomplete::Bool=false, extra_kw_args=Dict(:toa => true))
-    topoMap = @showprogress 1 "Computing topoMap for E=$(E) keV... " @distributed (+) for i=1:length(pmRm_inds_array)
+    topoMap = @showprogress 1 "Computing topoMap for E=$(E) keV... " @distributed (+) for i in eachindex(pmRm_inds_array)
         pmRm_inds = pmRm_inds_array[i]
         ipm = pmRm_inds[1]
         iRm = pmRm_inds[2]
@@ -2474,7 +2488,7 @@ end
     getOSTopoMap(-||- ; kwargs... )
 
 Compute the orbit-space topological map, given a grid spanned by the inputs E_array, pm_array and Rm_array.
-Output the topological map as a 3D Array of Int64.
+Output the topological map as a 3D Array of Float64. Float64 type is advantageous for compatibility reasons (with other OWCF functions/scripts)
 """
 function getOSTopoMap(M::AbstractEquilibrium, E_array::AbstractVector, pm_array::AbstractVector, Rm_array::AbstractVector; kwargs... )
     pm_inds_rep = repeat(CartesianIndices(pm_array),inner=length(Rm_array)) # To get all points
@@ -2484,21 +2498,174 @@ function getOSTopoMap(M::AbstractEquilibrium, E_array::AbstractVector, pm_array:
     for iE in eachindex(E_array)
         topoMap[iE,:,:] = getOSTopoMap(M, E_array[iE], pmRm_inds_array, pm_array, Rm_array; kwargs... )
     end
-    return Int64.(topoMap)
+    return Float64.(topoMap)
 end
 
+"""
+    getCOMTopoMap(M, E, mu_array, Pphi_array)
+    getCOMTopoMap(-||-; sigma=1, kwargs...)
+
+Compute the constants-of-motion space topological map for a specific energy slice given by the energy 'E' (keV).
+Output the topological map as a 2D Array of Int64. The input arguments are:
+- M - The abstract equilibrium Struct (Equilibrium.jl) containing all information on the magnetic equilibrium - AbstractEquilibrium
+- E - The energy (keV) of the topological map - Real
+- mu_array - The magnetic moment (mu) grid points of the topological map - AbstractVector
+- Pphi_array - The toroidal canonical angular momentum (Pphi) grid points of the topological map - AbstractVector
+The keyword arguments are:
+- sigma - Binary index to identify co-passing (1) or counter-passing (-1) orbit, when (E,mu,Pphi) is a degenerate triplet - Int64
+- R_array - An array with major radius (R) points to be included as R grid points for the mu-contours - AbstractVector
+- z_array - An array with vertical coordinate (z) points to be included as z grid points for the mu-contours - AbstractVector
+- nR - If R_array is unspecified, nR major radius grid points between R_LCFS_HFS and R_LCFS_LFS will be used. Defaults to 50 - Int64
+- nz - If z_array is unspecified, nz major radius grid points between z_LCFS_HFS and z_LCFS_LFS will be used. Defaults to 60 - Int64
+- B_abs_Rz - The norm of the magnetic field at all (R,z) points, i.e. ||B(R,z)|| - AbstractMatrix
+- Psi_Rz - The poloidal flux at all (R,z) points, i.e. Ψ(R,z) - AbstractMatrix
+- RBT_Rz - The poloidal current at all (R,z) points, i.e. R(R,z) .*Bϕ(R,z) - AbstractMatrix
+- FI_species - The particle species of the ion. Please see OWCF/misc/species_func.jl for a list of available particle species - String
+- verbose - If set to true, the function will talk a lot! - Bool
+"""
+function getCOMTopoMap(M::AbstractEquilibrium, E::Real, mu_array::AbstractVector, Pphi_array::AbstractVector; 
+                       sigma::Int64=1, R_array::AbstractVector=nothing, z_array::AbstractVector=nothing, 
+                       nR::Int64=50, nz::Int64=60, B_abs_Rz::Union{AbstractMatrix,Nothing}=nothing,
+                       Psi_Rz::Union{AbstractMatrix,Nothing}=nothing,RBT_Rz::Union{AbstractMatrix,Nothing}=nothing,
+                       FI_species::String="D", verbose::Bool=false, kwargs...)
+    if !(sigma==1 || sigma==-1)
+        error("Keyword 'sigma' must be specified as either +1 or -1. Please correct and re-try.")
+    end
+    orb_select_func = sigma==1 ? argmax : argmin # If co-current (sigma==1) orbits are of interest, use argmax function. Otherwise (if sigma==-1), use argmin
+
+    if isnothing(R_array) || isnothing(z_array)
+        verbose && println("getCOMTopoMap(): R_array/z_array keyword argument not specified. Computing internally... ")
+        if :r in fieldnames(typeof(M)) # If the magnetic equilibrium is an .eqdsk-equilibrium...
+            LCFS = Equilibrium.boundary(M,psi_limits(M)[2]) # Default 0.01 m (R,z) resolution to identify LCFS
+        else # ...else, it must be a Solov'ev equilibrium (currently the only two types supported by the package Equilibrium.jl)
+            LCFS = Equilibrium.boundary(M;n=500) # Default 500 (R,z) points to represent LCFS
+        end
+        if isnothing(R_array)
+            R_array = collect(range(minimum(LCFS.r),stop=maximum(LCFS.r),length=nR))
+        end
+        if isnothing(z_array)
+            z_array = collect(range(minimum(LCFS.z),stop=maximum(LCFS.z),length=nz))
+        end
+    end
+    if isnothing(B_abs_Rz)
+        verbose && println("getCOMTopoMap(): B_abs_Rz keyword argument not specified. Computing internally... ")
+        B_abs_Rz = [norm(Equilibrium.Bfield(M,R,z)) for R in R_array, z in z_array]
+    end
+    if isnothing(psi_Rz)
+        verbose && println("getCOMTopoMap(): psi_Rz keyword argument not specified. Computing internally... ")
+        psi_Rz = [M(R,z) for R in R_array, z in z_array]
+    end
+    if isnothing(RBT_Rz)
+        verbose && println("getCOMTopoMap(): RBT_Rz keyword argument not specified. Computing internally... ")
+        RBT_Rz = [poloidal_current(M,M(R,z)) for R in R_array, z in z_array] # RBT is short for R*Bϕ
+    end
+    E_joule = E*(GuidingCenterOrbits.e0)*1000 # from keV to Joule
+    m_FI = getSpeciesMass(FI_species) # kg
+    q_FI = getSpeciesCharge(FI_species) # Coloumb
+    verbose && println("getCOMTopoMap(): Defining magnetic moment (mu) as a function of toroidal canonical angular momentum (Pphi) input... ")
+    function _mu_func(Pphi::Real)
+        res = E_joule ./B_abs_Rz .- (B_abs_Rz ./(2*m_FI)) .* ((Pphi .- q_FI .*psi_Rz) ./RBT_Rz).^2
+        return map(x-> (x > 0.0) ? x : 0.0, res)
+    end
+
+    topoMap = @showprogress 1 "Computing topoMap for E=$(E) keV... " @distributed (+) for (iPphi,Pphi) in enumerate(Pphi_array)
+        topoMap_i = 9 .*ones(Int64,(length(mu_array),length(Pphi_array))) # Initially assume all (E,mu,Pphi) triplets are invalid (9)
+        mu_Rz = _mu_func(Pphi) # Mu as a function of (R,z), for a specific Pphi
+        mu_max = maximum(mu_Rz)
+        valid_mu_indices = findall(x-> x<=mu_max && x>0,mu_array)
+        cls = Contour.contours(R_array,z_array,transpose(mu_Rz),mu_array[valid_mu_indices])
+        for j in eachindex(cls) # For each mu-contour index
+            lns = Contour.lines(cls[j]) # Get the lines of that contour level (might be several lines)
+            closed_lines = []
+            Rm_of_closed_lines = []
+            for ln in lns # For line in lines
+                Rl, zl = Contour.coordinates(ln) # Get the (R,z) points of the contour line
+                closed_curve_measure = sqrt((Rll[end]-Rll[1])^2  +(zll[end]-zll[1])^2)
+                closed_curve_ref = sqrt((Rll[end]-Rll[end-1])^2  +(zll[end]-zll[end-1])^2) # MAYBE RE-WRITE THIS BY UTILIZING THAT END AND 1 ARE THE SAME FOR CLOSED CONTOURS.JL
+                if isapprox(closed_curve_measure, closed_curve_ref, atol=1e-1) # Is it a closed mu-contour?
+                    Rm = Rl[argmax(Rl)] # The maximum major radius (Rm) coordinate of the closed mu-contour
+                    push!(closed_lines,ln)
+                    push!(Rm_of_closed_lines,Rm)
+                end
+            end
+            if !isempty(closed_lines) # If there are valid orbits to consider
+                mu = mu_array[valid_mu_indices[j]] # The mu value for this particular orbit (closed line)
+                oi = orb_select_func(Rm_of_closed_lines) # Select the relevant one (co- or counter-current)
+                Ro, zo = Contour.coordinates(closed_lines[oi]) # Get the (R,z) points of the orbit
+                po = [sqrt(1-mu*Equilibrium.Bfield(M,Ro[k],zo[k])/E_joule) for k in eachindex(Ro)] # Compute the pitch (v_||/v) for all (R,z) points of the orbit
+                o_class = GuidingCenterOrbits.classify(Ro,zo,po,magnetic_axis(M)) # Deduce the orbit class from the (R,z), pitch and magnetic axis points
+                o_path = OrbitPath(false,true,E*ones(length(Ro)),po,Ro,zo,zero(zo),zero(zo)) # Create an OrbitPath object (struct). Don't assume vacuum (false), include drift effects (true), and we don't know anything about phi and dt (zero(zo))
+                o = Orbit(HamiltonianCoordinate(E, mu, Pphi; amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species)), o_class, zero(E), zero(E), o_path, false) # Create an Orbit struct. We don't know tau_p and tau_t (zero(E)) and we don't know if guiding-center equation of motion are valid (false)
+                topoMap_i[valid_mu_indices[j],iPphi] = class2int(M, o) # Give the orbit an integer identification number, according to OWCF/calcTopoMap.jl rules
+            end
+        end
+        topoMap_i # Declare for @distribution reduction (+)
+    end
+    return topoMap
+end
 
 """
     getCOMTopoMap(M, E_array, mu_array, Pphi_array)
-    getCOMTopoMap(-||- ; kwargs...)
+    getCOMTopoMap(-||- ; sigma=1, kwargs...)
 
 Compute the constants-of-motion space topological map, given a grid spanned by the inputs E_array, mu_array and Pphi_array.
-Output the topological map as a 3D Array of Int64.
+Output the topological map as a 3D Array of Int64. The input arguments are:
+- M - The abstract equilibrium Struct (Equilibrium.jl) containing all information on the magnetic equilibrium - AbstractEquilibrium
+- E_array - The energy (keV) grid points of the topological map - AbstractVector
+- mu_array - The magnetic moment (mu) grid points of the topological map - AbstractVector
+- Pphi_array - The toroidal canonical angular momentum (Pphi) grid points of the topological map - AbstractVector
+The keyword arguments are:
+- sigma - Binary index to identify co-passing (1) or counter-passing (-1) orbit, when (E,mu,Pphi) is a degenerate triplet - Int64
+- R_array - An array with major radius (R) points to be included as R grid points for the mu-contours - AbstractVector
+- z_array - An array with vertical coordinate (z) points to be included as z grid points for the mu-contours - AbstractVector
+- nR - If R_array is unspecified, nR major radius grid points between R_LCFS_HFS and R_LCFS_LFS will be used. Defaults to 50 - Int64
+- nz - If z_array is unspecified, nz major radius grid points between z_LCFS_HFS and z_LCFS_LFS will be used. Defaults to 60 - Int64
+- B_abs_Rz - The norm of the magnetic field at all (R,z) points, i.e. ||B(R,z)|| - AbstractMatrix
+- Psi_Rz - The poloidal flux at all (R,z) points, i.e. Ψ(R,z) - AbstractMatrix
+- RBT_Rz - The poloidal current at all (R,z) points, i.e. R(R,z) .*Bϕ(R,z) - AbstractMatrix
+- verbose - If set to true, the function will talk a lot! - Bool
 """
-function getCOMTopoMap(M::AbstractEquilibrium, E_array::AbstractVector, mu_vector::AbstractVector, Pphi_vector::AbstractVector)
-    # WRITE CODE HERE
+function getCOMTopoMap(M::AbstractEquilibrium, E_array::AbstractVector, mu_array::AbstractVector, 
+                       Pphi_array::AbstractVector; sigma::Int64=1, R_array::Union{AbstractVector,Nothing}=nothing, 
+                       z_array::Union{AbstractVector,Nothing}=nothing, nR::Int64=50, nz::Int64=60, 
+                       B_abs_Rz::Union{AbstractMatrix,Nothing}=nothing, Psi_Rz::Union{AbstractMatrix,Nothing}=nothing,
+                       RBT_Rz::Union{AbstractMatrix,Nothing}=nothing, verbose::Bool=false, kwargs...)
+    if !(sigma==1 || sigma==-1)
+        error("Keyword 'sigma' must be specified as either +1 or -1. Please correct and re-try.")
+    end
 
-    topoMap = nothing # Dummy value for now
+    if isnothing(R_array) || isnothing(z_array)
+        verbose && println("getCOMTopoMap(): R_array/z_array keyword argument not specified. Computing internally... ")
+        if :r in fieldnames(typeof(M)) # If the magnetic equilibrium is an .eqdsk-equilibrium...
+            LCFS = Equilibrium.boundary(M,psi_limits(M)[2]) # Default 0.01 m (R,z) resolution to identify LCFS
+        else # ...else, it must be a Solov'ev equilibrium (currently the only two types supported by the package Equilibrium.jl)
+            LCFS = Equilibrium.boundary(M;n=500) # Default 500 (R,z) points to represent LCFS
+        end
+        if isnothing(R_array)
+            R_array = collect(range(minimum(LCFS.r),stop=maximum(LCFS.r),length=nR))
+        end
+        if isnothing(z_array)
+            z_array = collect(range(minimum(LCFS.z),stop=maximum(LCFS.z),length=nz))
+        end
+    end
+    if isnothing(B_abs_Rz)
+        verbose && println("getCOMTopoMap(): B_abs_Rz keyword argument not specified. Computing internally... ")
+        B_abs_Rz = [norm(Equilibrium.Bfield(M,R,z)) for R in R_array, z in z_array]
+    end
+    if isnothing(psi_Rz)
+        verbose && println("getCOMTopoMap(): psi_Rz keyword argument not specified. Computing internally... ")
+        psi_Rz = [M(R,z) for R in R_array, z in z_array]
+    end
+    if isnothing(RBT_Rz)
+        verbose && println("getCOMTopoMap(): RBT_Rz keyword argument not specified. Computing internally... ")
+        RBT_Rz = [poloidal_current(M,M(R,z)) for R in R_array, z in z_array] # RBT is short for R*Bϕ
+    end
+
+    topoMap = 9 .*ones(Int64, (length(E_array),length(mu_array),length(Pphi_array))) # Initially assume all (E,mu,Pphi) triplets are invalid (9)
+    for (iE,E) in enumerate(E_array)
+        topoMap[iE,:,:] = getCOMTopoMap(M, E, mu_array, Pphi_array; sigma=sigma, R_array=R_array, z_array=z_array, B_abs_Rz=B_abs_Rz, psi_Rz=psi_Rz, RBT_Rz=RBT_Rz, kwargs...)
+    end
+
     return topoMap
 end
 
@@ -2843,34 +3010,6 @@ function os2COM(M::AbstractEquilibrium, data::Union{Array{Float64, 3},Array{Floa
     return data_COM, E_array, μ_matrix, Pϕ_matrix
 end
 
-
-"""
-    muPphi_2_pmRmNorm_funcGen(M, E, FI_species)
-    muPphi_2_pmRmNorm_funcGen(-||-; amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species), sigma=1, wall=nothing, nR=500, verbose=false, extra_kw_args=Dict(:max_tries => 0))
-
-Return a function that returns sqrt(pm^2 + Rm^2) given a (mu,Pphi) coordinate as input. This function(al) is deprecated, but might be brought back in a future version of the OWCF.
-"""
-function muPphi_2_pmRmNorm_funcGen(M::AbstractEquilibrium, E::Float64, FI_species::String; amu::Number=getSpeciesAmu(FI_species), q::Number=getSpeciesEcu(FI_species), sigma::Int64=1, wall::Union{Nothing,Boundary{Float64}}=nothing, nR::Int64=500, verbose::Bool=false, extra_kw_args=Dict(:max_tries => 0))
-    f = function func(x)
-        myEPRc = EPRCoordinate4(M, HamiltonianCoordinate(E, x[1], x[2]; amu=amu, q=q); sigma=sigma, wall=wall, nR=nR, verbose=verbose, extra_kw_args=extra_kw_args)
-        return (myEPRc.r > 0.0) ? sqrt((myEPRc.pitch)^2 + (myEPRc.r)^2) : Inf
-    end
-    return f
-end
-
-"""
-    muPphiSigma_2_pmRm(...)
-    muPphiSigma_2_pmRm(...)
-
-Compute a (pm,Rm) coordinate, given a (mu,Pphi;sigma) coordinate as input. This function is deprecated, but might be brought back in a future version of the OWCF.
-"""
-function muPphiSigma_2_pmRm(M::AbstractEquilibrium, data::Array{Float64,3}, E::Union{Float64, Int64}, mu_array::AbstractVector, 
-    Pphi_array::AbstractVector, FI_species::AbstractString, npm::Int64, nRm::Int64, wall::Union{GuidingCenterOrbits.Boundary{Float64},Nothing}, 
-    pm_array::Union{AbstractVector,Nothing}, Rm_array::Union{AbstractVector,Nothing}, dataIsTopoMap::Bool, topoMap::Array{Float64,3}, needJac::Bool, 
-    nR::Int64, n_stagopt::Int64, verbose::Bool, vverbose::Bool, debug::Bool, extra_kw_args::T) where {T<:Dict}
-    ######################
-end
-
 function com2OS(M::AbstractEquilibrium, data::Array{Float64,4}, E_array::AbstractVector, mu_matrix::AbstractMatrix, Pphi_matrix::AbstractMatrix, FI_species::String; npm::Int64=length(mu_matrix[1,:]), nRm::Int64=length(Pphi_matrix[1,:]), wall::Union{Nothing,Boundary{Float64}}=nothing, pm_array::Union{Nothing,AbstractArray}=nothing, Rm_array::Union{Nothing,AbstractArray}=nothing, dataIsTopoMap::Bool=false, needJac::Bool=false, transform = x -> x, verbose::Bool=false, debug::Bool=false, kwargs...)
     if !(pm_array===nothing)
         npm = length(pm_array)
@@ -2881,10 +3020,10 @@ function com2OS(M::AbstractEquilibrium, data::Array{Float64,4}, E_array::Abstrac
         nRm = length(Rm_array)
     else
         if !(wall===nothing)
-            Rm_array = vec(range((4*magnetic_axis(M)[1]+minimum(wall.r))/5, stop=maximum(wall.r), length=nRm))
+            Rm_array = Vector(range((4*magnetic_axis(M)[1]+minimum(wall.r))/5, stop=maximum(wall.r), length=nRm))
         else
             R_lims, z_lims = limits(M)
-            Rm_array = vec(range((4*magnetic_axis(M)[1]+R_lims[1])/5, stop=R_lims[2], length=nRm))
+            Rm_array = Vector(range((4*magnetic_axis(M)[1]+R_lims[1])/5, stop=R_lims[2], length=nRm))
         end
     end
 
@@ -3036,10 +3175,10 @@ function com2OS(M::AbstractEquilibrium, data::Array{Float64, 5}, E_array::Abstra
     end
     if Rm_array===nothing
         if !(wall===nothing)
-            Rm_array = vec(range((4*magnetic_axis(M)[1]+minimum(wall.r))/5, stop=maximum(wall.r), length=nRm))
+            Rm_array = Vector(range((4*magnetic_axis(M)[1]+minimum(wall.r))/5, stop=maximum(wall.r), length=nRm))
         else
             R_lims, z_lims = limits(M)
-            Rm_array = vec(range((4*magnetic_axis(M)[1]+R_lims[1])/5, stop=R_lims[2], length=nRm))
+            Rm_array = Vector(range((4*magnetic_axis(M)[1]+R_lims[1])/5, stop=R_lims[2], length=nRm))
         end
     end
 
