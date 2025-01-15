@@ -126,9 +126,9 @@ function getTempProfileFromTRANSP(timepoint::Float64,filepath_thermal_distr::Str
     T_identifier = ""
     if lowercase(species) in VALID_OWCF_SPECIES
         if species=="e"
-            global T_identifier = "TE"
+            T_identifier = "TE"
         else
-            global T_identifier = "TI"
+            T_identifier = "TI"
         end
     else
         error("No valid OWCF particle species recognized")
