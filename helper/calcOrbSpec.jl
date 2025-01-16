@@ -37,8 +37,8 @@ Keyword arguments include
 - n_gyro - The number of points by which to (randomly, uniform sampling) discretize the gyro-motion for each guiding-centre point - Int64
 - o_interp_length - The number of time points onto which the orbit trajectory will be interpolated. Equidistant points in time are used
 - product_state - The energy state of the emitted particle of the fusion reaction. Can be ground state (GS), first excited (1L), 2L, etc. Defaults to GS.
-- thermal_temp - An input variable with the thermal species temperature profile that the user has specified. It allows for no profile at all, as well as a single value on-axis (in keV)
-- thermal_dens - An input variable with the thermal species density profile that the user has specified. It allows for no profile at all, as well as a single value on-axis (in m^-3)
+- thermal_temp - An input variable with the thermal species temperature profile. It allows for no profile at all, an extrapolation object and a constant value (in keV)
+- thermal_dens - An input variable with the thermal species density profile. It allows for no profile at all, an extrapolation object and a constant value (in m^-3)
 - debug - A boolean debug input variable. If set to true, the function will run in debug-mode.
 """
 function calcOrbSpec(M::AbstractEquilibrium, o::Orbit{Float64, EPRCoordinate{Float64}}, n_fast::Float64, forward::PyObject, 
@@ -86,8 +86,8 @@ function calcOrbSpec(M::AbstractEquilibrium, o::Orbit{Float64, EPRCoordinate{Flo
                 thermal_temp_interp[i] = thermal_temp(ρ_pol_rz) # Interpolate
                 thermal_dens_interp[i] = thermal_dens(ρ_pol_rz) # Interpolate
             else # If it is not (and thus, it must be a Float64/Int64)
-                thermal_temp_interp[i] = getAnalyticalTemp(thermal_temp,ρ_pol_rz) # Use it as the temperature on axis
-                thermal_dens_interp[i] = getAnalyticalDens(thermal_dens,ρ_pol_rz) # And use thermal_dens as the density on axis
+                thermal_temp_interp[i] = thermal_temp # Flat (constant) thermal temperature profile
+                thermal_dens_interp[i] = thermal_dens # Flat (constant) thermal density profile
             end
             o_B[1,i] = myB[1] # Store the BR
             o_B[2,i] = myB[2] # Store the Bphi
