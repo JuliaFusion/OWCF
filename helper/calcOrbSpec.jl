@@ -21,10 +21,9 @@ include(folderpath_OWCF*"misc/temp_n_dens.jl") # Load 'analytical' thermal speci
 
 """
     calcOrbSpec(M, o, n_fast, forward, thermal_dist, Ed_bins, reaction)
-    calcOrbSpec(-||-; o_interp_length=500, thermal_temp=3.0, thermal_dens=1.0e19, prompt_gamma_energy=nothing, debug=false)
+    calcOrbSpec(-||-; analyticCalc=false, flr=false, n_gyro=50, o_interp_length=500, thermal_temp=3.0, thermal_dens=1.0e19, debug=false)
 
 Calculate the expected diagnostic spectrum of one orbit. The inputs are as follows
-- analyticCalc - boolean variable for fully analytical spectrum estimation. By default it is set to false
 - M - An axisymmetric equilibrium from the Equilibrium.jl Julia package. It is used to utilize its magnetic field.
 - o - The orbit for which to compute the expected synthetic spectrum. It is an Orbit struct from GuidingCenterOrbits.jl/orbit.jl.
 - n_fast - The number of fast ions on the orbit. Usually set to 1, by default.
@@ -37,12 +36,16 @@ Keyword arguments include
 - flr - If set to true, finite larmor radius effects will be included when computing the orbit spectrum - Bool
 - n_gyro - The number of points by which to (randomly, uniform sampling) discretize the gyro-motion for each guiding-centre point - Int64
 - o_interp_length - The number of time points onto which the orbit trajectory will be interpolated. Equidistant points in time are used
-- product_state - can be GS, 1L, 2L, etc. Default to Ground State #!#
+- product_state - The energy state of the emitted particle of the fusion reaction. Can be ground state (GS), first excited (1L), 2L, etc. Defaults to GS.
 - thermal_temp - An input variable with the thermal species temperature profile that the user has specified. It allows for no profile at all, as well as a single value on-axis (in keV)
 - thermal_dens - An input variable with the thermal species density profile that the user has specified. It allows for no profile at all, as well as a single value on-axis (in m^-3)
 - debug - A boolean debug input variable. If set to true, the function will run in debug-mode.
 """
-function calcOrbSpec(M::AbstractEquilibrium, o::Orbit{Float64, EPRCoordinate{Float64}}, n_fast::Float64, forward::PyObject, thermal_dist::Union{PyObject,AbstractString}, Ed_bins::AbstractArray, reaction::AbstractString; analyticCalc::Bool=false, flr::Bool=false, n_gyro::Int64=50, o_interp_length=500, product_state::AbstractString="GS", thermal_temp::Union{Nothing,Float64,Int64,Interpolations.Extrapolation,Interpolations.FilledExtrapolation}=3.0, thermal_dens::Union{Nothing,Float64,Int64,Interpolations.Extrapolation,Interpolations.FilledExtrapolation}=1.0e19, debug::Bool=false)
+function calcOrbSpec(M::AbstractEquilibrium, o::Orbit{Float64, EPRCoordinate{Float64}}, n_fast::Float64, forward::PyObject, 
+                     thermal_dist::Union{PyObject,AbstractString}, Ed_bins::AbstractArray, reaction::AbstractString; analyticCalc::Bool=false, 
+                     flr::Bool=false, n_gyro::Int64=50, o_interp_length=500, product_state::AbstractString="GS", 
+                     thermal_temp::Union{Nothing,Float64,Int64,Interpolations.Extrapolation,Interpolations.FilledExtrapolation}=3.0, 
+                     thermal_dens::Union{Nothing,Float64,Int64,Interpolations.Extrapolation,Interpolations.FilledExtrapolation}=1.0e19, debug::Bool=false)
 
     # Ensure that every orbit has o_interp_length number of EpRz points to serve as input to the spectrum calculator
     # We can assume that the EpRz points are equally distant in time, because this is ensured by GuidingCenterOrbits.get_orbit()
@@ -106,10 +109,10 @@ function calcOrbSpec(M::AbstractEquilibrium, o::Orbit{Float64, EPRCoordinate{Flo
         return thermal_temp_interp, o_R
     end
 
-    if analyticCalc #!# analyticCalc.jl(...,product_state='GS')
-        #!# call LOS file 
-        #!# compute analytical spectra on the intersected points
-        #!# return spectrum
+    if analyticCalc # analyticCalc.jl(...,product_state='GS')
+        # call LOS file 
+        # compute analytical spectra on the intersected points
+        # return spectrum
     else 
         spec = zeros(length(Ed_bins)-1)
         stats = 1
