@@ -44,9 +44,11 @@
 # filepath_FI_cdf - Can be specified, if filepath_thermal_distr is a TRANSP .cdf shot file. See below for specifications - String
 # filepath_thermal_distr - The path to the thermal distribution file to extract thermal species data from. Must be TRANSP .cdf, .jld2 file format or "" - String
 # folderpath_o - The path to the folder where the results will be saved - String
+# flr_effects - If set to true, finite Larmor radius effects will be included in the weight function computations - Bool
 # iiimax - If specified to be greater than 1, several copies of weight functions will be calculated. For comparison. - Int64
 # inclPrideRockOrbs - If true, then pride-rock/pinch orbits will be included. Otherwise, minimum(Rm) = magnetic axis by default - Bool
 # include2Dto4D - If true, then (in addition) the 2D orbit weight functions will be enflated to their 4D form (channels,nE,npm,nRm) and saved in the folderpath_o folder as well - Bool
+# n_gyro - The number of points by which to (randomly, uniform sampling) discretize the gyro-motion of the guiding-centre into - Int64
 # nE - The number of fast-ion energy grid points in orbit space - Int64
 # npm - The number of fast-ion pm grid points in orbit space - Int64
 # nRm - The number of fast-ion Rm grid points in orbit space - Int64
@@ -73,7 +75,7 @@
 # and thermal_dens_axis variables will be used to scale the polynomial profiles to match the specified
 # thermal temperature and thermal density at the magnetic axis. Please see the /misc/temp_n_dens.jl script for info.
 
-# Script written by Henrik Järleblad. Last maintained 2022-10-11.
+# Script written by Henrik Järleblad. Last maintained 2025-01-16.
 ######################################################################################################
 
 ## First you have to set the system specifications
@@ -127,11 +129,13 @@ end
     filepath_equil = "" # for example "equilibrium/JET/g96100/g96100_0-53.0012.eqdsk" or "myOwnSolovev.jld2"
     filepath_FI_cdf = "" # If filepath_thermal_distr=="96100J01.cdf", then filepath_FI_cdf could be "96100J01_fi_1.cdf" for example. To auto-extract timepoint
     filepath_thermal_distr = "" # for example "96100J01.cdf", "myOwnThermalDistr.jld2" or ""
+    flr_effects = false
     folderpath_o = "../OWCF_results/template/" # Output folder path. Finish with '/'
     folderpath_OWCF = $folderpath_OWCF # Set path to OWCF folder to same as main process (hence the '$')
     iiimax = 1 # The script will calculate iiimax number of weight functions. They can then be examined in terms of similarity (to determine MC noise influence etc).
     inclPrideRockOrbs = true # If true, then pride rock orbits will be included. Otherwise, minimum(Rm) = magnetic axis.
     include2Dto4D = true # If true, then the 2D orbit weight functions will be enflated to their 4D form
+    n_gyro = 50 # 50 is default and enough for most common applications of orbit weight functions
     nE = 0
     npm = 0
     nRm = 0
