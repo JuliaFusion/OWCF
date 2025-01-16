@@ -33,7 +33,7 @@ class Forward(object):
 
 
     def calc(self, E, p, R, z, weights, bulk_dist, Ed_bins, B_vec,
-            n_repeat=1, product_state='GS', reaction='d-d', bulk_temp='', bulk_dens='', flr=False, v_rot=np.reshape(np.array([0.0,0.0,0.0]),(3,1)), prompt_gamma_energy=None):
+            n_repeat=1, product_state='GS', reaction='d-d', bulk_temp='', bulk_dens='', flr=False, v_rot=np.reshape(np.array([0.0,0.0,0.0]),(3,1))):
         """
         Calculate spectrum for fast ion(s) (specified by the N (E,p,R,z) points)
         reacting with the given bulk distribution, for a given viewing cone
@@ -50,7 +50,9 @@ class Forward(object):
 
         n_repeat is the number of gyro angles sampled for each energy-pitch value.
 
-        product_state is the string defining the nuclear energy level for the product
+        product_state is the string defining the nuclear energy level for the fusion reaction product.
+        Unless a 2-step gamma-ray fusion reaction, product_state should always be in ground state ('GS').
+        If a 2-step gamma-ray fusion reaction, product_state can be GS, 1L (first excited nucleus state) or 2L (second ...).
 
         reaction is the fusion reaction to simulate ('D-D', 'D-T' etc). The species the the left of the '-' is always the 
         thermal species and the species to the right of the '-' is always the fast ion. However, as can be seen in the code,
