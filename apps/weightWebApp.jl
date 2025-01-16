@@ -79,9 +79,9 @@
 # E_range = myfile["E_array"]
 # pm_range = myfile["pm_array"]
 # Rm_range = myfile["Rm_array"]
-# E_range = vec(collect(E_range)) # Ensure type Array{Float64,1}
-# pm_range = vec(collect(pm_range)) # Ensure type Array{Float64,1}
-# Rm_range = vec(collect(Rm_range)) # Ensure type Array{Float64,1}
+# E_range = Vector(collect(E_range)) # Ensure type Array{Float64,1}
+# pm_range = Vector(collect(pm_range)) # Ensure type Array{Float64,1}
+# Rm_range = Vector(collect(Rm_range)) # Ensure type Array{Float64,1}
 # close(myfile)
 #
 # E = 150.0 # Example of 150 keV
@@ -96,7 +96,7 @@
 # iRm = argmin(abs.(Rm_range .- Rm)) # Find the closest match
 # Plots.plot(Ed_array, W_correct[:,iE,ipm,iRm]./maximum(W_correct[:,iE,ipm,iRm]), xlabel="Diagnostic energy [keV]", legend=false,title="1.0 = $(round(maximum(W_correct[:,iE,ipm,iRm]),sigdigits=4))")
 
-# Script written by Henrik Järleblad. Last maintained 2022-10-17.
+# Script written by Henrik Järleblad. Last maintained 2025-01-16.
 ###############################################################################################
 
 ## --------------------------------------------------------------------------
@@ -187,9 +187,9 @@ E_range = myfile["E_array"]
 pm_range = myfile["pm_array"]
 Rm_range = myfile["Rm_array"]
 
-E_range = vec(collect(E_range)) # Ensure type Array{Float64,1}
-pm_range = vec(collect(pm_range)) # Ensure type Array{Float64,1}
-Rm_range = vec(collect(Rm_range)) # Ensure type Array{Float64,1}
+E_range = Vector(collect(E_range)) # Ensure type Array{Float64,1}
+pm_range = Vector(collect(pm_range)) # Ensure type Array{Float64,1}
+Rm_range = Vector(collect(Rm_range)) # Ensure type Array{Float64,1}
 
 close(myfile)
 
@@ -276,7 +276,7 @@ end
 # Mapping topological map to (E,μ, Pϕ; σ)
 if enable_COM && !(isfile(filepath_tm_COM))
     verbose && println(">>>>>> Mapping topological map from (E,pm,Rm) to (E,μ,Pϕ;σ) <<<<<<... ")
-    topoMap_COM, E_range, μ_matrix, Pϕ_matrix = os2COM(M, topoMap, vec(E_array), pm_array, Rm_array, FI_species; nμ=2*length(pm_array), nPϕ=2*length(Rm_array), isTopoMap=true, verbose=verbose)
+    topoMap_COM, E_range, μ_matrix, Pϕ_matrix = os2COM(M, topoMap, Vector(E_array), pm_array, Rm_array, FI_species; nμ=2*length(pm_array), nPϕ=2*length(Rm_array), isTopoMap=true, verbose=verbose)
 elseif enable_COM && isfile(filepath_tm_COM)
     verbose && println("Loading topological map in (E,mu,Pphi;sigma) coordinates from filepath_tm_COM... ")
     myfile = jldopen(filepath_tm_COM,false,false,false,IOStream)
@@ -353,7 +353,7 @@ function app(req)
             error("Something's gone wrong!!! Orbit class unknown!")
         end
 
-        #topview plot
+        # Topview plot
         plt_top = Plots.plot(topview_R_lfs_x,topview_R_lfs_y, label=tokamak*" wall", color=:black, linewidth=1.5)
         plt_top = Plots.plot!(topview_R_hfs_x,topview_R_hfs_y, label="", color=:black,linewidth=1.5, aspect_ratio=:equal, title="Top view")
         if uppercase(diagnostic_name)=="TOFOR"
@@ -373,7 +373,7 @@ function app(req)
             end
         end
 
-        #cross-sectional plot
+        # Cross-sectional plot
         if uppercase(diagnostic_name)=="TOFOR"
             plt_crs = Plots.plot(VC_RP,VC_zP,color=:green3, linewidth=1.2,label="")
         elseif uppercase(diagnostic_name)=="AB"
@@ -405,12 +405,12 @@ function app(req)
             end
         end
 
-        #topological plot
+        # Topological plot
         Eci = argmin(abs.(collect(E_range) .- E))
         if (phase_space==:OS) || !enable_COM
             pm_range_ext = vcat(pm_range[1]-(diff(pm_range))[1],pm_range) # Extend pm_range one row below
             topoMap_ext = vcat(vcat([1,2,3,4,5,6,7,8,9],ones(length(Rm_range)-9))', topoMap[Int64(Eci),:,:]) # Extend topoMap one row below, to ensure correct colormapping for orbit types (please see calcTopoMap.jl for more info). The y-limits (ylims) will make sure the extra row is not visible in the plot
-            plt_topo = Plots.heatmap(Rm_range,pm_range_ext,topoMap_ext[Int64(Eci),:,:],color=:Set1_9,legend=false,xlabel="Rm [m]", ylabel="pm", title="E: $(round(E,digits=3)) keV", ylims=extrema(pm_range), xlims=extrema(Rm_range))
+            plt_topo = Plots.heatmap(Rm_range,pm_range_ext,topoMap_ext,color=:Set1_9,legend=false,xlabel="Rm [m]", ylabel="pm", title="E: $(round(E,digits=3)) keV", ylims=extrema(pm_range), xlims=extrema(Rm_range))
             plt_topo = Plots.plot!(maximum(wall.r).*ones(length(pm_range)), pm_range, color=:black, linewidth=2)
         else
             if pm<0.0
@@ -435,7 +435,7 @@ function app(req)
             end
         end
 
-        #weight signal plot
+        # Weight signal plot
         pmci = argmin(abs.(pm_range .- pm)) # Find the closest match
         Rmci = argmin(abs.(Rm_range .- Rm)) # Find the closest match
         plt_sigw = Plots.plot(Ed_array, W_correct[:,Eci,pmci,Rmci]./maximum(W_correct[:,Eci,pmci,Rmci]), xlabel="Diagnostic energy [keV]", legend=false,title="1.0 = $(round(maximum(W_correct[:,Eci,pmci,Rmci]),sigdigits=4))")
