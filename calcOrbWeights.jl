@@ -538,7 +538,7 @@ verbose && println("Setting all Python variables and structures on all distribut
     Ed_vals = 0.5*(Ed_bin_edges[1:] + Ed_bin_edges[:-1]) # bin centers (keV or m/s)
     """
 end
-Ed_array = vec(py"Ed_vals")
+Ed_array = Vector(py"Ed_vals")
 @everywhere Ed_array = $Ed_array
 
 ## ---------------------------------------------------------------------------------------------
@@ -555,8 +555,25 @@ end
 
 # If a thermal species distribution has not been specified, we simply need the thermal species temperature and density on axis
 if filepath_thermal_distr==""
-    thermal_temp = thermal_temp_axis
-    thermal_dens = thermal_dens_axis
+    verbose && println("The 'filepath_thermal_distr' was not specified. Checking the 'thermal_profiles_type' input variable... ")
+    if thermal_profiles_type==:FLAT
+        verbose && println("Found :FLAT! Thermal profiles will be constant throughout the plasma.")
+        thermal_temp = thermal_temp_axis
+        thermal_dens = thermal_dens_axis
+    elseif thermal_profiles_type==:DEFAULT
+        verbose && println("Found :DEFAULT! Thermal profiles will be as returned by getAnalyticalTemp() and getAnalyticalDens() functions in OWCF/misc/temp_n_dens.jl.")
+        rho_array = collect(0.0,stop=1.0,length=100)
+        thermal_temp_array = [getAnalyticalTemp(thermal_temp_axis, rho) for rho in rho_array]
+        thermal_dens_array = [getAnalyticalDens(thermal_dens_axis, rho) for rho in rho_array]
+        thermal_temp_itp = Interpolations.interpolate((rho_array,), thermal_temp_array, Gridded(Linear()))
+        thermal_dens_itp = Interpolations.interpolate((rho_array,), thermal_dens_array, Gridded(Linear()))
+        thermal_temp_etp = Interpolations.extrapolate(thermal_temp_itp,0) # Add what happens in extrapolation scenario. 0 means we assume vacuum scrape-off layer (SOL)
+        thermal_dens_etp = Interpolations.extrapolate(thermal_dens_itp,0) # Add what happens in extrapolation scenario. 0 means we assume vacuum scrape-off layer (SOL)
+        thermal_temp = thermal_temp_etp
+        thermal_dens = thermal_dens_etp
+    else
+        error("The 'thermal_profiles_type' input variable was not specified correctly. Currently available options are :FLAT and :DEFAULT. Please correct and re-try.")
+    end
 end
 
 # If a TRANSP .cdf file and a TRANSP FI .cdf file have been specified for the thermal species distribution, we have everything we need in the Python thermal_dist variable
