@@ -223,7 +223,7 @@ import numpy as np
 """
 
 ## ------
-# Extract y-axis units for S and/or WF from ylabel input variable
+# Extract y-axis units for S and/or WF from xlabel input variable
 Ed_units = String(split(split(xlabel,"[")[2],"]")[1])
 
 ## ------
@@ -289,6 +289,8 @@ if haskey(myfile,"Wtot")
     W_correct = myfile["Wtot"]
 elseif haskey(myfile,"W_null")
     W_correct = myfile["W_null"]
+elseif haskey(myfile,"W")
+    W_correct = myfile["W"]
 else
     error("No known keys in filepath_W for the orbit weight functions. Please correct and re-try.")
 end
