@@ -2518,7 +2518,7 @@ The keyword arguments are:
 - nR - If R_array is unspecified, nR major radius grid points between R_LCFS_HFS and R_LCFS_LFS will be used. Defaults to 50 - Int64
 - nz - If z_array is unspecified, nz major radius grid points between z_LCFS_HFS and z_LCFS_LFS will be used. Defaults to 60 - Int64
 - B_abs_Rz - The norm of the magnetic field at all (R,z) points, i.e. ||B(R,z)|| - AbstractMatrix
-- Psi_Rz - The poloidal flux at all (R,z) points, i.e. Ψ(R,z) - AbstractMatrix
+- psi_Rz - The poloidal flux at all (R,z) points, i.e. ψ(R,z) - AbstractMatrix
 - RBT_Rz - The poloidal current at all (R,z) points, i.e. R(R,z) .*Bϕ(R,z) - AbstractMatrix
 - FI_species - The particle species of the ion. Please see OWCF/misc/species_func.jl for a list of available particle species - String
 - verbose - If set to true, the function will talk a lot! - Bool
@@ -2526,7 +2526,7 @@ The keyword arguments are:
 function getCOMTopoMap(M::AbstractEquilibrium, E::Real, mu_array::AbstractVector, Pphi_array::AbstractVector; 
                        sigma::Int64=1, R_array::AbstractVector=nothing, z_array::AbstractVector=nothing, 
                        nR::Int64=50, nz::Int64=60, B_abs_Rz::Union{AbstractMatrix,Nothing}=nothing,
-                       Psi_Rz::Union{AbstractMatrix,Nothing}=nothing,RBT_Rz::Union{AbstractMatrix,Nothing}=nothing,
+                       psi_Rz::Union{AbstractMatrix,Nothing}=nothing,RBT_Rz::Union{AbstractMatrix,Nothing}=nothing,
                        FI_species::String="D", verbose::Bool=false, kwargs...)
     if !(sigma==1 || sigma==-1)
         error("Keyword 'sigma' must be specified as either +1 or -1. Please correct and re-try.")
@@ -2568,21 +2568,21 @@ function getCOMTopoMap(M::AbstractEquilibrium, E::Real, mu_array::AbstractVector
         return map(x-> (x > 0.0) ? x : 0.0, res)
     end
 
-    topoMap = @showprogress 1 "Computing topoMap for E=$(E) keV... " @distributed (+) for (iPphi,Pphi) in enumerate(Pphi_array)
-        topoMap_i = 9 .*ones(Int64,(length(mu_array),length(Pphi_array))) # Initially assume all (E,mu,Pphi) triplets are invalid (9)
+    topoMap = @showprogress 1 "Computing topoMap for E=$(E) keV... " @distributed (+) for iPphi in eachindex(Pphi_array)
+        Pphi = Pphi_array[iPphi]
+        topoMap_i = zeros(Int64,(length(mu_array),length(Pphi_array))) # Initially assume all (E,mu,Pphi) triplets are invalid (9)
         mu_Rz = _mu_func(Pphi) # Mu as a function of (R,z), for a specific Pphi
         mu_max = maximum(mu_Rz)
         valid_mu_indices = findall(x-> x<=mu_max && x>0,mu_array)
-        cls = Contour.contours(R_array,z_array,transpose(mu_Rz),mu_array[valid_mu_indices])
+        cls = Contour.contours(R_array,z_array,mu_Rz,mu_array[valid_mu_indices])
+        cls = Contour.levels(cls) # Turn into iterable
         for j in eachindex(cls) # For each mu-contour index
             lns = Contour.lines(cls[j]) # Get the lines of that contour level (might be several lines)
             closed_lines = []
             Rm_of_closed_lines = []
             for ln in lns # For line in lines
                 Rl, zl = Contour.coordinates(ln) # Get the (R,z) points of the contour line
-                closed_curve_measure = sqrt((Rll[end]-Rll[1])^2  +(zll[end]-zll[1])^2)
-                closed_curve_ref = sqrt((Rll[end]-Rll[end-1])^2  +(zll[end]-zll[end-1])^2) # MAYBE RE-WRITE THIS BY UTILIZING THAT END AND 1 ARE THE SAME FOR CLOSED CONTOURS.JL
-                if isapprox(closed_curve_measure, closed_curve_ref, atol=1e-1) # Is it a closed mu-contour?
+                if Rl[1]==Rl[end] && zl[1]==zl[end] # Is it a closed mu-contour? If so, Contour.jl puts the first point equal to the last
                     Rm = Rl[argmax(Rl)] # The maximum major radius (Rm) coordinate of the closed mu-contour
                     push!(closed_lines,ln)
                     push!(Rm_of_closed_lines,Rm)
@@ -2592,8 +2592,10 @@ function getCOMTopoMap(M::AbstractEquilibrium, E::Real, mu_array::AbstractVector
                 mu = mu_array[valid_mu_indices[j]] # The mu value for this particular orbit (closed line)
                 oi = orb_select_func(Rm_of_closed_lines) # Select the relevant one (co- or counter-current)
                 Ro, zo = Contour.coordinates(closed_lines[oi]) # Get the (R,z) points of the orbit
-                po = [sqrt(1-mu*Equilibrium.Bfield(M,Ro[k],zo[k])/E_joule) for k in eachindex(Ro)] # Compute the pitch (v_||/v) for all (R,z) points of the orbit
+                po = [sqrt(getSpeciesMass(FI_species)/(2*E_joule))*(Pphi-getSpeciesCharge(FI_species)*M(Ro[k],zo[k]))*norm(Vector(Equilibrium.Bfield(M,Ro[k],zo[k])))/(getSpeciesMass(FI_species)*Ro[k]*Vector(Equilibrium.Bfield(M,Ro[k],zo[k]))[2]) for k in eachindex(Ro)] # Compute the (classical) pitch (v_||/v) from Pphi and E. v_||/v = sqrt(m/(2*E))*(Pphi-q*ψ)*B/(m*R*B_phi)
+                #po = [sqrt(1-mu*norm(Vector(Equilibrium.Bfield(M,Ro[k],zo[k])))/E_joule) for k in eachindex(Ro)] # Compute the pitch (v_||/v) for all (R,z) points of the orbit
                 o_class = GuidingCenterOrbits.classify(Ro,zo,po,magnetic_axis(M)) # Deduce the orbit class from the (R,z), pitch and magnetic axis points
+                display(Plots.plot(Plots.plot(Ro,zo,title="$(o_class)",aspect_ratio=:equal),Plots.plot(po),layout=(1,2)))
                 o_path = OrbitPath(false,true,E*ones(length(Ro)),po,Ro,zo,zero(zo),zero(zo)) # Create an OrbitPath object (struct). Don't assume vacuum (false), include drift effects (true), and we don't know anything about phi and dt (zero(zo))
                 o = Orbit(HamiltonianCoordinate(E, mu, Pphi; amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species)), o_class, zero(E), zero(E), o_path, false) # Create an Orbit struct. We don't know tau_p and tau_t (zero(E)) and we don't know if guiding-center equation of motion are valid (false)
                 topoMap_i[valid_mu_indices[j],iPphi] = class2int(M, o) # Give the orbit an integer identification number, according to OWCF/calcTopoMap.jl rules
@@ -2601,6 +2603,7 @@ function getCOMTopoMap(M::AbstractEquilibrium, E::Real, mu_array::AbstractVector
         end
         topoMap_i # Declare for @distribution reduction (+)
     end
+    topoMap[topoMap .== 0.0] .= 9 # Set all invalid orbits to integer 9
     return topoMap
 end
 
@@ -2621,14 +2624,14 @@ The keyword arguments are:
 - nR - If R_array is unspecified, nR major radius grid points between R_LCFS_HFS and R_LCFS_LFS will be used. Defaults to 50 - Int64
 - nz - If z_array is unspecified, nz major radius grid points between z_LCFS_HFS and z_LCFS_LFS will be used. Defaults to 60 - Int64
 - B_abs_Rz - The norm of the magnetic field at all (R,z) points, i.e. ||B(R,z)|| - AbstractMatrix
-- Psi_Rz - The poloidal flux at all (R,z) points, i.e. Ψ(R,z) - AbstractMatrix
+- psi_Rz - The poloidal flux at all (R,z) points, i.e. ψ(R,z) - AbstractMatrix
 - RBT_Rz - The poloidal current at all (R,z) points, i.e. R(R,z) .*Bϕ(R,z) - AbstractMatrix
 - verbose - If set to true, the function will talk a lot! - Bool
 """
 function getCOMTopoMap(M::AbstractEquilibrium, E_array::AbstractVector, mu_array::AbstractVector, 
                        Pphi_array::AbstractVector; sigma::Int64=1, R_array::Union{AbstractVector,Nothing}=nothing, 
                        z_array::Union{AbstractVector,Nothing}=nothing, nR::Int64=50, nz::Int64=60, 
-                       B_abs_Rz::Union{AbstractMatrix,Nothing}=nothing, Psi_Rz::Union{AbstractMatrix,Nothing}=nothing,
+                       B_abs_Rz::Union{AbstractMatrix,Nothing}=nothing, psi_Rz::Union{AbstractMatrix,Nothing}=nothing,
                        RBT_Rz::Union{AbstractMatrix,Nothing}=nothing, verbose::Bool=false, kwargs...)
     if !(sigma==1 || sigma==-1)
         error("Keyword 'sigma' must be specified as either +1 or -1. Please correct and re-try.")
