@@ -427,7 +427,7 @@ class SpectrumCalculator:
         # Emission directions
         if self.u1 is None:
             u1 = sampler.sample_sphere(self.n_samples)   # random emission directions
-        elif self.product_state == 'GS': #!#
+        elif self.product_state == 'gs': #!#
             u1 = np.asarray(self.u1) / np.linalg.norm(self.u1, ord=2, axis=0) # norm=1 is forced, since it has to be a unit vector
             if u1.ndim == 1:
                 u1 = np.array(u1).reshape(3,1)   # same emission direction for all particles
@@ -459,7 +459,7 @@ class SpectrumCalculator:
         weights_tot = self.weights * sigmav        
 
         #!# If a relativistic Doppler shift has to be added on top
-        if self.product_state != 'GS':
+        if self.product_state != 'gs':
             beta_1 = P1[1:] / P1[0]
             gamma_1 = (1 - np.sum(beta_1**2,axis=0))**-0.5
             E_s = self.product_1.E_g  #!# energy at source
