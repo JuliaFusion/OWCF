@@ -125,7 +125,7 @@
 # OWCF folder when weightsWebApp.jl is executed. This is to be able to load the
 # correct versions of the Julia packages as specified in the Project.toml and 
 # Manifest.toml files.
-folderpath_OWCF = "" # Finish with '/'
+folderpath_OWCF = "C:/Users/anvalen/OneDrive - Danmarks Tekniske Universitet/Skrivebord/OWCF_stuff/OWCF/" # Finish with '/'
 cd(folderpath_OWCF)
 using Pkg
 Pkg.activate(".")
@@ -134,25 +134,26 @@ Pkg.activate(".")
 # Inputs
 port = 9999 # The computer connection port to connect to the web app with
 verbose = true # If true, then the app will talk a lot!
-filepath_tb = "" # .jld2 file with orbit-space topological boundaries (see extractTopoBounds.jl, and/or calcTopoMap.jl)
+filepath_tb = "RESULTS/3_2stepGRS_flrON/topoBounds_JET__at53,0012s_4He_10x100x100_wIncompwLost.jld2" # .jld2 file with orbit-space topological boundaries (see extractTopoBounds.jl, and/or calcTopoMap.jl)
 enable_COM = false # Set to true if you would like to be able to switch between (E,pm,Rm) and (E,mu,Pphi;sigma). Please note! This will require extra loading time and computer resources!
 if enable_COM
     filepath_W_COM = "" # If you would like to be able to switch to (E,mu,Pphi;sigma), you should definitely provide the path to a file containing the orbit weight matrix mapped to COM (E,mu,Pphi;sigma). This will greatly speed-up pre-app computations
     # OR
     filepath_tm = "" # If you have not computed such a file, you should at least provide the path to a topological map file. Otherwise, the orbit grid will need to be computed from scratch
 end
-filepath_equil = "" # The equilibrium file containing magnetic equilibrium data
-diagnostic_filepath = "" # The file path to the LINE21 output file, containing viewing cone data for the diagnostic
-diagnostic_name = "" # Diagnostic sightline aestethic keyword. E.g: "TOFOR", "AB" or ""
-filepath_W = ""
+filepath_equil = "equilibrium/JET/g96100/g96100_0-53.0012.eqdsk" # The equilibrium file containing magnetic equilibrium data
+diagnostic_filepath = "vc_data/TOFOR/TOFOR.vc" # The file path to the LINE21 output file, containing viewing cone data for the diagnostic
+diagnostic_name = "TOFOR" # Diagnostic sightline aestethic keyword. E.g: "TOFOR", "AB" or ""
+filepath_W = "../OWCF_remote/OUTPUT/1_2stepGRS_HighRes/orbWeights4D_JET__at53,0012s_TOFOR_9Be-4He=12C-n_149x10x100x100.jld2"
 (plot_Fos = false) && (filepath_Fos3D = "") # Enable and specify an orbit-space fast-ion distribution file (3D-format)
-(plot_S = false) && (filepath_spec = "")
+(plot_S = true) && (true)
+filepath_spec = ""
 specFileJLD2 = true # Assume .jld2 file format for signal file by default. Otherwise, assume .hdf5 file format. Only applicable if plot_S==true
 (showNullOrbs = false) && (filepath_no = "")
 (plot_S_WF = false) && (filepath_WF = "")
-FI_species = "" # Specify with D, T, p, 3he etc
-xlabel = "" # Example neutron energy: "Neutron energy [keV]". Example projected velocity: "Projected velocity [m/s]"
-ylabel = "" # Example neutron count: "Neutron count [(keV*s)^-1]". Example projected velocity signal: "Projected velocity signal [m^-1]"
+FI_species = "4He" # Specify with D, T, p, 3he etc
+xlabel = "Gamma energy [keV]" # Example neutron energy: "Neutron energy [keV]". Example projected velocity: "Projected velocity [m/s]"
+ylabel = "Gamma count [(keV*s)^-1]" # Example neutron count: "Neutron count [(keV*s)^-1]". Example projected velocity signal: "Projected velocity signal [m^-1]"
 # The projected velocity signal units work because if we integrate the signal, we should get the number of counts per second. So [m^-1]*[m/s] = [s^-1]
 verbose = true
 
@@ -285,8 +286,8 @@ end
 analyticalOWs = false # Define this for its own sake
 verbose && println("Loading weight function ("*filepath_W*")... ")
 myfile = jldopen(filepath_W,false,false,false,IOStream)
-if haskey(myfile,"Wtot")
-    W_correct = myfile["Wtot"]
+if haskey(myfile,"W")
+    W_correct = myfile["W"]
 elseif haskey(myfile,"W_null")
     W_correct = myfile["W_null"]
 else
@@ -404,7 +405,7 @@ end
 
 ## ----------
 # Load the true signal S for plotting and following neutron energy
-if plot_S
+if plot_S && (isfile(filepath_spec))
     verbose && println("Loading synthetic signal ("*filepath_spec*")... ")
     if !specFileJLD2
         myfile = h5open(filepath_spec)
@@ -874,6 +875,8 @@ function app(req)
                 sig_color = :green3
             elseif uppercase(diagnostic_name)=="AB"
                 sig_color = :red1
+            elseif uppercase(diagnostic_name)=="KM6T"
+                sig_color = :blue1
             else
                 sig_color = :gray
             end
@@ -884,10 +887,16 @@ function app(req)
                 Edi_WF = (findfirst(x-> x>=Ed,Ed_array_WF))[1] # Should be perfect match with weights
                 plt_sig = Plots.scatter!([Ed_array_WF[Edi_WF]],[(S_WF[irec,:])[Edi_WF]],markersize=5.0,markercolor=sig_color, title="Ed: $(round(Ed,digits=4)) "*Ed_units*"  S: $(round((spec)[Edi_S],sigdigits=4))  WF: $(round((S_WF)[Edi_WF],sigdigits=4))", label="", legend=true)
                 plt_sig = Plots.scatter!([Ed_array_S[Edi_S]],[spec[Edi_S]],markersize=5.0,markercolor=:black, label="")
-            else
+            elseif filepath_spec !== ""
                 plt_sig = Plots.plot(Ed_array_S, spec, color=sig_color, linewidth=2.0, xlabel=xlabel, ylabel=((ylabel=="" || ylabel==nothing) ? "[a.u.]" : ylabel), label="S")
                 Edi_S = (findfirst(x-> x>=Ed,Ed_array_S))[1]
                 plt_sig = Plots.scatter!([Ed_array_S[Edi_S]],[spec[Edi_S]],markersize=5.0,markercolor=sig_color, title="Ed: $(round(Ed,digits=4)) "*Ed_units*"  S: $(round((spec)[Edi_S],sigdigits=4))", label="", legend=true)
+            else
+                pmci = argmin(abs.(pm_array .- pm)) # Find the closest match
+                Rmci = argmin(abs.(Rm_array .- Rm)) # Find the closest match
+                spec = W_correct[:,Ei,pmci,Rmci]./maximum(W_correct[:,Ei,pmci,Rmci])
+                plt_sig = Plots.plot(Ed_array, spec, xlabel="Diagnostic energy [keV]", legend=false,title="1.0 = $(round(maximum(W_correct[:,Ei,pmci,Rmci]),sigdigits=4))")
+                plt_sig = Plots.scatter!([Ed_array[Edi]],[spec[Edi]],markersize=5.0, markercolor=:black, title="Ed: $(round(Ed,digits=4)) "*Ed_units,label="", legend=false, xlims=[minimum(Ed_array),maximum(Ed_array)], ylims=[-0.1,1.5],xlabel=xlabel,ylabel="Normalized orbit signal [a.u.]")
             end
         else
             Edi = (findfirst(x-> x>=Ed,Ed_array))[1]
