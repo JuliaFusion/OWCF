@@ -4,7 +4,7 @@
 import os
 
 import numpy as np
-import scipy.interpolate as interp
+from scipy.interpolate import interp1d
 from scipy.special import legendre
 import pandas as pd
 from scipy.interpolate import RegularGridInterpolator
@@ -15,6 +15,8 @@ import constants
 # Load Legendre coefficients for DD differential cross section
 # -----------------------------------------------------------------
 dd_coeff_endf = np.loadtxt('fit_data/ddn3he_legendre_endf.txt').T
+# Same, but for DT neutrons
+dt_coeff_endf = pd.read_csv("fit_data/dtn4He_legendre_Drosg.txt",sep="\t",header=None)
 
 # Convert from LAB to COM (equal masses) and energies to keV
 dd_coeff_endf[0,:] = dd_coeff_endf[0,:]/2000
@@ -178,7 +180,7 @@ def sigma_tot(E, reaction='d-d'):
     return sigma * 1e-31     # m**2
 
 
-def sigma_diff(E, costheta, reaction='d-d', product_state='GS', anisotropic=True):
+def sigma_diff(E, costheta, reaction='d-d', product_state='gs', anisotropic=True):
     """
     Returns the differential fusion cross section (in m**2/sr) for a vector of CM energies (in keV).
     """
@@ -192,7 +194,7 @@ def sigma_diff(E, costheta, reaction='d-d', product_state='GS', anisotropic=True
     if reaction == 'd-d' and anisotropic:
         # Compute the angular dependence of the DD reaction
         coeff = dd_coeff_endf
-        A     = interp.interp1d(coeff[0],coeff[1:], fill_value=0, bounds_error=False)(E)
+        A     = interp1d(coeff[0],coeff[1:], fill_value=0, bounds_error=False)(E)
         prob  = 0.5*np.ones_like(E)
 
         for i in range(n_dd_coeff):
@@ -268,6 +270,30 @@ def sigma_diff(E, costheta, reaction='d-d', product_state='GS', anisotropic=True
         E /= 1000 # MeV
         sigma = interp((E,-1*costheta)) * 1e-31 # m**2/sr; the -1 factor is due to the carbon-12 being followed, and not the neutron (for which we have the emission probability, technically)
         
+    elif all(p in [a,b] for p in ['d','t']): 
+        # t(d,n)4he reaction. Tabulated data from Drosg2015, IAEA Nuclear Data Section, Vienna.
+        df = dt_coeff_endf
+
+        # Define energy,cosCM interpolating grid
+        low_bound = 0.9 * np.min(E)*(constants.md+constants.mt)/constants.mt
+        max_bound = 1.1 * np.max(E)*(constants.md+constants.mt)/constants.mt
+        x, y = np.linspace(low_bound, max_bound,1000), np.linspace(-1,1,300)
+
+        sigma_totale = sigma_tot(constants.mt/(constants.md+constants.mt)*x,'d-t')
+        A = interp1d(df[0].to_numpy(dtype=np.float64),
+                     df.iloc[:, 2:].to_numpy(dtype=np.float64), 
+                     axis=0,fill_value=0, bounds_error=False)(x*10**-3)
+        obj_f = (sigma_totale/2/A[:,0])[:,np.newaxis] * np.sum([A[:,l][:,np.newaxis]*
+                                                                legendre(l)(y)[np.newaxis,:]
+                                                                for l in range(df.shape[1]-2)],axis=0)
+        interpolatore = RegularGridInterpolator((x,y), 
+                                                np.nan_to_num(obj_f),
+                                                fill_value=0, bounds_error=False)
+
+        # Interpolate over requested values; zero values will give no contribution to the spectra
+        E_deuterium_beam = E * (constants.md+constants.mt)/constants.mt
+        sigma = interpolatore((E_deuterium_beam,costheta)) /2/np.pi # m**2/sr;
+
     else:
         # Assume that the other cross sections are isotropic
         sigma = sigma_tot(E, reaction=reaction)/(4*np.pi)

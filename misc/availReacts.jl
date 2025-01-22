@@ -50,49 +50,59 @@ function checkReaction(reaction_full::String; verbose::Bool=false, projVelocity:
     # Account for the possibility of faulty user input. D(D,n)3He is correct. But user might input D(D,3He)n.
     if lowercase(thermal_reactant)=="d" && lowercase(fast_reactant)=="d" && ((lowercase(emitted_particle)=="n" && lowercase(product_nucleus)=="3he") || (lowercase(emitted_particle)=="3he" && lowercase(product_nucleus)=="n"))
         verbose && println("Accepted nuclear reaction: "*reaction_full)
-        return "d","d"
+        return "d","d","DD_neutrons"
     end
 
     # Account for the possibility of faulty user input. T(p,g)4He is correct. But user might input T(p,4He)g.
     if lowercase(thermal_reactant)=="t" && lowercase(fast_reactant)=="p" && ((lowercase(emitted_particle)=="g" && lowercase(product_nucleus)=="4he") || (lowercase(emitted_particle)=="4he" && lowercase(product_nucleus)=="g"))
         verbose && println("Accepted nuclear reaction: "*reaction_full)
-        return "T","p"
+        return "T","p","Tp_gammas"
     end
 
     # Account for the possibility of faulty user input. p(T,g)4He is correct. But user might input p(T,4He)g.
     if lowercase(thermal_reactant)=="p" && lowercase(fast_reactant)=="t" && ((lowercase(emitted_particle)=="g" && lowercase(product_nucleus)=="4he") || (lowercase(emitted_particle)=="4he" && lowercase(product_nucleus)=="g"))
         verbose && println("Accepted nuclear reaction: "*reaction_full)
-        return "p","T"
+        return "p","T","pT_gammas"
     end
 
     # Account for the possibility of faulty user input. D(T,n)4He is correct. But user might input D(T,4He)n.
-    if lowercase(thermal_reactant)=="d" && lowercase(fast_reactant)=="t" && ((lowercase(emitted_particle)=="n" && lowercase(product_nucleus)=="4he") || (lowercase(emitted_particle)=="4he" && lowercase(product_nucleus)=="n"))
-        verbose && println("Accepted nuclear reaction: "*reaction_full)
-        return "D","T"
+    if lowercase(thermal_reactant)=="d" && lowercase(fast_reactant)=="t"
+        if lowercase(emitted_particle)=="n" && lowercase(product_nucleus)=="4he"
+            verbose && println("Accepted nuclear reaction: "*reaction_full)
+            return "D","T","DT_neutrons"
+        elseif lowercase(emitted_particle)=="4he" && lowercase(product_nucleus)=="n"
+            verbose && println("Accepted nuclear reaction: "*reaction_full)
+            return "D","T","DT_alphas"
+        end
     end
 
     # Account for the possibility of faulty user input. T(D,n)4He is correct. But user might input T(D,4He)n.
-    if lowercase(thermal_reactant)=="t" && lowercase(fast_reactant)=="d" && ((lowercase(emitted_particle)=="n" && lowercase(product_nucleus)=="4he") || (lowercase(emitted_particle)=="4he" && lowercase(product_nucleus)=="n"))
-        verbose && println("Accepted nuclear reaction: "*reaction_full)
-        return "T","D"
+    if lowercase(thermal_reactant)=="t" && lowercase(fast_reactant)=="d"
+        if lowercase(emitted_particle)=="n" && lowercase(product_nucleus)=="4he"
+            verbose && println("Accepted nuclear reaction: "*reaction_full)
+            return "T","D","TD_neutrons"
+        elseif lowercase(emitted_particle)=="4he" && lowercase(product_nucleus)=="n"
+            verbose && println("Accepted nuclear reaction: "*reaction_full)
+            return "T","D","TD_neutrons"
+        end
     end
 
     # Account for the possibility of faulty user input. 3He(D,p)4He is correct. But user might input 3He(D,4He)p.
     if lowercase(thermal_reactant)=="3he" && lowercase(fast_reactant)=="d" && ((lowercase(emitted_particle)=="p" && lowercase(product_nucleus)=="4he") || (lowercase(emitted_particle)=="4he" && lowercase(product_nucleus)=="p"))
         verbose && println("Accepted nuclear reaction: "*reaction_full)
-        return "3He","D"
+        return "3He","D","3HeD_protons"
     end
 
     # Account for the possibility of faulty user input. D(3He,p)4He is correct. But user might input D(3He,4He)p.
     if lowercase(thermal_reactant)=="D" && lowercase(fast_reactant)=="3he" && ((lowercase(emitted_particle)=="p" && lowercase(product_nucleus)=="4he") || (lowercase(emitted_particle)=="4he" && lowercase(product_nucleus)=="p"))
         verbose && println("Accepted nuclear reaction: "*reaction_full)
-        return "D","3He"
+        return "D","3He","D3He_protons"
     end
 
     #!# Account for the possibility of faulty user input. 9Be(4He,12C)n is correct. 
     if lowercase(thermal_reactant)=="9be" && lowercase(fast_reactant)=="4he" && ((lowercase(emitted_particle)=="12c" && lowercase(product_nucleus)=="n") || (lowercase(emitted_particle)=="n" && lowercase(product_nucleus)=="12c"))
         verbose && println("Accepted nuclear reaction: "*reaction_full)
-        return "9Be","4He"
+        return "9Be","4He","9Be4He_gammas"
     end    
 
     # No valid reaction detected
@@ -102,8 +112,15 @@ function checkReaction(reaction_full::String; verbose::Bool=false, projVelocity:
 end
 
 function full2reactsOnly(reaction_full::String; kwargs...)
-    thermal_species, FI_species = checkReaction(reaction_full; kwargs...)
+    thermal_species, FI_species, reactionName = checkReaction(reaction_full; kwargs...)
 
     # Convert the full fusion reaction to reactant format (used as input to Python framework)
     return thermal_species*"-"*FI_species
+end
+
+function getReactionName(reaction_full::String; kwargs...)
+    thermal_species, FI_species, reaction_name = checkReaction(reaction_full; kwargs...)
+
+    # Return the reaction type string only
+    return reaction_name
 end
