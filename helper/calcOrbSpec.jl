@@ -33,13 +33,14 @@ Calculate the expected diagnostic spectrum of one orbit. The inputs are as follo
 - Ed_bins - The diagnostic measurement bins into which the synthetic measurements will be binned
 - reaction - The reactants of the considered fusion reaction. Format is 'a-b' where a is the thermal species, and b is the fast-ion species
 Keyword arguments include
+- reaction_name - Needed to define the reaction within the analytical calculation routine
 - o_interp_length - The number of time points onto which the orbit trajectory will be interpolated. Equidistant points in time are used
 - product_state - can be GS, 1L, 2L, etc. Default to Ground State #!#
 - thermal_temp - An input variable with the thermal species temperature profile that the user has specified. It allows for no profile at all, as well as a single value on-axis (in keV)
 - thermal_dens - An input variable with the thermal species density profile that the user has specified. It allows for no profile at all, as well as a single value on-axis (in m^-3)
 - debug - A boolean debug input variable. If set to true, the function will run in debug-mode.
 """
-function calcOrbSpec(M::AbstractEquilibrium, o::Orbit{Float64, EPRCoordinate{Float64}}, nfast::Float64, forward::PyObject, thermal_dist::Union{PyObject,AbstractString}, Ed_bins::AbstractArray, reaction::AbstractString; analyticCalc::Bool=false, o_interp_length=500, product_state::AbstractString="GS", thermal_temp::Union{Nothing,Float64,Int64,Interpolations.Extrapolation,Interpolations.FilledExtrapolation}=3.0, thermal_dens::Union{Nothing,Float64,Int64,Interpolations.Extrapolation,Interpolations.FilledExtrapolation}=1.0e19, debug::Bool=false)
+function calcOrbSpec(M::AbstractEquilibrium, o::Orbit{Float64, EPRCoordinate{Float64}}, nfast::Float64, forward::Union{PyObject,AbstractString}, thermal_dist::Union{Nothing,PyObject,AbstractString}, Ed_bins::AbstractArray, reaction::AbstractString, reaction_name::AbstractString; o_interp_length=500, product_state::AbstractString="GS", thermal_temp::Union{Nothing,Float64,Int64,Interpolations.Extrapolation,Interpolations.FilledExtrapolation}=3.0, thermal_dens::Union{Nothing,Float64,Int64,Interpolations.Extrapolation,Interpolations.FilledExtrapolation}=1.0e19, analyticCalc::Bool=false, debug::Bool=false)
 
     # Ensure that every orbit has o_interp_length number of EpRz points to serve as input to the spectrum calculator
     # We can assume that the EpRz points are equally distant in time, because this is ensured by GuidingCenterOrbits.get_orbit()
@@ -104,12 +105,20 @@ function calcOrbSpec(M::AbstractEquilibrium, o::Orbit{Float64, EPRCoordinate{Flo
     end
 
     if analyticCalc #!# analyticCalc.jl(...,product_state='GS')
-        #!# call LOS file 
-        #!# compute analytical spectra on the intersected points
-        #!# return spectrum
+        include(folderpath_OWCF*"vcone.jl")
+        include(folderpath_OWCF*"forward.jl")
+
+        vc_name = forward
+        if !(vc_name=="")
+            viewing_cone = ViewingCone(vc_name)
+        else
+            error("Analytical model with spherical 4*pi emission is NOT supported!")
+        end
+        spec = GetOrbSpec(viewing_cone, o_energy, clamp.(o_pitch,-1,1), o_R, o_z, o_w, Ed_bins, o_B; product_state=product_state, reaction_name=reaction_name, bulk_dens=thermal_dens_interp)
+        return spec
     else 
         spec = zeros(length(Ed_bins)-1)
-        stats = 1
+        stats = 10
         if product_state !== "GS"
             stats = 100
         end
