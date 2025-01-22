@@ -20,7 +20,7 @@
 #
 # THIS SCRIPT IS FUNCTIONALLY DONE. ONLY DOCUMENTATION REMAINS TO BE FINALIZED.
 #
-# Written by Andrea Valentini. Last maintained 2024-11-06
+# Written by Andrea Valentini. Last maintained 2025-01-20
 ######################################################################################################
 
 using NaNMath
