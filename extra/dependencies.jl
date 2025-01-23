@@ -1623,7 +1623,7 @@ end
 
 """
     class2int(M,o)
-    class2int(-||-; plot=false, distinguishLost=true, distinguishIncomplete=true)
+    class2int(-||-; sigma=0, plot=true, distinguishLost=false, distinguishIncomplete=false)
 
 Take an orbit, examine its class (stagnation, trapped, co-passing etc) and return 
 the appropriate integer. The integers are as follows
@@ -1635,6 +1635,8 @@ the appropriate integer. The integers are as follows
 9 - invalid
 
 Depending on the keyword arguments, give orbit appropriate integer
+- If sigma==0, all integers are available (default). If sigma==1 and if orbit is counter-current,
+  give 9. If sigma==-1 and if orbit is co-current, give 9.
 - If plot, give counter-stagnation orbits integer 8. Else, give 6
 - If distinguishLost, give lost orbits integer 7. Else, give 9
 - If distinguishIncomplete and plot, give incomplete orbits integer 6. Otherwise, give 9
@@ -1643,7 +1645,10 @@ Keyword argument 'plot' is meant to ensure correct color map when using output f
 If 'plot' is set to false, then you can simply feed all integers into a 6 element array and 
 have the valid orbits (stagnation, trapped, co-passing, counter-passing, potato and counter-stagnation) in bins 1 to 6.
 """
-function class2int(M::AbstractEquilibrium, o::GuidingCenterOrbits.Orbit;plot::Bool=true, distinguishLost::Bool=false, distinguishIncomplete::Bool=false)
+function class2int(M::AbstractEquilibrium, o::GuidingCenterOrbits.Orbit; sigma::Int64=0, plot::Bool=true, distinguishLost::Bool=false, distinguishIncomplete::Bool=false)
+    if !(sigma==0 || sigma==1 || sigma==-1)
+        error("Keyword argument 'sigma' not equal to 0, 1 or -1. Please correct and re-try.")
+    end
     if hasproperty(o.coordinate,:r) # If the orbit has an (E,pm,Rm) coordinate
         Rm = o.coordinate.r
     else # It must have an (E,mu,Pphi) coordinate
@@ -1657,19 +1662,19 @@ function class2int(M::AbstractEquilibrium, o::GuidingCenterOrbits.Orbit;plot::Bo
         return 7
     elseif (o.class == :incomplete) && distinguishIncomplete && plot
         return 6
-    elseif o.class == :trapped
+    elseif (o.class == :trapped) && !(sigma==-1)
         return 2
-    elseif o.class == :co_passing
+    elseif (o.class == :co_passing) && !(sigma==-1)
         return 3
-    elseif (o.class == :stagnation && Rm>=magnetic_axis(M)[1]) # Regular stagnation orbit
+    elseif (o.class == :stagnation) && (Rm>=magnetic_axis(M)[1]) && !(sigma==-1) # Regular stagnation orbit
         return 1
-    elseif (o.class == :stagnation && Rm<magnetic_axis(M)[1] && plot) # Counterstagnation orbit
+    elseif (o.class == :stagnation) && (Rm<magnetic_axis(M)[1]) && plot && !(sigma==1) # Counterstagnation orbit
         return 8
-    elseif (o.class == :stagnation && Rm<magnetic_axis(M)[1] && !plot) # Counterstagnation orbit, but treat as normal stagnation orbit
+    elseif (o.class == :stagnation) && (Rm<magnetic_axis(M)[1]) && !plot && !(sigma==1) # Counterstagnation orbit, but treat as normal stagnation orbit
         return 6
-    elseif o.class == :potato
+    elseif (o.class == :potato) && !(sigma==-1)
         return 5
-    elseif o.class == :ctr_passing
+    elseif (o.class == :ctr_passing) && !(sigma==1)
         return 4
     else
         return 9
@@ -2502,44 +2507,62 @@ function getOSTopoMap(M::AbstractEquilibrium, E_array::AbstractVector, pm_array:
 end
 
 """
-    getCOMTopoMap(M, E, mu_array, Pphi_array)
+    getCOMTopoMap(M, E, Λ_array, Pϕ_n_array)
     getCOMTopoMap(-||-; sigma=1, kwargs...)
 
-Compute the constants-of-motion space topological map for a specific energy slice given by the energy 'E' (keV).
+Compute the constants-of-motion (COM) space topological map for a specific energy slice given by the energy 'E' (keV).
 Output the topological map as a 2D Array of Int64. The input arguments are:
-- M - The abstract equilibrium Struct (Equilibrium.jl) containing all information on the magnetic equilibrium - AbstractEquilibrium
+- M - The abstract equilibrium Struct (Equilibrium.jl) containing all information about the magnetic equilibrium - AbstractEquilibrium
 - E - The energy (keV) of the topological map - Real
-- mu_array - The magnetic moment (mu) grid points of the topological map - AbstractVector
-- Pphi_array - The toroidal canonical angular momentum (Pphi) grid points of the topological map - AbstractVector
+- Λ_array - The normalized magnetic moment (Λ=μ*B0/E with B0=B(mag. axis)) grid points of the topological map - AbstractVector
+- Pϕ_n_array - The normalized toroidal canonical angular momentum (Pϕ_n=Pϕ/(q*|Ψ_w|) where q is the particle charge in Coulomb and Ψ_w is the poloidal
+                 flux at the last closed flux surface (LCFS)) grid points of the topological map. Please note! If Ψ(LCFS)==0 for some reason (e.g. by some
+                 convention), then Ψ_w=Ψ(mag. axis) is assumed - AbstractVector
 The keyword arguments are:
-- sigma - Binary index to identify co-passing (1) or counter-passing (-1) orbit, when (E,mu,Pphi) is a degenerate triplet - Int64
+- sigma - Binary index to identify co-passing (1) or counter-passing (-1) orbit, when (E,Λ,Pϕ_n) is a degenerate triplet - Int64
 - R_array - An array with major radius (R) points to be included as R grid points for the mu-contours - AbstractVector
 - z_array - An array with vertical coordinate (z) points to be included as z grid points for the mu-contours - AbstractVector
-- nR - If R_array is unspecified, nR major radius grid points between R_LCFS_HFS and R_LCFS_LFS will be used. Defaults to 50 - Int64
-- nz - If z_array is unspecified, nz major radius grid points between z_LCFS_HFS and z_LCFS_LFS will be used. Defaults to 60 - Int64
-- B_abs_Rz - The norm of the magnetic field at all (R,z) points, i.e. ||B(R,z)|| - AbstractMatrix
-- psi_Rz - The poloidal flux at all (R,z) points, i.e. ψ(R,z) - AbstractMatrix
-- RBT_Rz - The poloidal current at all (R,z) points, i.e. R(R,z) .*Bϕ(R,z) - AbstractMatrix
+- nR - If R_array is unspecified, nR major radius grid points between R_LCFS_HFS and R_LCFS_LFS will be used. Defaults to 100 - Int64
+- nz - If z_array is unspecified, nz major radius grid points between z_LCFS_HFS and z_LCFS_LFS will be used. Defaults to 120 - Int64
+- B_abs_Rz - The norm of the magnetic field at all (R,z) points, i.e. |B(R,z)|. Computed internally, if not specified - AbstractMatrix
+- psi_Rz - The poloidal flux at all (R,z) points, i.e. ψ(R,z). Computed internally, if not specified - AbstractMatrix
+- RBT_Rz - The poloidal current at all (R,z) points, i.e. R(R,z) .*Bϕ(R,z). Computed internally, if not specified - AbstractMatrix
 - FI_species - The particle species of the ion. Please see OWCF/misc/species_func.jl for a list of available particle species - String
 - verbose - If set to true, the function will talk a lot! - Bool
+- vverbose - If set to true, the function will talk even more, and plot too! - Bool
 """
-function getCOMTopoMap(M::AbstractEquilibrium, E::Real, mu_array::AbstractVector, Pphi_array::AbstractVector; 
+function getCOMTopoMap(M::AbstractEquilibrium, E::Real, Λ_array::AbstractVector, Pϕ_n_array::AbstractVector; 
                        sigma::Int64=1, R_array::AbstractVector=nothing, z_array::AbstractVector=nothing, 
-                       nR::Int64=50, nz::Int64=60, B_abs_Rz::Union{AbstractMatrix,Nothing}=nothing,
+                       nR::Int64=100, nz::Int64=120, B_abs_Rz::Union{AbstractMatrix,Nothing}=nothing,
                        psi_Rz::Union{AbstractMatrix,Nothing}=nothing,RBT_Rz::Union{AbstractMatrix,Nothing}=nothing,
-                       FI_species::String="D", verbose::Bool=false, kwargs...)
+                       FI_species::String="D", verbose::Bool=false, vverbose::Bool=false)
     if !(sigma==1 || sigma==-1)
         error("Keyword 'sigma' must be specified as either +1 or -1. Please correct and re-try.")
     end
     orb_select_func = sigma==1 ? argmax : argmin # If co-current (sigma==1) orbits are of interest, use argmax function. Otherwise (if sigma==-1), use argmin
+    E_joule = E*(GuidingCenterOrbits.e0)*1000 # from keV to Joule
+    m_FI = getSpeciesMass(FI_species) # kg
+    q_FI = getSpeciesCharge(FI_species) # Coloumb
+    psi_axis, psi_bdry = psi_limits(M)
+    if psi_bdry==0
+        @warn "The magnetic flux at the last closed flux surface (LCFS) is found to be 0 for the 'M' input to getCOMTopoMap(). Pϕ_n=Pϕ/(q*|Ψ_w|) where Ψ_w=Ψ(mag. axis) is assumed instead of Ψ_w=Ψ(LCFS)."
+        Ψ_w_norm = abs(psi_axis)
+    else
+        Ψ_w_norm = abs(psi_bdry)
+    end
+    B0 = norm(Equilibrium.Bfield(M,magnetic_axis(M)...))
+    mu_array = (E_joule/B0) .*Λ_array # Transform to μ, for easy contour computation
+    Pphi_array = (q_FI*Ψ_w_norm) .*Pϕ_n_array # Transform to Pϕ, for easy contour computation
 
-    if isnothing(R_array) || isnothing(z_array)
-        verbose && println("getCOMTopoMap(): R_array/z_array keyword argument not specified. Computing internally... ")
+    if vverbose || isnothing(R_array) || isnothing(z_array)
         if :r in fieldnames(typeof(M)) # If the magnetic equilibrium is an .eqdsk-equilibrium...
-            LCFS = Equilibrium.boundary(M,psi_limits(M)[2]) # Default 0.01 m (R,z) resolution to identify LCFS
+            LCFS = Equilibrium.boundary(M,psi_bdry) # Default 0.01 m (R,z) resolution to identify LCFS
         else # ...else, it must be a Solov'ev equilibrium (currently the only two types supported by the package Equilibrium.jl)
             LCFS = Equilibrium.boundary(M;n=500) # Default 500 (R,z) points to represent LCFS
         end
+    end
+    if isnothing(R_array) || isnothing(z_array)
+        verbose && println("getCOMTopoMap(): R_array/z_array keyword argument not specified. Computing internally... ")
         if isnothing(R_array)
             R_array = collect(range(minimum(LCFS.r),stop=maximum(LCFS.r),length=nR))
         end
@@ -2559,9 +2582,6 @@ function getCOMTopoMap(M::AbstractEquilibrium, E::Real, mu_array::AbstractVector
         verbose && println("getCOMTopoMap(): RBT_Rz keyword argument not specified. Computing internally... ")
         RBT_Rz = [poloidal_current(M,M(R,z)) for R in R_array, z in z_array] # RBT is short for R*Bϕ
     end
-    E_joule = E*(GuidingCenterOrbits.e0)*1000 # from keV to Joule
-    m_FI = getSpeciesMass(FI_species) # kg
-    q_FI = getSpeciesCharge(FI_species) # Coloumb
     verbose && println("getCOMTopoMap(): Defining magnetic moment (mu) as a function of toroidal canonical angular momentum (Pphi) input... ")
     function _mu_func(Pphi::Real)
         res = E_joule ./B_abs_Rz .- (B_abs_Rz ./(2*m_FI)) .* ((Pphi .- q_FI .*psi_Rz) ./RBT_Rz).^2
@@ -2593,12 +2613,17 @@ function getCOMTopoMap(M::AbstractEquilibrium, E::Real, mu_array::AbstractVector
                 oi = orb_select_func(Rm_of_closed_lines) # Select the relevant one (co- or counter-current)
                 Ro, zo = Contour.coordinates(closed_lines[oi]) # Get the (R,z) points of the orbit
                 po = [sqrt(getSpeciesMass(FI_species)/(2*E_joule))*(Pphi-getSpeciesCharge(FI_species)*M(Ro[k],zo[k]))*norm(Vector(Equilibrium.Bfield(M,Ro[k],zo[k])))/(getSpeciesMass(FI_species)*Ro[k]*Vector(Equilibrium.Bfield(M,Ro[k],zo[k]))[2]) for k in eachindex(Ro)] # Compute the (classical) pitch (v_||/v) from Pphi and E. v_||/v = sqrt(m/(2*E))*(Pphi-q*ψ)*B/(m*R*B_phi)
-                #po = [sqrt(1-mu*norm(Vector(Equilibrium.Bfield(M,Ro[k],zo[k])))/E_joule) for k in eachindex(Ro)] # Compute the pitch (v_||/v) for all (R,z) points of the orbit
+                po = clamp.(po,-1.0,1.0) # Clamp the pitch between -1.0 and 1.0, to adress numerical inaccuracies
                 o_class = GuidingCenterOrbits.classify(Ro,zo,po,magnetic_axis(M)) # Deduce the orbit class from the (R,z), pitch and magnetic axis points
-                display(Plots.plot(Plots.plot(Ro,zo,title="$(o_class)",aspect_ratio=:equal),Plots.plot(po),layout=(1,2)))
+                if vverbose 
+                    plt_crs = Plots.plot(Ro,zo,title="$(o_class)",aspect_ratio=:equal,label="")
+                    plt_crs = Plots.plot!(plt_crs,LCFS.r,LCFS.z,label="LCFS")
+                    plt_p = Plots.plot(po,title="Pitch evolution (v_||/v)")
+                    Plots.display(Plots.plot(plt_crs,plt_p,layout=(1,2)))
+                end
                 o_path = OrbitPath(false,true,E*ones(length(Ro)),po,Ro,zo,zero(zo),zero(zo)) # Create an OrbitPath object (struct). Don't assume vacuum (false), include drift effects (true), and we don't know anything about phi and dt (zero(zo))
                 o = Orbit(HamiltonianCoordinate(E, mu, Pphi; amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species)), o_class, zero(E), zero(E), o_path, false) # Create an Orbit struct. We don't know tau_p and tau_t (zero(E)) and we don't know if guiding-center equation of motion are valid (false)
-                topoMap_i[valid_mu_indices[j],iPphi] = class2int(M, o) # Give the orbit an integer identification number, according to OWCF/calcTopoMap.jl rules
+                topoMap_i[valid_mu_indices[j],iPphi] = class2int(M, o; sigma=sigma) # Give the orbit an integer identification number, according to OWCF/calcTopoMap.jl rules
             end
         end
         topoMap_i # Declare for @distribution reduction (+)
@@ -2608,29 +2633,31 @@ function getCOMTopoMap(M::AbstractEquilibrium, E::Real, mu_array::AbstractVector
 end
 
 """
-    getCOMTopoMap(M, E_array, mu_array, Pphi_array)
-    getCOMTopoMap(-||- ; sigma=1, kwargs...)
+    getCOMTopoMap(M, E_array, Λ_array, Pϕ_n_array)
+    getCOMTopoMap(-||- ; sigma=1, R_array=nothing, z_array=nothing, nR=100, nz=120, B_abs_Rz=nothing, psi_Rz=nothing, RBT_Rz=nothing, verbose=false, kwargs...)
 
-Compute the constants-of-motion space topological map, given a grid spanned by the inputs E_array, mu_array and Pphi_array.
+Compute the constants-of-motion space topological map, given a grid spanned by the inputs E_array, Λ_array and Pϕ_n_array.
 Output the topological map as a 3D Array of Int64. The input arguments are:
 - M - The abstract equilibrium Struct (Equilibrium.jl) containing all information on the magnetic equilibrium - AbstractEquilibrium
 - E_array - The energy (keV) grid points of the topological map - AbstractVector
-- mu_array - The magnetic moment (mu) grid points of the topological map - AbstractVector
-- Pphi_array - The toroidal canonical angular momentum (Pphi) grid points of the topological map - AbstractVector
+- Λ_array - The normalized magnetic moment (μ) grid points of the topological map. Λ=μ*B0/E where B0=B(mag. axis) - AbstractVector
+- Pϕ_n_array - The normalized toroidal canonical angular momentum (Pϕ) grid points of the topological map. Pϕ_n=Pϕ/(q*|Ψ_w|) where
+               q is the particle charge in Coulomb and Ψ_w=Ψ(LCFS). Ψ is the poloidal magnetic flux and LCFS means 'last closed flux
+               surface'. If Ψ(LCFS)==0 for some reason (e.g. because of some convention), Ψ_w=Ψ(mag. axis) is assumed - AbstractVector
 The keyword arguments are:
-- sigma - Binary index to identify co-passing (1) or counter-passing (-1) orbit, when (E,mu,Pphi) is a degenerate triplet - Int64
+- sigma - Binary index to identify co-current (1) or counter-current (-1) orbit, when (E,Λ,Pϕ) is a degenerate triplet - Int64
 - R_array - An array with major radius (R) points to be included as R grid points for the mu-contours - AbstractVector
 - z_array - An array with vertical coordinate (z) points to be included as z grid points for the mu-contours - AbstractVector
-- nR - If R_array is unspecified, nR major radius grid points between R_LCFS_HFS and R_LCFS_LFS will be used. Defaults to 50 - Int64
-- nz - If z_array is unspecified, nz major radius grid points between z_LCFS_HFS and z_LCFS_LFS will be used. Defaults to 60 - Int64
+- nR - If R_array is unspecified, nR major radius grid points between R_LCFS_HFS and R_LCFS_LFS will be used. Defaults to 100 - Int64
+- nz - If z_array is unspecified, nz major radius grid points between z_LCFS_HFS and z_LCFS_LFS will be used. Defaults to 120 - Int64
 - B_abs_Rz - The norm of the magnetic field at all (R,z) points, i.e. ||B(R,z)|| - AbstractMatrix
 - psi_Rz - The poloidal flux at all (R,z) points, i.e. ψ(R,z) - AbstractMatrix
 - RBT_Rz - The poloidal current at all (R,z) points, i.e. R(R,z) .*Bϕ(R,z) - AbstractMatrix
 - verbose - If set to true, the function will talk a lot! - Bool
 """
-function getCOMTopoMap(M::AbstractEquilibrium, E_array::AbstractVector, mu_array::AbstractVector, 
-                       Pphi_array::AbstractVector; sigma::Int64=1, R_array::Union{AbstractVector,Nothing}=nothing, 
-                       z_array::Union{AbstractVector,Nothing}=nothing, nR::Int64=50, nz::Int64=60, 
+function getCOMTopoMap(M::AbstractEquilibrium, E_array::AbstractVector, Λ_array::AbstractVector, 
+                       Pϕ_n_array::AbstractVector; sigma::Int64=1, R_array::Union{AbstractVector,Nothing}=nothing, 
+                       z_array::Union{AbstractVector,Nothing}=nothing, nR::Int64=100, nz::Int64=120, 
                        B_abs_Rz::Union{AbstractMatrix,Nothing}=nothing, psi_Rz::Union{AbstractMatrix,Nothing}=nothing,
                        RBT_Rz::Union{AbstractMatrix,Nothing}=nothing, verbose::Bool=false, kwargs...)
     if !(sigma==1 || sigma==-1)
@@ -2664,9 +2691,9 @@ function getCOMTopoMap(M::AbstractEquilibrium, E_array::AbstractVector, mu_array
         RBT_Rz = [poloidal_current(M,M(R,z)) for R in R_array, z in z_array] # RBT is short for R*Bϕ
     end
 
-    topoMap = 9 .*ones(Int64, (length(E_array),length(mu_array),length(Pphi_array))) # Initially assume all (E,mu,Pphi) triplets are invalid (9)
+    topoMap = 9 .*ones(Int64, (length(E_array),length(Λ_array),length(Pϕ_n_array))) # Initially assume all (E,Λ,Pϕ) triplets are invalid (9)
     for (iE,E) in enumerate(E_array)
-        topoMap[iE,:,:] = getCOMTopoMap(M, E, mu_array, Pphi_array; sigma=sigma, R_array=R_array, z_array=z_array, B_abs_Rz=B_abs_Rz, psi_Rz=psi_Rz, RBT_Rz=RBT_Rz, kwargs...)
+        topoMap[iE,:,:] = getCOMTopoMap(M, E, Λ_array, Pϕ_n_array; sigma=sigma, R_array=R_array, z_array=z_array, B_abs_Rz=B_abs_Rz, psi_Rz=psi_Rz, RBT_Rz=RBT_Rz, verbose=verbose, kwargs...)
     end
 
     return topoMap
@@ -2755,7 +2782,9 @@ counter-going orbits. Co-going orbits (co-passing, trapped, potato and stagnatio
 and counter-stagnation) will have σ=-1. The good_coords_pmRm vector contains coordinate indices for the mappable (pm,Rm) coordinates 
 (to avoid mapping invalid orbits).
 """
-function pmRm_2_μPϕ(M::AbstractEquilibrium, good_coords_pmRm::Vector{CartesianIndex{2}}, data::Array{Float64,2}, E::Real, pm_array::AbstractVector, Rm_array::AbstractVector, FI_species::AbstractString; nμ::Int64=length(pm_array), nPϕ::Int64=length(Rm_array), isTopoMap::Bool=false, needJac::Bool=false, transform = x -> x, verbose::Bool=false, vverbose::Bool=false, debug::Bool=false)
+function pmRm_2_μPϕ(M::AbstractEquilibrium, good_coords_pmRm::Vector{CartesianIndex{2}}, data::Array{Float64,2}, E::Real, pm_array::AbstractVector, Rm_array::AbstractVector, 
+                    FI_species::AbstractString; nμ::Int64=length(pm_array), nPϕ::Int64=length(Rm_array), isTopoMap::Bool=false, needJac::Bool=false, 
+                    transform = x -> x, verbose::Bool=false, vverbose::Bool=false, debug::Bool=false)
 
     verbose && println("Transforming (pm,Rm) coordinates into (μ,Pϕ) coordinates... ")
     μ_values = Array{Float64}(undef, length(good_coords_pmRm))
@@ -2919,51 +2948,147 @@ end
 
 """
     os2COM(M, good_coords, data, E_array, pm_array, Rm_array, FI_species)
-    os2COM(M, good_coords, data, E_array, pm_array, Rm_array, FI_species; nμ=length(pm_array), nPϕ=length(Rm_array), isTopoMap=false, verbose=false)
+    os2COM(M, good_coords, data, E_array, pm_array, Rm_array, FI_species; nl=length(pm_array), npp=length(Rm_array), verbose=false)
 
-    This function maps an orbit-space (E,pm,Rm) quantity into COM-space (E, μ, Pϕ; σ). It assumes the quantity is given as 3D data and that 
-    the (E,pm,Rm) coordinates suitable for mapping are given as good_coords, a Vector{CartesianIndex{3}}. The output data will be 4D. The last 
-    dimension will correspond to the binary σ coordinate (+1 or -1) that keeps track of co- and counter-passing orbits with the same (E, μ, Pϕ) coordinate.
-    
-    PLEASE NOTE! Every 3D quantity corresponding to each index in the energy dimension of the 4D output (i.e. data_COM[1,:,:,:], data_COM[2,:,:,:] etc) has its own pair of μ- and 
-    Pϕ-arrays (i.e. μ_matrix[1,:]/Pϕ_matrix[1,:], μ_matrix[2,:]/Pϕ_matrix[2,:] etc). This is because the minimum and maximum of μ and Pϕ scales with the energy.
+This function maps an orbit-space (E,pm,Rm) quantity into COM-space (E, Λ, Pϕ_n; σ). E is the energy (keV), pm is the pitch (v_||/v) at the 
+maximum major radius 'Rm' position of the orbit. Λ=μ*B_0/E where μ is the magnetic moment and B_0 is the norm of the magnetic field vector (T) at the 
+magnetic axis. Pϕ_n=Pϕ/(q*|Ψ_w|) where Pϕ is the toroidal canonical angular momentum, q is the particle charge (Coulomb) and Ψ_w is the value of the (poloidal)
+magnetic flux at the last closed flux surface (unless it is 0 due to some convention, then the value of the poloidal magnetic flux at the magnetic axis should be used).
+The os2COM() function assumes the quantity 'data' is given a 3D array and that the (E,pm,Rm) coordinates suitable for mapping are given as good_coords, 
+a Vector{CartesianIndex{3}}. The output data will be 4D. The last dimension will correspond to the binary σ coordinate (+1 or -1) that keeps track of co- and 
+counter-passing orbits with the same (E, Λ, Pϕ_n) coordinate.
+
+The input arguments are:
+M - The magnetic equilibrium object
+good_coords - The (E,pm,Rm) coordinates suitable (valid) for mapping
+data - The data (a function of (E,pm,Rm)) to be mapped to (E, Λ, Pϕ_n; σ)
+E_array - The energy grid points. In keV
+pm_array - The pitch maximum grid points
+Rm_array - The maximum major radius grid points. In meters
+FI_species - The particle species (of the fast ion). Please see OWCF/misc/species_func.jl for more info
+
+The keyword arguments are:
+isTopoMap - If set to true, the function will assume that the input 'data' is a topological map. Defaults to false
+Lambda_array - The Λ grid points to be mapped onto. Defaults to nothing
+Pphi_n_array - The Pϕ_n grid points to be mapped onto. Please note! Pphi_n=Pphi/(q*|Ψ_w|) where Ψ_w=Ψ(LCFS). If Ψ(LCFS)==0, Ψ_w=Ψ(mag. axis) should be used instead. Defaults to nothing
+nl - If Lambda_array is not specified, the number of Λ grid points to be mapped onto (max/min Λ will be automatically determined). Defaults to length(pm_array)
+npp - If Pphi_n_array is not specified, the number of Pϕ_n grid points to be mapped onto (max/min Pϕ_n will be automatically determined). Defaults to length(Rm_array)
+needJac - If set to true, the algorithm will assume that jacobian is needed when mapping between spaces (e.g. for distributions)
+verbose - If set to true, the function will talk a lot!
+
+Please note! This version of the function is NOT the most efficient. It could be improved so as to avoid having to run pm2Rm_2_μPϕ() when the Lambda_array
+and Pphi_n_array keyword arguments are specified. This might be done in future versions of the OWCF.
 """
-function os2COM(M::AbstractEquilibrium, good_coords::Vector{CartesianIndex{3}}, data::Array{Float64, 3}, E_array::AbstractVector, pm_array::AbstractVector, Rm_array::AbstractVector, FI_species::AbstractString; nμ::Int64=length(pm_array), nPϕ::Int64=length(Rm_array), verbose::Bool=false, kwargs...)
-    
-    data_COM = zeros(length(E_array),nμ, nPϕ, 2)
-    μ_matrix = zeros(length(E_array),nμ) # Create matrix, because we need to save all possible μ-values for all possible energies (the min/max values of μ scale with the energy)
-    Pϕ_matrix = zeros(length(E_array),nPϕ) # Create matrix, because we need to save all possible Pϕ-values for all possible energies (the min/max values of Pϕ scale with the energy)
+function os2COM(M::AbstractEquilibrium, good_coords::Vector{CartesianIndex{3}}, data::Array{Float64, 3}, E_array::AbstractVector, pm_array::AbstractVector, 
+                Rm_array::AbstractVector, FI_species::AbstractString; isTopoMap::Bool=false, Lambda_array::Union{Nothing,AbstractVector}=nothing, 
+                Pphi_n_array::Union{Nothing,AbstractVector}=nothing, nl::Int64=length(pm_array), npp::Int64=length(Rm_array), needJac::Bool=false, 
+                verbose::Bool=false, kwargs...)
+
+    data_COM_raw = zeros(length(E_array),nl,npp,2)
+    μ_matrix = zeros(length(E_array),nl) # Create matrix, because we need to save all possible μ-values for all possible energies (the min/max values of μ scale with the energy)
+    Pϕ_matrix = zeros(length(E_array),npp) # Create matrix, because we need to save all possible Pϕ-values for all possible energies (the min/max values of Pϕ scale with the energy)
     for (iE, E) in enumerate(E_array)
-        verbose && println("Mapping energy slice $(iE) of $(length(E_array))... ")
+        verbose && println("Mapping (E,pm,Rm)->(E,μ,Pϕ;σ) for energy slice $(iE) of $(length(E_array))... ")
         good_coords_iE = findall(x-> x[1]==iE, good_coords) # Returns a 1D vector with Integer elements
         good_coords_pmRm = map(x-> CartesianIndex(x[2],x[3]), good_coords[good_coords_iE]) # Returns a vector with CartesianIndex{2} elements
-        data_COM[iE,:,:,:], E, μ_array, Pϕ_array = pmRm_2_μPϕ(M, good_coords_pmRm, data[iE,:,:], E, pm_array, Rm_array, FI_species; nμ=nμ, nPϕ=nPϕ, verbose=verbose, kwargs...)
+        data_COM_raw[iE,:,:,:], E, μ_array, Pϕ_array = pmRm_2_μPϕ(M, good_coords_pmRm, data[iE,:,:], E, pm_array, Rm_array, FI_species; isTopoMap=isTopoMap, nμ=nl, nPϕ=npp, needJac=needJac, verbose=verbose, kwargs...)
         μ_matrix[iE,:] = μ_array # Save the array of possible μ-values FOR THE CURRENT ENERGY E in a matrix at row iE
         Pϕ_matrix[iE,:] = Pϕ_array # Save the array of possible Pϕ-values FOR THE CURRENT ENERGY E in a matrix at row iE
     end
-    
-    return data_COM, E_array, μ_matrix, Pϕ_matrix
+
+    B0 = norm(Equilibrium.Bfield(M,magnetic_axis(M)...))
+    if isnothing(Lambda_array)
+        verbose && println("'Lambda_array' input to os2COM() not specified. Computing from μ by using B0=$(B0) T... ")
+        Λ_matrix = (B0 ./((1000*GuidingCenterOrbits.e0) .*E_array)) .*μ_matrix
+        min_Lambda, max_Lambda = extrema(Λ_matrix)
+        Lambda_array = collect(range(min_Lambda,stop=max_Lambda,length=nl))
+    end
+
+    q = getSpeciesCharge(FI_species)
+    psi_axis, psi_bdry = psi_limits(M)
+    if psi_bdry==0
+        @warn "The magnetic flux at the last closed flux surface (LCFS) is found to be 0 for the 'M' input to os2COM(). Pϕ_n=Pϕ/(q*|Ψ_w|) where Ψ_w=Ψ(mag. axis) is assumed instead of Ψ_w=Ψ(LCFS)."
+        Ψ_w_norm = abs(psi_axis)
+    else
+        Ψ_w_norm = abs(psi_bdry)
+    end
+
+    if isnothing(Pphi_n_array)
+        verbose && println("'Pphi_n_array' input to os2COM() not specified. Computing from Pϕ by using q=$(q) Coulomb and |Ψ_w|=$(Ψ_w_norm)... ")
+        Pϕ_n_matrix = (1/(q*Ψ_w_norm)) .*Pϕ_matrix
+        min_Pphi_n, max_Pphi_n = extrema(Pϕ_n_matrix)
+        Pphi_n_array = collect(range(min_Pphi_n,stop=max_Pphi_n,length=npp))
+    end
+
+    interp_func = isTopoMap ? Interpolations.Constant() : Interpolations.Linear() # For topological maps, nearest neighbour method should be used
+    data_COM = zeros(length(E_array),length(Lambda_array),length(Pphi_n_array),2)
+    for (iE,E) in enumerate(E_array)
+        verbose && println("Mapping (E,μ,Pϕ;σ)->(E,Λ,Pϕ_n;σ) for energy slice $(iE) of $(length(E_array))... ")
+        E_joule = (1000*GuidingCenterOrbits.e0)*E
+        nodes = ((B0/E_joule) .*μ_matrix[iE,:], (1/(q*Ψ_w_norm)) .*Pϕ_matrix[iE,:])
+        jac = needJac ? (E_joule*q*Ψ_w_norm)/B0 : 1.0
+        data_COM_ctgo_raw_itp = Interpolations.interpolate(nodes,data_COM_raw[iE,:,:,1],Gridded(interp_func))
+        data_COM_ctgo_raw_etp = Interpolations.extrapolate(data_COM_ctgo_raw_itp,0.0)
+        data_COM_cogo_raw_itp = Interpolations.interpolate(nodes,data_COM_raw[iE,:,:,2],Gridded(interp_func))
+        data_COM_cogo_raw_etp = Interpolations.extrapolate(data_COM_cogo_raw_itp,0.0)
+        for (il,Λ) in enumerate(Lambda_array)
+            for (ip,Pϕ_n) in enumerate(Pphi_n_array)
+                data_COM[iE,il,ip,1] = jac*data_COM_ctgo_raw_etp(Λ,Pϕ_n)
+                data_COM[iE,il,ip,2] = jac*data_COM_cogo_raw_etp(Λ,Pϕ_n)
+            end
+        end
+    end
+
+    if isTopoMap
+        data_COM[data_COM .== 0] .= 9 # Invalid orbit value is 9, not 0
+        data_COM = Int64.(data_COM)
+    end
+
+    return data_COM, E_array, Lambda_array, Pphi_n_array
 end
 
 """
     os2COM(M, data, E_array, pm_array, Rm_array, FI_species)
-    os2COM(M, data, E_array, pm_array, Rm_array, FI_species; nμ=length(pm_array), nPϕ=length(Rm_array), isTopoMap=false, verbose=false)
+    os2COM(M, data, E_array, pm_array, Rm_array, FI_species; nl=length(pm_array), npp=length(Rm_array), isTopoMap=false, needJac=false, verbose=false, 
+                                                             vverbose=false, good_coords=nothing, wall=nothing, extra_kw_args=Dict(:toa => true, :limit_phi => true, :maxiter => 0), 
+                                                             kwargs...)
 
-This function maps an orbit-space (E,pm,Rm) quantity into COM-space (E, μ, Pϕ; σ). If a 4D quantity is given as input data, the function will assume it's a collection of 3D (E,pm,Rm) quantities with
-the last three dimensions corresponding to E, pm and Rm. Return transformed data in COM, along with E-array, μ-matrix and Pϕ-matrix. The output data will be either 4D or 5D. The last dimension will 
-correspond to the binary σ coordinate (-1 or +1) that keeps track of counter- and co-going orbits with the same (E, μ, Pϕ) coordinate. The first Julia index (1)
-corresponds to σ=-1 and the second Julia index (2) corresponds to σ=+1.
+This function maps an orbit-space (E,pm,Rm) quantity into COM-space (E,Λ,Pϕ_n;σ). E is the energy (keV), pm is the pitch (v_||/v) at the 
+maximum major radius 'Rm' position of the orbit. Λ=μ*B_0/E where μ is the magnetic moment and B_0 is the norm of the magnetic field vector (T) at the 
+magnetic axis. Pϕ_n=Pϕ/(q*Ψ_w) where Pϕ is the toroidal canonical angular momentum, q is the particle charge (Coulomb) and Ψ_w is the value of the (poloidal)
+magnetic flux at the last closed flux surface (unless it is 0 due to some convention, then the value of the poloidal magnetic flux at the magnetic axis should be used).
+If a 4D quantity is given as input 'data', the function will assume it's a collection of 3D (E,pm,Rm) quantities with the last three dimensions corresponding to E, pm and Rm. 
+Return transformed data in COM, along with E, Λ, Pϕ_n arrays. The output data will thus be either 4D or 5D. The last dimension of the output data will correspond to 
+the binary σ coordinate (-1 or +1) that keeps track of counter- and co-going orbits with the same (E, Λ, Pϕ_n) coordinate. The first Julia index (1) corresponds 
+to σ=-1 and the second Julia index (2) corresponds to σ=+1.
 
-If the input data is not a topological map, then we need to identify the (E,pm,Rm) coordinates suitable for mapping by first computing the corresponding orbit grid.
+If the input data is not a topological map and the 'good_coords' keyword argument has not been specified, the function will identify the (E,pm,Rm) coordinates suitable for 
+mapping by first computing the corresponding orbit grid.
 
-PLEASE NOTE! Every 3D quantity corresponding to each index in the energy dimension of the 5D output (i.e. data_COM[iE,1,:,:,:], data_COM[iE,2,:,:,:] etc) has its own pair of μ- and 
-Pϕ-arrays (i.e. μ_matrix[1,:]/Pϕ_matrix[1,:], μ_matrix[2,:]/Pϕ_matrix[2,:] etc). This is because the minimum and maximum of μ and Pϕ scales with the energy, so each energy slice needs
-its own pair of μ and Pϕ grid points (given the input grid points in pm and Rm). You could, of course, interpolate all slices onto the same (μ,Pϕ) grid. BUT, since e.g. maximum(μ) scales
-by a factor of 100 when you go from a 10 keV energy slice to a 1 MeV energy slice, it's not really practical. Then again, you could of course interpolate onto an energy normalized (μ,Pϕ) grid.
-But I thought that maybe you, dear user, would like to do that yourself post-computation. I am giving you the freedom of choice here. That's why the (μ,Pϕ) output is given in matrix form, NOT
-in vector form.
+The input arguments are:
+M - The magnetic equilibrium object
+data - The data (a function, or several functions, of (E,pm,Rm)) to be mapped to (E,Λ,Pϕ_n;σ)
+E_array - The energy grid points. In keV
+pm_array - The pitch maximum grid points
+Rm_array - The maximum major radius grid points. In meters
+FI_species - The particle species (of the fast ion). Please see OWCF/misc/species_func.jl for more info
+
+The keyword arguments are:
+nl - The number of Λ grid points. Defaults to length(pm_array)
+npp - The number of Pϕ_n grid points. Defaults to length(Rm_array)
+isTopoMap - If set to true, the os2COM() function will assume the input argument 'data' is a topological map. Defaults to false
+verbose - If set to true, the function will talk a lot!
+vverbose - If set to true, the function will REALLY talk a lot!
+good_coords - The (E,pm,Rm) coordinates suitable (valid) for mapping. Defaults to nothing (unknown)
+wall - The wall/boundary object to be included when integrating the equations of motion to compute the orbit grid, if needed. Defaults to nothing (unknown)
+extra_kw_args - Extra keyword arguments to be included when integrating the -||-.
+
+PLEASE NOTE! If you want to map a function that needs a Jacobian (e.g. a fast-ion distribution), you need to supply a keyword argument called 'needJac' and 
+specify it to true.
 """
-function os2COM(M::AbstractEquilibrium, data::Union{Array{Float64, 3},Array{Float64, 4}}, E_array::AbstractVector, pm_array::AbstractVector, Rm_array::AbstractVector, FI_species::AbstractString; nμ::Int64=length(pm_array), nPϕ::Int64=length(Rm_array), isTopoMap::Bool=false, needJac::Bool=false, verbose::Bool=false, vverbose::Bool=false, good_coords=nothing, wall::Union{Nothing,Boundary{Float64}}=nothing, extra_kw_args=Dict(:toa => true, :limit_phi => true, :maxiter => 0))
+function os2COM(M::AbstractEquilibrium, data::Union{Array{Float64, 3},Array{Float64, 4}}, E_array::AbstractVector, pm_array::AbstractVector, Rm_array::AbstractVector, 
+                FI_species::AbstractString; nl::Int64=length(pm_array), npp::Int64=length(Rm_array), isTopoMap::Bool=false, verbose::Bool=false, vverbose::Bool=false, 
+                good_coords=nothing, wall::Union{Nothing,Boundary{Float64}}=nothing, extra_kw_args=Dict(:toa => true, :limit_phi => true, :maxiter => 0), kwargs...)
     if !isTopoMap && !(typeof(good_coords)==Vector{CartesianIndex{3}})
         verbose && println("Input data is not a topological map, and keyword argument 'good_coords' has not been (correctly?) provided... ")
         verbose && println("--------> Computing orbit grid for (E,pm,Rm)-values to be able to deduce valid orbits for (E,pm,Rm)-grid... ")
@@ -2989,17 +3114,15 @@ function os2COM(M::AbstractEquilibrium, data::Union{Array{Float64, 3},Array{Floa
         data = reshape(data,(1,size(data)...)) # Reshape into general 4D shape. Sometimes, data might be 4D (many 3D OWs) and it's therefore best to always have the code handle 4D data.
     end
 
-    data_COM = zeros(size(data,1),length(E_array),nμ, nPϕ, 2)
-    μ_matrix = nothing # Just pre-define something
-    Pϕ_matrix = nothing
-    verbose && println("Mapping (E,pm,Rm) -> (E,μ,Pϕ;σ) for 3D quantity 1 of $(size(data,1))... ")
-    data_COM[1, :, :, :, :], E_array, μ_matrix, Pϕ_matrix = os2COM(M, good_coords, data[1,:,:,:], E_array, pm_array, Rm_array, FI_species; nμ=nμ, nPϕ=nPϕ, isTopoMap=isTopoMap, needJac=needJac, verbose=verbose, vverbose=vverbose)
+    data_COM = zeros(size(data,1),length(E_array),nl,npp,2) # Pre-allocate the output data
+    verbose && println("Mapping (E,pm,Rm) -> (E,Λ,Pϕ_n;σ) for 3D quantity 1 of $(size(data,1))... ")
+    data_COM[1, :, :, :, :], E_array, Λ_array, Pϕ_n_array = os2COM(M, good_coords, data[1,:,:,:], E_array, pm_array, Rm_array, FI_species; nl=nl, npp=npp, isTopoMap=isTopoMap, verbose=verbose, vverbose=vverbose, kwargs...)
     if size(data,1)>1 # To avoid distributed errors
-        data_COM_mp = @showprogress 1 "Mapping (E,pm,Rm) -> (E,μ,Pϕ;σ)... " @distributed (+) for iEd in collect(2:size(data,1))
-            #verbose && println("Mapping (E,pm,Rm) -> (E,μ,Pϕ;σ) for 3D quantity $(iEd) of $(size(data,1))... ")
-            data_COM_part = zeros(size(data,1),length(E_array),nμ, nPϕ, 2)
-            # E_array_part, μ_matrix_part and Pϕ_matrix_part do not matter. But they need to be returned by os2COM.
-            data_COM_part[iEd, :, :, :, :], E_array_part, μ_matrix_part, Pϕ_matrix_part = os2COM(M, good_coords, data[iEd,:,:,:], E_array, pm_array, Rm_array, FI_species; nμ=nμ, nPϕ=nPϕ, isTopoMap=isTopoMap, needJac=needJac, verbose=false, vverbose=false)
+        data_COM_mp = @showprogress 1 "Mapping (E,pm,Rm) -> (E,Λ,Pϕ_n;σ)... " @distributed (+) for iEd in collect(2:size(data,1))
+            #verbose && println("Mapping (E,pm,Rm) -> (E,Λ,Pϕ_n;σ) for 3D quantity $(iEd) of $(size(data,1))... ")
+            data_COM_part = zeros(size(data,1),length(E_array),nl,npp,2)
+            # b,c,d do not matter. But they need to be returned by os2COM.
+            data_COM_part[iEd, :, :, :, :], b, c, d = os2COM(M, good_coords, data[iEd,:,:,:], E_array, pm_array, Rm_array, FI_species; Lambda_array=Λ_array, Pphi_n_array=Pϕ_n_array, nl=nl, npp=npp, isTopoMap=isTopoMap, verbose=false, vverbose=false, kwargs...)
             data_COM_part # Declare ready for reduction (data_COM += data_COM_part but distributed over several CPU cores)
         end
 
@@ -3008,11 +3131,20 @@ function os2COM(M::AbstractEquilibrium, data::Union{Array{Float64, 3},Array{Floa
 
     if !input_4D
         verbose && println("Reshaping output data from 5D to 4D... ")
-        return dropdims(data_COM,dims=1), E_array, μ_matrix, Pϕ_matrix 
+        return dropdims(data_COM,dims=1), E_array, Λ_array, Pϕ_n_array 
     end
-    return data_COM, E_array, μ_matrix, Pϕ_matrix
+
+    if isTopoMap
+        data_COM = Int64.(data_COM) # Convert to Int64, just in case
+    end
+    return data_COM, E_array, Λ_array, Pϕ_n_array
 end
 
+"""
+    com2OS()
+
+Placeholder text.
+"""
 function com2OS(M::AbstractEquilibrium, data::Array{Float64,4}, E_array::AbstractVector, mu_matrix::AbstractMatrix, Pphi_matrix::AbstractMatrix, FI_species::String; npm::Int64=length(mu_matrix[1,:]), nRm::Int64=length(Pphi_matrix[1,:]), wall::Union{Nothing,Boundary{Float64}}=nothing, pm_array::Union{Nothing,AbstractArray}=nothing, Rm_array::Union{Nothing,AbstractArray}=nothing, dataIsTopoMap::Bool=false, needJac::Bool=false, transform = x -> x, verbose::Bool=false, debug::Bool=false, kwargs...)
     if !(pm_array===nothing)
         npm = length(pm_array)
