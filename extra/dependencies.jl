@@ -44,7 +44,6 @@ using NearestNeighbors
 using NetCDF
 using OrbitTomography
 import OrbitTomography: orbit_grid
-using Optim
 using ProgressMeter
 using SharedArrays
 using Statistics
