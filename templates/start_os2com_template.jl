@@ -1,9 +1,14 @@
 ################################ start_os2com_template.jl ##################################################
 # This file contains all the inputs that the script os2com.jl needs to transform a fast-ion distribution
-# from (E,pm,Rm) coordinates to (E,mu,Pphi;alpha) coordinates. This can also be 
+# from (E,pm,Rm) coordinates to (E,Λ,Pϕ_n;σ) coordinates. This can also be 
 # achieved by simply utilizing the os2COM() function in extra/dependencies.jl. However, this script
 # let's you avoid having to think about it, and just does it for you. It also works with weight functions,
-# topological maps or boundaries, as well as poloidal and toroidal transit times, and null orbits.
+# topological maps or boundaries, as well as poloidal and toroidal transit times, and null orbits. Λ is the 
+# normalized magnetic moment given by Λ=μ*B0/E where μ is the magnetic moment, B0=B(mag. axis) and E is the 
+# energy. Pϕ_n is the normalized toroidal canonical momentum, given by Pϕ_n=Pϕ/(q*|Ψ_w|) where q is the charge 
+# of the fast ion and Ψ_w is the poloidal magnetic flux at the last closed flux surfaces (LCFS). If Ψ(LCFS)==0 
+# for some reason (e.g. due to some convention), Ψ_w=Ψ(mag. axis) is assumed instead. σ is a binary coordinate. 
+# σ=-1 (Julia index 1) corresponds to counter-current orbits. σ=+1 (Julia index 2) corresponds to co-current orbits.
 #
 # batch_job - If true, the script assumes that it will be executed via an HPC batch job. The script will act accordingly. - Bool
 # distributed - If true, parallel computing with multiple CPU cores will be used. - Bool
@@ -11,10 +16,11 @@
 # numOcores - The number of CPU cores that will be used if distributed is set to true. - Int64
 #
 # filepath_equil - The path to the magnetic equilibrium file (.eqdsk/.geqdsk/.jld2 file format) - String
-# filepath_Q - The path to the 3D or 4D (E,pm,Rm) orbit-space quantity - String
+# filepath_Q - The path to the 3D or 4D (E,pm,Rm) orbit-space quantity. Should be an output file from 
+#              calcOrbWeights.jl, calcTopoMap.jl, F_os_1Dto3D.jl etc. - String
 # folderpath_o - The path to the folder in which you want the os2com.jl outputs - String
-# nmu - The number of gridpoints in magnetic moment - Int64
-# nPphi - The number of gridpoints in toroidal canonical angular momentum - Int64
+# nmu - The number of gridpoints in normalized magnetic moment - Int64
+# nPphi - The number of gridpoints in normalized toroidal canonical angular momentum - Int64
 # timepoint - The timepoint of the tokamak shot for the magnetic equilibrium. Format XX,YYYY where XX are seconds and YYYY are decimals - String
 # tokamak - The name of the tokamak. If unknown, leave as "" - String
 # verbose - If set to true, the os2com.jl script will talk a lot! - String
@@ -23,7 +29,7 @@
 # extra_kw_args - Here you can define extra keyword arguments to be used when integrating the equations-of-motion
 # for the guiding-center orbits. Please consult the OWCF manual for further info on this.
 
-# Script written by Henrik Järleblad. Last maintained 2024-04-26.
+# Script written by Henrik Järleblad. Last maintained 2025-01-22.
 #############################################################################################################
 
 ## First you have to set the system specifications

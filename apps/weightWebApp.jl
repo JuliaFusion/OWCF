@@ -5,7 +5,7 @@
 # intuitive manner. 
 #
 # It visualizes several weight functions at the same time, creating a function of channels (1D). 
-# That is, since an orbit weight function is a function of E,pm,Rm but we have one 3D quantity
+# That is, since an orbit weight function is a function of (E,pm,Rm) but we have one 3D quantity
 # for every diagnostic energy bin, we can permute the variables and examine what 1D diagnostic 
 # signal we could expect for every orbit. 
 #
@@ -35,16 +35,18 @@
 # topological map in getTopoMap.jl (set useWeightsFile to true) in the first place.
 
 #### Inputs (units given when defined in the script):
-# enable_COM - If true, (E,pm,Rm) -> (E,mu,Pphi;sigma) will be possible via a toggle button. Set to false, to minimize computations - Bool
 # folderpath_OWCF - The path to the OWCF folder on your computer. - String
+#
 # port - The I/O port on which to host the web application - Int64
+# enable_COM - If true, (E,pm,Rm) -> (E,Λ,Pϕ_n;σ) will be possible via a toggle button. Set to false, to minimize computations - Bool
+# filepath_tm_COM - If specified, a topological map in (E,Λ,Pϕ_n;σ) space will be loaded from this file - String
 # filepath_equil - The path to the file with the tokamak magnetic equilibrium and geometry - String
 # filepath_tm - The path to the .jld2-file containing the topological map - String
 # filepath_W - The path to the .jld2/.h5 weights file, containing orbit weights (4D) to be visualized - String 
 # weightsFileJLD2 - If true, it is assumed that the weights file is in JLD2 format - Boolean
-# diagnostic - The name of the diagnostic to be visualized - String
-# FI_species - The particle species for the orbit weight functions - String
-#                     "D" for deuterium, "T" for tritium, "p" for proton, "3he" for helium-3 etc
+# diagnostic_filepath - The file path to the LINE21/createCustomLOS.jl output file, containing viewing cone data for the diagnostic - String
+# diagnostic_name - Diagnostic sightline aestethic keyword. E.g: "TOFOR", "AB" or "" - String
+# FI_species - The particle species for the orbit weight functions. "D" for deuterium, "T" for tritium, "p" for proton, "3he" for helium-3 etc - String
 # verbose - If set to true, the app will talk a lot - Bool
 
 #### Outputs
@@ -96,7 +98,7 @@
 # iRm = argmin(abs.(Rm_range .- Rm)) # Find the closest match
 # Plots.plot(Ed_array, W_correct[:,iE,ipm,iRm]./maximum(W_correct[:,iE,ipm,iRm]), xlabel="Diagnostic energy [keV]", legend=false,title="1.0 = $(round(maximum(W_correct[:,iE,ipm,iRm]),sigdigits=4))")
 
-# Script written by Henrik Järleblad. Last maintained 2025-01-16.
+# Script written by Henrik Järleblad. Last maintained 2025-01-23.
 ###############################################################################################
 
 ## --------------------------------------------------------------------------
@@ -158,7 +160,7 @@ using WebIO
 using PyCall
 include(folderpath_OWCF*"misc/species_func.jl")
 include(folderpath_OWCF*"misc/availReacts.jl") # To check reaction availability and extract fast-ion and thermal species
-include(folderpath_OWCF*"extra/dependencies.jl") # To load the (E,pm,Rm) to (E,mu,Pphi;sigma) mapping function
+include(folderpath_OWCF*"extra/dependencies.jl") # To load the (E,pm,Rm) to (E,Λ,Pϕ_n;σ) mapping function
 py"""
 import numpy as np
 """
@@ -273,23 +275,23 @@ if !(length(E_array)==length(E_range)) || !(length(pm_array)==length(pm_range)) 
 end
 
 ## --------------------------------------------------------------------------
-# Mapping topological map to (E,μ, Pϕ; σ)
+# Mapping topological map to (E,Λ,Pϕ_n;σ)
 if enable_COM && !(isfile(filepath_tm_COM))
-    verbose && println(">>>>>> Mapping topological map from (E,pm,Rm) to (E,μ,Pϕ;σ) <<<<<<... ")
-    topoMap_COM, E_range, μ_matrix, Pϕ_matrix = os2COM(M, topoMap, Vector(E_array), pm_array, Rm_array, FI_species; nμ=2*length(pm_array), nPϕ=2*length(Rm_array), isTopoMap=true, verbose=verbose)
+    verbose && println(">>>>>> Mapping topological map from (E,pm,Rm) to (E,Λ,Pϕ_n;σ) <<<<<<... ")
+    topoMap_COM, E_range, Λ_array, Pϕ_n_array = os2COM(M, topoMap, Vector(E_array), pm_array, Rm_array, FI_species; nl=2*length(pm_array), npp=2*length(Rm_array), isTopoMap=true, verbose=verbose)
 elseif enable_COM && isfile(filepath_tm_COM)
-    verbose && println("Loading topological map in (E,mu,Pphi;sigma) coordinates from filepath_tm_COM... ")
+    verbose && println("Loading topological map in (E,Λ,Pϕ_n;σ) coordinates from filepath_tm_COM... ")
     myfile = jldopen(filepath_tm_COM,false,false,false,IOStream)
     topoMap_COM = myfile["topoMap"]
     E_range_COM = myfile["E_array"]
-    μ_matrix = myfile["mu_matrix_topoMap"]
-    Pϕ_matrix = myfile["Pphi_matrix_topoMap"]
+    Λ_array = myfile["Lambda_array_topoMap"]
+    Pϕ_n_array = myfile["Pphi_n_array_topoMap"]
     close(myfile)
     if !(E_range==E_range_COM)
-        error("Energy grid points in (E,pm,Rm) do not match energy grid points in (E,mu,Pphi;sigma). Please correct and re-try.")
+        error("Energy grid points in (E,pm,Rm) do not match energy grid points in (E,Λ,Pϕ_n;σ). Please correct and re-try.")
     end
 else
-    verbose && println("Switching (E,pm,Rm) -> (E,mu,Pphi;sigma) will not be possible.")
+    verbose && println("Switching (E,pm,Rm) -> (E,Λ,Pϕ_n;σ) will not be possible.")
 end
 
 #########################################################################################
@@ -316,13 +318,14 @@ verbose && println("--- You can access the weightWebApp via an internet web brow
 verbose && println("--- When 'Task (runnable)...' has appeared, please visit the website localhost:$(port) ---")
 verbose && println("--- Remember: It might take a minute or two to load the webpage. Please be patient. ---")
 function app(req)
-    @manipulate for tokamak_wall = Dict("on" => true, "off" => false), E=E_range, pm=pm_range, Rm=Rm_range, phase_space=Dict("(E,μ,Pϕ;σ)" => :COM, "(E,pm,Rm)" => :OS), save_plots = Dict("on" => true, "off" => false), show_coordinate = Dict("on" => true, "off" => false)
+    @manipulate for tokamak_wall = Dict("on" => true, "off" => false), E=E_range, pm=pm_range, Rm=Rm_range, phase_space=Dict("(E,Λ,Pϕ_n;σ)" => :COM, "(E,pm,Rm)" => :OS), save_plots = Dict("on" => true, "off" => false), show_coordinate = Dict("on" => true, "off" => false)
         EPRc = EPRCoordinate(M, E, pm, Rm; amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species))
         o = get_orbit(M,EPRc;wall=wall,extra_kw_args...)
         if phase_space==:COM && enable_COM
+            E_joule = (1000*GuidingCenterOrbits.e0)*E
             myHc = HamiltonianCoordinate(M, EPRc)
-            μ = myHc.mu
-            Pϕ = myHc.p_phi
+            μ = myHc.mu; Λ = μ*B0/E_joule
+            Pϕ = myHc.p_phi; Pϕ_n = Pϕ/(q*Ψ_w_norm) 
         end
 
         topview_o_x = cos.(o.path.phi).*(o.path.r)
@@ -367,7 +370,7 @@ function app(req)
         plt_top = Plots.plot!(topview_o_x,topview_o_y,label="$(o.class) orbit", color=orb_color, linestyle=orb_linestyle, linewidth=1.5)
         if save_plots
             if (phase_space==:COM) && enable_COM
-                png(plt_top, "plt_top_$(round(E, digits=2))_$(round(μ, sigdigits=2))_$(round(Pϕ,sigdigits=2))")
+                png(plt_top, "plt_top_$(round(E, digits=2))_$(round(Λ, sigdigits=2))_$(round(Pϕ_n,sigdigits=2))")
             else
                 png(plt_top, "plt_top_$(round(E, digits=2))_$(round(o.coordinate.pitch, digits=2))_$(round(o.coordinate.r,digits=2))")
             end
@@ -392,14 +395,14 @@ function app(req)
         if (phase_space==:OS) || !enable_COM
             plt_crs = Plots.plot!(title="E: $(round(E,digits=2)) keV  pm: $(round(o.coordinate.pitch, digits=2))  Rm: $(round(o.coordinate.r,digits=2))")
         else # phase_space==:COM (OS = orbit space, COM = constants-of-motion)
-            plt_crs = Plots.plot!(title="E: $(round(E,digits=2)) keV  μ: $(round(μ, sigdigits=2))  Pϕ: $(round(Pϕ,sigdigits=2))")
+            plt_crs = Plots.plot!(title="E: $(round(E,digits=2)) keV  Λ: $(round(Λ, sigdigits=2))  Pϕ_n: $(round(Pϕ_n,sigdigits=2))")
         end
         plt_crs = Plots.scatter!([magnetic_axis(M)[1]],[magnetic_axis(M)[2]],label="Magnetic axis", mc=:grey, aspect_ratio=:equal, xlabel="R [m]", ylabel=" z[m]")
         plt_crs = Plots.scatter!([o.coordinate.r],[o.coordinate.z], mc=orb_color, label="(Rm,zm)")
         if save_plots
             plt_crs = Plots.plot!(dpi=600)
             if (phase_space==:COM) && enable_COM
-                png(plt_crs, "plt_crs_$(round(E, digits=2))_$(round(μ, sigdigits=2))_$(round(Pϕ,sigdigits=2))")
+                png(plt_crs, "plt_crs_$(round(E, digits=2))_$(round(Λ, sigdigits=2))_$(round(Pϕ_n,sigdigits=2))")
             else
                 png(plt_crs, "plt_crs_$(round(E, digits=2))_$(round(o.coordinate.pitch, digits=2))_$(round(o.coordinate.r,digits=2))")
             end
@@ -414,22 +417,22 @@ function app(req)
             plt_topo = Plots.plot!(maximum(wall.r).*ones(length(pm_range)), pm_range, color=:black, linewidth=2)
         else
             if pm<0.0
-                plt_topo = Plots.heatmap(Pϕ_matrix[Int64(Eci),:],vcat(0.0,μ_matrix[Int64(Eci),:]),vcat(vcat([1,2,3,4,5,6,7,8,9],ones(length(Pϕ_matrix[Int64(Eci),:])-9))', topoMap_COM[Int64(Eci),:,:,1]),color=:Set1_9,legend=false,xlabel="Pϕ", ylabel="μ", title="E: $(round(E_array[Int64(Eci)],digits=3)) keV", ylims=extrema(μ_matrix[Int64(Eci),:]), xlims=extrema(Pϕ_matrix[Int64(Eci),:]))
+                plt_topo = Plots.heatmap(Pϕ_n_array,vcat(-0.1,Λ_array),vcat(vcat([1,2,3,4,5,6,7,8,9],ones(length(Pϕ_n_array)-9))', topoMap_COM[Int64(Eci),:,:,1]),color=:Set1_9,legend=false,xlabel="Pϕ_n", ylabel="Λ", title="E: $(round(E_array[Int64(Eci)],digits=3)) keV", ylims=extrema(Λ_array), xlims=extrema(Pϕ_n_array))
             else
-                plt_topo = Plots.heatmap(Pϕ_matrix[Int64(Eci),:],vcat(0.0,μ_matrix[Int64(Eci),:]),vcat(vcat([1,2,3,4,5,6,7,8,9],ones(length(Pϕ_matrix[Int64(Eci),:])-9))', topoMap_COM[Int64(Eci),:,:,2]),color=:Set1_9,legend=false,xlabel="Pϕ", ylabel="μ", title="E: $(round(E_array[Int64(Eci)],digits=3)) keV", ylims=extrema(μ_matrix[Int64(Eci),:]), xlims=extrema(Pϕ_matrix[Int64(Eci),:]))
+                plt_topo = Plots.heatmap(Pϕ_n_array,vcat(-0.1,Λ_array),vcat(vcat([1,2,3,4,5,6,7,8,9],ones(length(Pϕ_n_array)-9))', topoMap_COM[Int64(Eci),:,:,2]),color=:Set1_9,legend=false,xlabel="Pϕ_n", ylabel="Λ", title="E: $(round(E_array[Int64(Eci)],digits=3)) keV", ylims=extrema(Λ_array), xlims=extrema(Pϕ_n_array))
             end
         end
         if show_coordinate
             if (phase_space==:OS) || !enable_COM
                 plt_topo = Plots.scatter!([Rm],[pm],markershape=:circle,mc=orb_color,legend=false,markersize=6)
             else
-                plt_topo = Plots.scatter!([Pϕ],[μ],markershape=:circle,mc=orb_color,legend=false,markersize=6)
+                plt_topo = Plots.scatter!([Pϕ_n],[Λ],markershape=:circle,mc=orb_color,legend=false,markersize=6)
             end
         end
         if save_plots
             plt_topo = Plots.plot!(dpi=600)
             if (phase_space==:COM) && enable_COM
-                png(plt_topo, "plt_topo_$(round(E, digits=2))_$(round(μ, sigdigits=2))_$(round(Pϕ,sigdigits=2))")
+                png(plt_topo, "plt_topo_$(round(E, digits=2))_$(round(Λ, sigdigits=2))_$(round(Pϕ_n,sigdigits=2))")
             else
                 png(plt_topo, "plt_topo_$(round(E, digits=2))_$(round(o.coordinate.pitch, digits=2))_$(round(o.coordinate.r,digits=2))")
             end
@@ -442,7 +445,7 @@ function app(req)
         if save_plots
             plt_sigw = Plots.plot!(dpi=600)
             if (phase_space==:COM) && enable_COM
-                png(plt_sigw, "plt_sigw_$(round(E, digits=2))_$(round(μ, sigdigits=2))_$(round(Pϕ,sigdigits=2))")
+                png(plt_sigw, "plt_sigw_$(round(E, digits=2))_$(round(Λ, sigdigits=2))_$(round(Pϕ_n,sigdigits=2))")
             else
                 png(plt_sigw, "plt_sigw_$(round(E, digits=2))_$(round(o.coordinate.pitch, digits=2))_$(round(o.coordinate.r,digits=2))")
             end
