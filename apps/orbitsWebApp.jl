@@ -192,8 +192,8 @@ end
 
 if enable_COM && !(isfile(filepath_tm_COM))
     verbose && println("Saving topological map in (E,Λ,Pϕ_n;σ) format... ")
-    nmu = size(Λ_array,2)
-    nPphi = size(Pϕ_n_array,2)
+    nmu = length(Λ_array)
+    nPphi = length(Pϕ_n_array)
     date_and_time = split("$(Dates.now())","T")[1]*"at"*split("$(Dates.now())","T")[2][1:5]
     filepath_output_orig = folderpath_OWCF*"orbitsWebApp_COM_data_$(length(E_array))x$(nmu)x$(nPphi)x2_"*date_and_time
     global filepath_output = deepcopy(filepath_output_orig)
