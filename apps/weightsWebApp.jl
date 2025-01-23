@@ -50,8 +50,8 @@
 # port - The I/O port on which to host the web application (0001-19999) - Int64
 # verbose - If true, then the web application will talk a lot! Yay! - Bool
 # filepath_tb - The path to the .jld2-file containing the topological boundaries - String
-# enable_COM - If set to true, it will be possible to also visualize the orbit weight functions in (E,mu,Pphi;sigma) coordinates - Bool
-# filepath_W_COM - If enable_COM is set to true, it is highly recommended that you provide the path to a file containing the weight matrix in (E,mu,Pphi;sigma) format - String
+# enable_COM - If set to true, it will be possible to also visualize the orbit weight functions in (E,Λ,Pϕ_n;σ) coordinates - Bool
+# filepath_W_COM - If enable_COM is set to true, it is highly recommended that you provide the path to a file containing the weight matrix in (E,Λ,Pϕ_n;σ) format, e.g. from OWCF/helper/os2com.jl - String
 # filepath_tm - If enable_COM is set to true, it is highly recommended that you provide the path to a file containing the pertaining topological map - String
 # filepath_equil - The path to the .eqdsk-file with the tokamak magnetic equilibrium and geometry - String
 # diagnostic_filepath - The path to the LINE21 file containing line-of-sight data for the diagnostic - String
@@ -117,7 +117,7 @@
 
 # Furthermore, the filepath_W_COM input variable can be either an output of this weightsWebApp.jl script, or the os2com.jl script.
 
-# Script written by Henrik Järleblad. Last maintained 2023-04-25.
+# Script written by Henrik Järleblad. Last maintained 2025-01-23.
 ###############################################################################################
 
 ## --------------------------------------------------------------------------
@@ -135,9 +135,9 @@ Pkg.activate(".")
 port = 9999 # The computer connection port to connect to the web app with
 verbose = true # If true, then the app will talk a lot!
 filepath_tb = "" # .jld2 file with orbit-space topological boundaries (see extractTopoBounds.jl, and/or calcTopoMap.jl)
-enable_COM = false # Set to true if you would like to be able to switch between (E,pm,Rm) and (E,mu,Pphi;sigma). Please note! This will require extra loading time and computer resources!
+enable_COM = false # Set to true if you would like to be able to switch between (E,pm,Rm) and (E,Λ,Pϕ_n;σ). Please note! This will require extra loading time and computer resources!
 if enable_COM
-    filepath_W_COM = "" # If you would like to be able to switch to (E,mu,Pphi;sigma), you should definitely provide the path to a file containing the orbit weight matrix mapped to COM (E,mu,Pphi;sigma). This will greatly speed-up pre-app computations
+    filepath_W_COM = "" # If you would like to be able to switch to (E,Λ,Pϕ_n;σ), you should definitely provide the path to a file containing the orbit weight matrix mapped to COM (E,Λ,Pϕ_n;σ). This will greatly speed-up pre-app computations
     # OR
     filepath_tm = "" # If you have not computed such a file, you should at least provide the path to a topological map file. Otherwise, the orbit grid will need to be computed from scratch
 end
@@ -198,7 +198,7 @@ using WebIO
 using PyCall # For loading sightlines efficiently
 include(folderpath_OWCF*"misc/species_func.jl") # To get particle masses and charges
 include(folderpath_OWCF*"misc/availReacts.jl") # To check reaction availability and extract fast-ion and thermal species
-include(folderpath_OWCF*"extra/dependencies.jl") # To load the (E,pm,Rm) to (E,mu,Pphi;sigma) mapping function
+include(folderpath_OWCF*"extra/dependencies.jl") # To load the (E,pm,Rm) to (E,Λ,Pϕ_n;σ) mapping function
 
 ## ------
 # Loading packages on external CPU processors, if anticipated that it will be needed later
@@ -213,7 +213,7 @@ if enable_COM && !isfile(filepath_W_COM)
         using Equilibrium
         using EFIT
         using GuidingCenterOrbits
-        include(folderpath_OWCF*"extra/dependencies.jl") # To load the (E,pm,Rm) to (E,mu,Pphi;sigma) mapping function
+        include(folderpath_OWCF*"extra/dependencies.jl") # To load the (E,pm,Rm) to (E,Λ,Pϕ_n;σ) mapping function
     end
 end
 
@@ -469,11 +469,11 @@ Rm_array = vec(collect(Rm_array)) # Ensure type Array{Float64,1}
 Ed_array = vec(collect(Ed_array)) # Ensure type Array{Float64,1}
 
 ## --------------------------------------------------------------------------
-# Preparing utility for mapping (E,pm,Rm) to (E,mu,Pphi;sigma)
+# Preparing utility for mapping (E,pm,Rm) to (E,Λ,Pϕ_n;σ)
 if enable_COM
     if !(isfile(filepath_W_COM))
         if isfile(filepath_tm)
-            verbose && print("Possibility to switch to (E,mu,Pphi;sigma) requested. Topological map filepath specified. Attempting to load... ")
+            verbose && print("Possibility to switch to (E,Λ,Pϕ_n;σ) requested. Topological map filepath specified. Attempting to load... ")
             myfile = jldopen(filepath_tm,false,false,false,IOStream)
             topoMap = myfile["topoMap"]
             E_array_tm = myfile["E_array"]
@@ -494,35 +494,35 @@ if enable_COM
             valid_orbit_indices = findall(x-> (x!=9.0) && (x!=7.0), topoMap) # 9 and 7 are the integers representing invalid and lost orbits in the calcTopoMap.jl script, respectively. We don't want them.
             verbose && println("Success!")
         else
-            verbose && println("Switching to (E,mu,Pphi;sigma) requested. But neither W_COM, nor topological map, filepath was not specified. Orbit grid will need to be computed (takes a long time)... ")
+            verbose && println("Switching to (E,Λ,Pϕ_n;σ) requested. But neither W_COM, nor topological map, filepath was not specified. Orbit grid will need to be computed (takes a long time)... ")
             valid_orbit_indices = :UNKNOWN
         end
     end
 else
-    verbose && println("Switching to (E,mu,Pphi;sigma) will not be possible.")
+    verbose && println("Switching to (E,Λ,Pϕ_n;σ) will not be possible.")
 end
 
 ## --------------------------------------------------------------------------
-# Mapping orbit weight functions to (E,μ, Pϕ; σ)
+# Mapping orbit weight functions to (E,Λ,Pϕ_n;σ)
 if enable_COM
     if !(isfile(filepath_W_COM))
-        verbose && println(">>>>>>>>>>>>>>> Mapping orbit weight functions from (E,pm,Rm) to (E,mu,Pphi;sigma)... <<<<<<<<<<<<<<<")
-        W_correct_COM, E_array, μ_matrix, Pϕ_matrix = os2COM(M, W_correct, E_array, pm_array, Rm_array, FI_species; nμ=2*length(pm_array), nPϕ=2*length(Rm_array), verbose=verbose, good_coords=valid_orbit_indices, wall=wall, extra_kw_args=extra_kw_args)
-        verbose && println("Creating orbit weight matrix (E,mu,Pphi;sigma) data... ")
+        verbose && println(">>>>>>>>>>>>>>> Mapping orbit weight functions from (E,pm,Rm) to (E,Λ,Pϕ_n;σ)... <<<<<<<<<<<<<<<")
+        W_correct_COM, E_array, Λ_array, Pϕ_n_array = os2COM(M, W_correct, E_array, pm_array, Rm_array, FI_species; nl=2*length(pm_array), npp=2*length(Rm_array), verbose=verbose, good_coords=valid_orbit_indices, wall=wall, extra_kw_args=extra_kw_args)
+        verbose && println("Creating orbit weight matrix (E,Λ,Pϕ_n;σ) data... ")
         W_COM_inds = findall(x-> x>0.0, W_correct_COM)
         W_COM_inds_n_values = Array{Tuple{CartesianIndex{5},Float64}}(undef,length(W_COM_inds))
         for (ii,inds) in enumerate(W_COM_inds)
             W_COM_inds_n_values[ii] = (inds,W_correct_COM[Tuple(inds)...])
         end
-        verbose && println("Saving orbit weight matrix (E,mu,Pphi;sigma) data so that you do not have to re-map from (E,pm,Rm) next time... ")
+        verbose && println("Saving orbit weight matrix (E,Λ,Pϕ_n;σ) data so that you do not have to re-map from (E,pm,Rm) next time... ")
         filepath_W_COM = folderpath_OWCF*"orbWeightsCOM_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic*"_"*reaction_sscp*"_"*"$(size(W_correct_COM,1))x$(size(W_correct_COM,2))x$(size(W_correct_COM,3))x$(size(W_correct_COM,4))x2.jld2"
         verbose && println("Next time weightsWebApp.jl is run with same inputs, set filepath_W_COM = "*filepath_W_COM)
         myfile = jldopen(filepath_W_COM, true, true, false, IOStream)
-        write(myfile, "W_COM_inds_n_values", W_COM_inds_n_values) # Save only non-zero indices an values, to save memory space
-        write(myfile, "Ed_array", Ed_array)
-        write(myfile, "E_array", E_array)
-        write(myfile, "mu_matrix", μ_matrix)
-        write(myfile, "Pphi_matrix", Pϕ_matrix)
+        write(myfile,"W_COM_inds_n_values", W_COM_inds_n_values) # Save only non-zero indices an values, to save memory space
+        write(myfile,"Ed_array",Ed_array)
+        write(myfile,"E_array",E_array)
+        write(myfile,"Lambda_array",Λ_array)
+        write(myfile,"Pphi_n_array",Pϕ_n_array)
         close(myfile)
         # Removing extra CPU workers, if any, to minimize memory usage
         for i in workers()
@@ -533,26 +533,26 @@ if enable_COM
         W_COM_inds = nothing
         W_COM_inds_n_values = nothing
     else
-        verbose && print("Loading weight matrix in (E,mu,Pphi;sigma) coordinates from filepath_W_COM... ")
+        verbose && print("Loading weight matrix in (E,Λ,Pϕ_n;σ) coordinates from filepath_W_COM... ")
         myfile = jldopen(filepath_W_COM, false, false, false, IOStream)
         if haskey(myfile,"W_COM_inds_n_values")    
             W_COM_inds_n_values = myfile["W_COM_inds_n_values"]
             Ed_array_COM = myfile["Ed_array"]
             E_array_COM = myfile["E_array"]
-            μ_matrix = myfile["mu_matrix"]
-            Pϕ_matrix = myfile["Pphi_matrix"]
+            Λ_array = myfile["Lambda_array"]
+            Pϕ_n_array = myfile["Pphi_n_array"]
             close(myfile)
             verbose && println("Success!")
 
             if !(length(Ed_array)==length(Ed_array_COM))
-                error("Number of diagnostic measurement bins of (E,mu,Pphi;sigma) weight matrix in filepath_W_COM does not match number of diagnostic measurement bins of (E,pm,Rm) weight matrix in filepath_W. Please correct and re-start app.")
+                error("Number of diagnostic measurement bins of (E,Λ,Pϕ_n;σ) weight matrix in filepath_W_COM does not match number of diagnostic measurement bins of (E,pm,Rm) weight matrix in filepath_W. Please correct and re-start app.")
             end
             if !(length(E_array)==length(E_array_COM))
-                error("Number of fast-ion energy grid points of (E,mu,Pphi;sigma) weight matrix in filepath_W_COM does not match number of fast-ion energy grid points of (E,pm,Rm) weight matrix in filepath_W. Please correct and re-start app.")
+                error("Number of fast-ion energy grid points of (E,Λ,Pϕ_n;σ) weight matrix in filepath_W_COM does not match number of fast-ion energy grid points of (E,pm,Rm) weight matrix in filepath_W. Please correct and re-start app.")
             end
 
-            verbose && println("Assembling data for orbit weight functions in (E,mu,Pphi;sigma) space... ")
-            W_correct_COM = zeros(length(Ed_array_COM),length(E_array_COM),size(μ_matrix,2),size(Pϕ_matrix,2),2)
+            verbose && println("Assembling data for orbit weight functions in (E,Λ,Pϕ_n;σ) space... ")
+            W_correct_COM = zeros(length(Ed_array_COM),length(E_array_COM),length(Λ_array),length(Pϕ_n_array),2)
             for indValueTuple in W_COM_inds_n_values
                 inds = indValueTuple[1]
                 weight = indValueTuple[2]
@@ -562,58 +562,79 @@ if enable_COM
             # Release memory
             W_COM_inds_n_values = nothing
         else # Must be from os2com.jl
-            W_correct_COM = myfile["Wtot"]
+            if haskey(myfile,"Wtot")
+                W_correct_COM = myfile["Wtot"]
+                lk = "Wtot"
+            elseif haskey(myfile,"W")
+                W_correct_COM = myfile["W"]
+                lk = "W"
+            elseif haskey(myfile,"W4D")
+                W_correct_COM = myfile["W4D"]
+                lk = "W4D"
+            else
+                error("Unknown file key to load (E,Λ,Pϕ_n;σ) weight matrix from $(filepath_W_COM). Please correct and re-try.")
+            end
             Ed_array_COM = myfile["Ed_array"]
             E_array_COM = myfile["E_array"]
-            μ_matrix = myfile["mu_matrix_Wtot"]
-            Pϕ_matrix = myfile["Pphi_matrix_Wtot"]
+            Λ_array = myfile["Lambda_array_$(lk)"]
+            Pϕ_n_array = myfile["Pphi_n_array_$(lk)"]
             close(myfile)
         end
     end
 end
 
 ## --------------------------------------------------------------------------
-# Mapping topological boundaries to (E,μ, Pϕ; σ)
+# Mapping topological boundaries to (E,Λ,Pϕ_n;σ)
 if enable_COM
-    verbose && println(">>>>>>>>>>>>>>> Mapping topological boundaries to (E,μ, Pϕ; σ)... <<<<<<<<<<<<<<<")
+    B0 = norm(Equilibrium.Bfield(M,magnetic_axis(M)...)) # Tesla
+    q = getSpeciesCharge(FI_species) # Coulomb
+    if psi_bdry==0
+        @warn "The magnetic flux at the last closed flux surface (LCFS) is found to be 0 for the magnetic equilibrium in $(filepath_equil). Pϕ_n=Pϕ/(q*|Ψ_w|) where Ψ_w=Ψ(mag. axis) is assumed instead of Ψ_w=Ψ(LCFS)."
+        Ψ_w_norm = abs(psi_axis)
+    else
+        Ψ_w_norm = abs(psi_bdry)
+    end
+    verbose && println(">>>>>>>>>>>>>>> Mapping topological boundaries to (E,Λ,Pϕ_n;σ)... <<<<<<<<<<<<<<<")
     topoBounds_COM = zeros(size(W_correct_COM,2),size(W_correct_COM,3),size(W_correct_COM,4),2)
     for (iE,E) in enumerate(E_array)
+        E_joule = (1000*GuidingCenterOrbits.e0)*E
         ones_carinds = findall(x-> x==1.0,topoBounds[iE,:,:])
         for carinds in ones_carinds
             pm, Rm = pm_array[carinds[1]], Rm_array[carinds[2]]
             EPRc = EPRCoordinate(M, E, pm, Rm; amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species))
             myHc = HamiltonianCoordinate(M, EPRc)
-            μ = myHc.mu
-            Pϕ = myHc.p_phi
-            iμ, iPϕ = argmin(abs.(μ_matrix[iE,:] .- μ)), argmin(abs.(Pϕ_matrix[iE,:] .- Pϕ))
+            μ = myHc.mu; Λ = μ*B0/E_joule
+            Pϕ = myHc.p_phi; Pϕ_n = Pϕ/(q*Ψ_w_norm)
+            il, ipp = argmin(abs.(Λ_array .- Λ)), argmin(abs.(Pϕ_n_array .- Pϕ_n))
             if pm<0.0
-                topoBounds_COM[iE, iμ, iPϕ, 1] = 1.0
+                topoBounds_COM[iE, il, ipp, 1] = 1.0
             else
-                topoBounds_COM[iE, iμ, iPϕ, 2] = 1.0
+                topoBounds_COM[iE, il, ipp, 2] = 1.0
             end
         end
     end
 end
 
 ## --------------------------------------------------------------------------
-# Mapping null orbits to (E,μ, Pϕ; σ)
+# Mapping null orbits to (E,Λ,Pϕ_n;σ)
 if showNullOrbs && enable_COM
-    verbose && println(">>>>>>>>>>>>>>> Mapping null orbits to (E,μ, Pϕ; σ)... <<<<<<<<<<<<<<<")
+    verbose && println(">>>>>>>>>>>>>>> Mapping null orbits to (E,Λ,Pϕ_n;σ)... <<<<<<<<<<<<<<<")
     nullOrbs_COM = zeros(size(W_correct_COM))
     for iEd=1:size(W_correct_COM,1)
         for (iE,E) in enumerate(E_array)
+            E_joule = (1000*GuidingCenterOrbits.e0)*E
             ones_carinds = findall(x-> x==1.0,nullOrbs[iEd,iE,:,:])
             for carinds in ones_carinds
                 pm, Rm = pm_array[carinds[1]], Rm_array[carinds[2]]
                 EPRc = EPRCoordinate(M, E, pm, Rm; amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species))
                 myHc = HamiltonianCoordinate(M, EPRc)
-                μ = myHc.mu
-                Pϕ = myHc.p_phi
-                iμ, iPϕ = argmin(abs.(μ_matrix[iE,:] .- μ)), argmin(abs.(Pϕ_matrix[iE,:] .- Pϕ))
+                μ = myHc.mu; Λ = μ*B0/E_joule
+                Pϕ = myHc.p_phi; Pϕ_n = Pϕ/(q*Ψ_w_norm)
+                il, ipp = argmin(abs.(Λ_array .- Λ)), argmin(abs.(Pϕ_n_array .- Pϕ_n))
                 if pm<0.0
-                    nullOrbs_COM[iEd, iE, iμ, iPϕ, 1] = 1.0
+                    nullOrbs_COM[iEd, iE, il, ipp, 1] = 1.0
                 else
-                    nullOrbs_COM[iEd, iE, iμ, iPϕ, 2] = 1.0
+                    nullOrbs_COM[iEd, iE, il, ipp, 2] = 1.0
                 end
             end
         end
@@ -641,14 +662,15 @@ verbose && println("--- You can access the weightsWebApp via an internet web bro
 verbose && println("--- When 'Task (runnable)...' has appeared, please visit the website localhost:$(port) ---")
 verbose && println("--- Remember: It might take 1-2 minutes to load the webpage. Please be patient. ---")
 function app(req)
-    @manipulate for tokamak_wall = Dict("on" => true, "off" => false), include_Fos = Dict("on" => true, "off" => false), colorbar_scale = Dict("0.0-1.0" => "zero2one", "0.0-0.1" => "zero2aTenth"), phase_space = Dict("(E,μ,Pϕ;σ)" => :COM, "(E,pm,Rm)" => :OS), Ed=Ed_array, E=E_array, pm=pm_array, Rm=Rm_array, irec=Rec_array, save_plots = Dict("on" => true, "off" => false), show_coordinate = Dict("on" => true, "off" => false)
+    @manipulate for tokamak_wall = Dict("on" => true, "off" => false), include_Fos = Dict("on" => true, "off" => false), colorbar_scale = Dict("0.0-1.0" => "zero2one", "0.0-0.1" => "zero2aTenth"), phase_space = Dict("(E,Λ,Pϕ_n;σ)" => :COM, "(E,pm,Rm)" => :OS), Ed=Ed_array, E=E_array, pm=pm_array, Rm=Rm_array, irec=Rec_array, save_plots = Dict("on" => true, "off" => false), show_coordinate = Dict("on" => true, "off" => false)
 
         EPRc = EPRCoordinate(M, E, pm, Rm; amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species))
         o = get_orbit(M,EPRc; wall=wall, extra_kw_args...)
         if phase_space==:COM
+            E_joule = (1000*GuidingCenterOrbits.e0)*E
             myHc = HamiltonianCoordinate(M, EPRc)
-            μ = myHc.mu
-            Pϕ = myHc.p_phi
+            μ = myHc.mu; Λ = μ*B0/E_joule
+            Pϕ = myHc.p_phi; Pϕ_n = Pϕ/(q*Ψ_w_norm)
             if (pm<0.0)
                 iσ = 1 # Index 1 corresponds to σ=-1
             else
@@ -695,7 +717,7 @@ function app(req)
             plt_crs = Plots.plot(VC_RP,VC_zP,color=:gray, linewidth=1.2,label="")
         end
         if (phase_space==:COM) && enable_COM
-            plt_crs = Plots.plot!(title="E: $(round(E,digits=2)) keV  μ: $(round(μ, sigdigits=2))  Pϕ: $(round(Pϕ,sigdigits=2))")
+            plt_crs = Plots.plot!(title="E: $(round(E,digits=2)) keV  Λ: $(round(Λ, sigdigits=2))  Pϕ_n: $(round(Pϕ_n,sigdigits=2))")
         else # phase_space==:COM (OS = orbit space, COM = constants-of-motion)
             plt_crs = Plots.plot!(title="E: $(round(E,digits=2)) keV  pm: $(round(o.coordinate.pitch, digits=2))  Rm: $(round(o.coordinate.r,digits=2))")
         end
@@ -709,7 +731,7 @@ function app(req)
         if save_plots
             if (phase_space==:COM) && enable_COM
                 sigExt = iσ==1 ? "-1" : "+1" 
-                png(plt_crs, "plt_crs_$(round(Ed, digits=2))_$(round(E, digits=2))_$(round(μ, sigdigits=2))_$(round(Pϕ,sigdigits=2))_"*sigExt)
+                png(plt_crs, "plt_crs_$(round(Ed, digits=2))_$(round(E, digits=2))_$(round(Λ, sigdigits=2))_$(round(Pϕ_n,sigdigits=2))_"*sigExt)
             else
                 png(plt_crs, "plt_crs_$(round(Ed, digits=2))_$(round(E, digits=2))_$(round(o.coordinate.pitch, digits=2))_$(round(o.coordinate.r,digits=2))")
             end
@@ -722,11 +744,11 @@ function app(req)
         # Extract correct topological boundaries and convert to vectors (for scatter plot)
         if (phase_space==:COM) && enable_COM
             ones_carinds = findall(x-> x==1.0, topoBounds_COM[Ei,:,:,iσ])
-            μ_scatvals_tb = zeros(length(ones_carinds))
-            Pϕ_scatvals_tb = zeros(length(ones_carinds))
+            Λ_scatvals_tb = zeros(length(ones_carinds))
+            Pϕ_n_scatvals_tb = zeros(length(ones_carinds))
             for (ind,carinds) in enumerate(ones_carinds)
-                μ_scatvals_tb[ind] = μ_matrix[Ei,carinds[1]]
-                Pϕ_scatvals_tb[ind] = Pϕ_matrix[Ei,carinds[2]]
+                Λ_scatvals_tb[ind] = Λ_array[carinds[1]]
+                Pϕ_n_scatvals_tb[ind] = Pϕ_n_array[carinds[2]]
             end
         end
         if (phase_space==:OS) || (include_Fos && plot_Fos)
@@ -743,11 +765,11 @@ function app(req)
         if showNullOrbs
             if (phase_space==:COM) && enable_COM
                 ones_carinds = findall(x-> x==1.0, nullOrbs_COM[Edi,Ei,:,:,iσ])
-                μ_scatvals_nb = zeros(length(ones_carinds))
-                Pϕ_scatvals_nb = zeros(length(ones_carinds))
+                Λ_scatvals_nb = zeros(length(ones_carinds))
+                Pϕ_n_scatvals_nb = zeros(length(ones_carinds))
                 for (ind,carinds) in enumerate(ones_carinds)
-                    μ_scatvals_nb[ind] = μ_matrix[Ei,carinds[1]]
-                    Pϕ_scatvals_nb[ind] = Pϕ_matrix[Ei,carinds[2]]
+                    Λ_scatvals_nb[ind] = Λ_array[carinds[1]]
+                    Pϕ_n_scatvals_nb[ind] = Pϕ_n_array[carinds[2]]
                 end
             end
             if (phase_space==:OS) || (include_Fos && plot_Fos)
@@ -769,21 +791,21 @@ function app(req)
 
         ###### Heatmap of the weight function slice plot ######
         if (phase_space==:COM) && enable_COM
-            plt_weights = Plots.heatmap(Pϕ_matrix[Ei,:],μ_matrix[Ei,:],(W_correct_COM[Edi,Ei,:,:,iσ])./maximum(W_correct_COM[Edi,Ei,:,:,iσ]),colorbar=true,title="W ($(round(maximum(W_correct_COM[Edi,Ei,:,:,iσ]),sigdigits=4)) = 1.0)", clims=clims, fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), ylims=extrema(μ_scatvals_tb), xlims=extrema(Pϕ_scatvals_tb))
+            plt_weights = Plots.heatmap(Pϕ_n_array,Λ_array,(W_correct_COM[Edi,Ei,:,:,iσ])./maximum(W_correct_COM[Edi,Ei,:,:,iσ]),colorbar=true,title="W ($(round(maximum(W_correct_COM[Edi,Ei,:,:,iσ]),sigdigits=4)) = 1.0)", clims=clims, fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), ylims=extrema(Λ_scatvals_tb), xlims=extrema(Pϕ_n_scatvals_tb))
         else
             plt_weights = Plots.heatmap(Rm_array,pm_array,(W_correct[Edi,Ei,:,:])./maximum(W_correct[Edi,Ei,:,:]),colorbar=true,title="W ($(round(maximum(W_correct[Edi,Ei,:,:]),sigdigits=4)) = 1.0)", clims=clims, fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]))
         end
         # Plot a scatter-plot of the topological boundaries for that specific fast-ion energy slice
         ms = save_plots ? 2.6 : 1.8
         if (phase_space==:COM) && enable_COM
-            plt_weights = Plots.scatter!(Pϕ_scatvals_tb,μ_scatvals_tb,markersize=ms,leg=false,markercolor=:black, xlabel="Pϕ", ylabel="μ")
+            plt_weights = Plots.scatter!(Pϕ_n_scatvals_tb,Λ_scatvals_tb,markersize=ms,leg=false,markercolor=:black, xlabel="Pϕ_n", ylabel="Λ")
         else
             plt_weights = Plots.scatter!(Rm_scatvals_tb,pm_scatvals_tb,markersize=ms,leg=false,markercolor=:black, xlabel="Rm [m]", ylabel="pm")
         end
         if showNullOrbs
             # Plot a scatter-plot of the null orbits for that specific diagnostic and fast-ion energy
             if (phase_space==:COM) && enable_COM
-                plt_weights = Plots.scatter!(Pϕ_scatvals_nb,μ_scatvals_nb,markersize=5.0,leg=false,markercolor=:teal, markershape=:xcross, linewidth=2.5)
+                plt_weights = Plots.scatter!(Pϕ_n_scatvals_nb,Λ_scatvals_nb,markersize=5.0,leg=false,markercolor=:teal, markershape=:xcross, linewidth=2.5)
             else
                 plt_weights = Plots.scatter!(Rm_scatvals_nb,pm_scatvals_nb,markersize=5.0,leg=false,markercolor=:teal, markershape=:xcross, linewidth=2.5)
             end
@@ -791,7 +813,7 @@ function app(req)
         if show_coordinate
             # Plot the orbit coordinate
             if (phase_space==:COM) && enable_COM
-                plt_weights = Plots.scatter!([Pϕ],[μ],markershape=:circle,mc=:white,markerstrokewidth=3.0,markerstrokealpha=1.0, markerstrokecolor=orb_color,markersize=5.0) # orbit coordinate marker
+                plt_weights = Plots.scatter!([Pϕ_n],[Λ],markershape=:circle,mc=:white,markerstrokewidth=3.0,markerstrokealpha=1.0, markerstrokecolor=orb_color,markersize=5.0) # orbit coordinate marker
             else
                 plt_weights = Plots.scatter!([Rm],[pm],markershape=:circle,mc=:white,markerstrokewidth=3.0,markerstrokealpha=1.0, markerstrokecolor=orb_color,markersize=5.0) # orbit coordinate marker
             end
@@ -800,7 +822,7 @@ function app(req)
             plt_weights = Plots.plot!(dpi=600)
             if (phase_space==:COM) && enable_COM
                 sigExt = iσ==1 ? "-1" : "+1" 
-                png(plt_weights, "plt_weights_$(round(Ed, digits=2))_$(round(E, digits=2))_$(round(μ, digits=2))_$(round(Pϕ,digits=2))_"*sigExt)
+                png(plt_weights, "plt_weights_$(round(Ed, digits=2))_$(round(E, digits=2))_$(round(Λ, digits=2))_$(round(Pϕ_n,digits=2))_"*sigExt)
             else
                 png(plt_weights, "plt_weights_$(round(Ed, digits=2))_$(round(E, digits=2))_$(round(o.coordinate.pitch, digits=2))_$(round(o.coordinate.r,digits=2))")
             end
@@ -821,7 +843,7 @@ function app(req)
             plt_Fos = Plots.plot!(dpi=600)
             if (phase_space==:COM) && enable_COM
                 sigExt = iσ==1 ? "-1" : "+1" 
-                png(plt_Fos, "plt_Fos_$(round(Ed, digits=2))_$(round(E, digits=2))_$(round(μ, sigdigits=2))_$(round(Pϕ,sigdigits=2))_"*sigExt)
+                png(plt_Fos, "plt_Fos_$(round(Ed, digits=2))_$(round(E, digits=2))_$(round(Λ, sigdigits=2))_$(round(Pϕ_n,sigdigits=2))_"*sigExt)
             else
                 png(plt_Fos, "plt_Fos_$(round(Ed, digits=2))_$(round(E, digits=2))_$(round(o.coordinate.pitch, digits=2))_$(round(o.coordinate.r,digits=2))")
             end
@@ -843,7 +865,7 @@ function app(req)
             plt_WFdens = Plots.plot!(dpi=600)
             if (phase_space==:COM) && enable_COM
                 sigExt = iσ==1 ? "-1" : "+1" 
-                png(plt_WFdens, "plt_WFdens_$(round(Ed, digits=2))_$(round(E, digits=2))_$(round(μ, sigdigits=2))_$(round(Pϕ,sigdigits=2))_"*sigExt)
+                png(plt_WFdens, "plt_WFdens_$(round(Ed, digits=2))_$(round(E, digits=2))_$(round(Λ, sigdigits=2))_$(round(Pϕ_n,sigdigits=2))_"*sigExt)
             else
                 png(plt_WFdens, "plt_WFdens_$(round(Ed, digits=2))_$(round(E, digits=2))_$(round(o.coordinate.pitch, digits=2))_$(round(o.coordinate.r,digits=2))")
             end
@@ -864,7 +886,7 @@ function app(req)
         if save_plots
             if (phase_space==:COM) && enable_COM
                 sigExt = iσ==1 ? "-1" : "+1" 
-                png(plt_top, "plt_top_$(round(Ed, digits=2))_$(round(E, digits=2))_$(round(μ, sigdigits=2))_$(round(Pϕ,sigdigits=2))_"*sigExt)
+                png(plt_top, "plt_top_$(round(Ed, digits=2))_$(round(E, digits=2))_$(round(Λ, sigdigits=2))_$(round(Pϕ_n,sigdigits=2))_"*sigExt)
             else
                 png(plt_top, "plt_top_$(round(Ed, digits=2))_$(round(E, digits=2))_$(round(o.coordinate.pitch, digits=2))_$(round(o.coordinate.r,digits=2))")
             end
@@ -899,7 +921,7 @@ function app(req)
             plt_sig = Plots.plot!(title="", legend=false)
             if (phase_space==:COM) && enable_COM
                 sigExt = iσ==1 ? "-1" : "+1" 
-                png(plt_top, "plt_top_$(round(Ed, digits=2))_$(round(E, digits=2))_$(round(μ, sigdigits=2))_$(round(Pϕ,sigdigits=2))_"*sigExt)
+                png(plt_top, "plt_top_$(round(Ed, digits=2))_$(round(E, digits=2))_$(round(Λ, sigdigits=2))_$(round(Pϕ_n,sigdigits=2))_"*sigExt)
             else
                 png(plt_sig, "plt_sig_$(round(Ed, digits=2))_$(round(E, digits=2))_$(round(o.coordinate.pitch, digits=2))_$(round(o.coordinate.r,digits=2))")
             end
@@ -908,7 +930,7 @@ function app(req)
 
         if include_Fos && plot_Fos # Three rows with two plots each (total 6)
             vbox(vskip(1em),
-                md"*Please note, fast-ion distribution and WF-density will not be visualzed in (E,μ,Pϕ;σ). A Jacobian going from (E,pm,Rm) is currently not supported by the OWCF.*",
+                md"*Please note, fast-ion distribution and WF-density will not be visualzed in (E,Λ,Pϕ_n;σ). A Jacobian going from (E,pm,Rm) is currently not implemented for the weightsWebApp.*",
                 md"Also, please note that the weightsWebApp.jl gets rather slow when all the inputs have been specified.",
                 md"If so, it is better to click new values on the sliders, rather than drag the sliders.",
                 vskip(1em),
