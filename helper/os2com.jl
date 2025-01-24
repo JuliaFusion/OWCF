@@ -58,14 +58,15 @@ verbose && println("Loading Julia packages... ")
     using FileIO # To write/open files in general
     include(folderpath_OWCF*"misc/species_func.jl") # To convert species labels to particle mass
     include(folderpath_OWCF*"misc/availReacts.jl") # To check reaction availability and extract fast-ion and thermal species
-    include(folderpath_OWCF*"extra/dependencies.jl") # To be able to use orbit_grid() without progress bar
+    include(folderpath_OWCF*"extra/dependencies.jl") # To be able to use (E,pm,Rm) -> (E,Λ,Pϕ_n;σ) functions
 end
 ## ---------------------------------------------------------------------------------------------
 
 ## ---------------------------------------------------------------------------------------------
 # Loading tokamak equilibrium
 verbose && println("Loading tokamak equilibrium... ")
-if ((split(filepath_equil,"."))[end] == "eqdsk") || ((split(filepath_equil,"."))[end] == "geqdsk")
+try
+    global M; global wall; global jdotb; global timepoint
     M, wall = read_geqdsk(filepath_equil,clockwise_phi=false) # Assume counter-clockwise phi-direction
     jdotb = M.sigma # The sign of the dot product between the plasma current and the magnetic field
 
@@ -74,7 +75,8 @@ if ((split(filepath_equil,"."))[end] == "eqdsk") || ((split(filepath_equil,"."))
     XX = (split(eqdsk_array[end-2],"-"))[end] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
     YYYY = eqdsk_array[end-1] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
     timepoint = (timepoint == nothing ? XX*","*YYYY : timepoint) # Format XX,YYYY to avoid "." when including in filename of saved output
-else # Otherwise, assume magnetic equilibrium is a saved .jld2 file
+catch # Otherwise, assume magnetic equilibrium is a saved .jld2 file
+    global M; global wall; global jdotb; global timepoint
     myfile = jldopen(filepath_equil,false,false,false,IOStream)
     M = myfile["S"]
     wall = myfile["wall"]

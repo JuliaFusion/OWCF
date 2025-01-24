@@ -101,7 +101,7 @@
 # script will then resume at the last checkpoint, and continue until the script is finished.
 # The progress file is then deleted once ps2WF.jl completes successfully.
 
-# Script written by Henrik Järleblad. Last maintained 2022-08-25.
+# Script written by Henrik Järleblad. Last maintained 2025-01-24.
 ################################################################################################
 
 
@@ -256,7 +256,8 @@ end
 ## ---------------------------------------------------------------------------------------------
 # Loading tokamak equilibrium
 verbose && println("Loading tokamak equilibrium... ")
-if ((split(filepath_equil,"."))[end] == "eqdsk") || ((split(filepath_equil,"."))[end] == "geqdsk")
+try
+    global M; global wall; global jdotb; global timepoint
     M, wall = read_geqdsk(filepath_equil,clockwise_phi=false) # Assume counter-clockwise phi-direction
     jdotb = M.sigma # The sign of the dot product between the plasma current and the magnetic field
 
@@ -265,7 +266,8 @@ if ((split(filepath_equil,"."))[end] == "eqdsk") || ((split(filepath_equil,"."))
     XX = (split(eqdsk_array[end-2],"-"))[end] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
     YYYY = eqdsk_array[end-1] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
     timepoint = XX*","*YYYY # Format XX,YYYY to avoid "." when including in filename of saved output
-else # Otherwise, assume magnetic equilibrium is a saved .jld2 file
+catch # Otherwise, assume magnetic equilibrium is a saved .jld2 file
+    global M; global wall; global jdotb; global timepoint
     myfile = jldopen(filepath_equil,false,false,false,IOStream)
     M = myfile["S"]
     wall = myfile["wall"]
@@ -421,7 +423,7 @@ println("")
 println("Please remove previously saved files with the same file name (if any) prior to script completion!")
 println("")
 println("If you would like to change any settings, please edit the ps2WF start file.")
-println("Written by Henrik Järleblad. Last maintained 2022-09-14.")
+println("Written by Henrik Järleblad. Last maintained 2025-01-24.")
 println("------------------------------------------------------------------------------------------------")
 println("")
 
@@ -637,12 +639,18 @@ function calcWFO(M::AbstractEquilibrium, og::OrbitGrid, i::Int, F_os_chunk::Abst
 end
 
 ## ---------------------------------------------------------------------------------------------
+# Save the standard output channel to be able to switch back to it, after surpressing outputs from orbit_grid()
+oldstd = stdout
+
+## ---------------------------------------------------------------------------------------------
 # The actual, very long, loop over energies... !
 for i = i0:size(E_chunks,2)
     verbose && println("---------- Computing WF-chunk $(i) of $(size(E_chunks,2)) ----------")
     E_chunk = E_chunks[:,i]
     verbose && println("Computing orbit grid $(i) of $(size(E_chunks,2))... ")
-    og_orbs, og = orbit_grid(M, visualizeProgress, E_chunk, pm_array, Rm_array; wall=wall, amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species), extra_kw_args...)
+    redirect_stdout(devnull) # Surpress progress bar here. Would mess up the log file
+    og_orbs, og = OrbitTomography.orbit_grid(M, E_chunk, pm_array, Rm_array; wall=wall, amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species), extra_kw_args...)
+    redirect_stdout(oldstd) # recover original stdout. Print to stdout again
     verbose && println(og)
 
     # Pick out the correct F_ps chunk

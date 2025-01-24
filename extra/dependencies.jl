@@ -608,87 +608,6 @@ end
 ###### (Drift) Orbit-related functions
 
 """
-    orbit_grid(M,false,eo,po,ro)
-    orbit_grid(-||-, q=1, amu=OrbitTomography.H2_amu, kwargs... )
-
-This function is just like OrbitTomography.orbit_grid, but allows execution without progress bar.
-Good for HPC batch job submission, to not overrun log files.
-"""
-function orbit_grid(M::AbstractEquilibrium, visualizeProgress::Bool, eo::AbstractVector, po::AbstractVector, ro::AbstractVector;
-                    q::Int64 = 1, amu = OrbitTomography.H2_amu, kwargs...)
-
-    nenergy = length(eo)
-    npitch = length(po)
-    nr = length(ro)
-
-    orbit_index = zeros(Int,nenergy,npitch,nr)
-    class = fill(:incomplete,(nenergy,npitch,nr))
-    tau_t = zeros(Float64,nenergy,npitch,nr)
-    tau_p = zeros(Float64,nenergy,npitch,nr)
-
-    norbs = nenergy*npitch*nr
-    subs = CartesianIndices((nenergy,npitch,nr))
-
-    if visualizeProgress
-        prog = ProgressMeter.Progress(norbs)
-        channel = RemoteChannel(()->Channel{Bool}(norbs), 1)
-        orbs = fetch(@sync begin
-            @async while take!(channel)
-                ProgressMeter.next!(prog)
-            end
-            @async begin
-                orbs = @distributed (vcat) for i=1:norbs
-                    ie,ip,ir = Tuple(subs[i])
-                    c = GuidingCenterOrbits.EPRCoordinate(M,eo[ie],po[ip],ro[ir],q=q,amu=amu)
-                    try
-                        o = GuidingCenterOrbits.get_orbit(M, c; kwargs...)
-                    catch
-                        o = GuidingCenterOrbits.Orbit(EPRCoordinate(;q=q,amu=amu),:incomplete)
-                    end
-
-                    if o.class in (:incomplete,:invalid,:lost)
-                        o = Orbit(o.coordinate,:incomplete)
-                    end
-                    put!(channel, true)
-                    o
-                end
-                put!(channel, false)
-                orbs
-            end
-        end)
-    else
-        orbs = @distributed (vcat) for i=1:norbs
-            ie,ip,ir = Tuple(subs[i])
-            c = GuidingCenterOrbits.EPRCoordinate(M,eo[ie],po[ip],ro[ir],q=q,amu=amu)
-            try
-                o = GuidingCenterOrbits.get_orbit(M, c; kwargs...)
-            catch
-                o = GuidingCenterOrbits.Orbit(EPRCoordinate(;q=q,amu=amu),:incomplete)
-            end
-
-            if o.class in (:incomplete,:invalid,:lost)
-                o = Orbit(o.coordinate,:incomplete)
-            end
-            o
-        end
-    end
-
-
-    for i=1:norbs
-        class[subs[i]] = orbs[i].class
-        tau_p[subs[i]] = orbs[i].tau_p
-        tau_t[subs[i]] = orbs[i].tau_t
-    end
-
-    grid_index = filter(i -> orbs[i].class != :incomplete, 1:norbs)
-    orbs = filter(x -> x.class != :incomplete, orbs)
-    norbs = length(orbs)
-    orbit_index[grid_index] = 1:norbs
-
-    return orbs, OrbitTomography.OrbitGrid(eo,po,ro,fill(1,norbs),orbit_index,class,tau_p,tau_t)
-end
-
-"""
     mu_func(energy, B, Pϕ, Ψ, RBϕ)
     mu_func(-||-; energy_in_keV=true, m=GuidingCenterOrbits.H2_amu*GuidingCenterOrbits.mass_u, q=1*GuidingCenterOrbits.e0)
 
@@ -1729,7 +1648,7 @@ ps2os_streamlined(-||-;numOsamples, verbose=false, distr_dim = [], sign_o_pitch_
 
 Continuation of the ps2os_streamlined function above. F_EpRz is f(E,p,R,z). Energy is a vector with the energy grid points (keV). Pitch is a vector with the pitch grid points.
 R is a vector with the major radius grid points (meters). z is a vector with the vertical coordinate grid points (meters). filepath_equil is a string pointing to the filepath 
-of a magnetic equilibrium file (either .eqdsk file or output from extra/compSolovev.jl). og is an orbit grid, computed with the orbit_grid() function (above). 
+of a magnetic equilibrium file (either .eqdsk file or output from extra/compSolovev.jl). og is an orbit grid, computed with the orbit_grid() function (OrbitTomography.jl Julia package). 
 numOsamples is a necessary keyword argument that sets the number of Monte-Carlo samples for the transformation. verbose is a bool switch that turns function print statements on/off.
 distr_dim is a list of exactly 4 elements. If specified, the fast-ion distribution will be interpolated to have this size in each of the 4 dimensions. For example, 
 distr_dim=[50,40,30,35] will lead to that f(E,p,R,z) has size 50x40x30x35. sign_o_pitch_wrt_B is a bool switch that f(E,p,R,z)->f(E,-p,R,z). clockwise_phi is a bool switch for magnetic 
@@ -3091,7 +3010,14 @@ function os2COM(M::AbstractEquilibrium, data::Union{Array{Float64, 3},Array{Floa
     if !isTopoMap && !(typeof(good_coords)==Vector{CartesianIndex{3}})
         verbose && println("Input data is not a topological map, and keyword argument 'good_coords' has not been (correctly?) provided... ")
         verbose && println("--------> Computing orbit grid for (E,pm,Rm)-values to be able to deduce valid orbits for (E,pm,Rm)-grid... ")
-        orbs, og = orbit_grid(M, verbose, E_array, pm_array, Rm_array; q=getSpeciesEcu(FI_species), amu=getSpeciesAmu(FI_species), wall=wall, extra_kw_args...)
+        if !verbose
+            oldstd = stdout
+            redirect_stdout(devnull) # Redirect prints to null, to avoid orbit_grid progress bar messing up log files
+        end
+        orbs, og = OrbitTomography.orbit_grid(M, E_array, pm_array, Rm_array; q=getSpeciesEcu(FI_species), amu=getSpeciesAmu(FI_species), wall=wall, extra_kw_args...)
+        if !verbose
+            redirect_stdout(oldstd) # Start printing outputs again
+        end
     end
 
     if isTopoMap
