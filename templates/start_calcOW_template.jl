@@ -12,6 +12,7 @@
 # folderpath_OWCF - The path to the OWCF folder - String
 # numOcores - The number of CPU cores that will be used if distributed is set to true. - Int64
 #
+# beamTarget - if true, then 1- or 2-step reactions can be calculated in the beam-target approximation, for faster results
 # analyticalOWs - If set to true, projected velocities will be used to compute the orbit weight functions. In that case, no thermal data is needed - Bool
 # debug - If true, then the script will run in debug-mode. Should almost always be set to false - Bool
 # diagnostic_filepath - The path to the LINE21 data diagnostic line-of-sight file. Leave as "" for assumed sperical emission - String
@@ -111,6 +112,7 @@ end
 ## -----------------------------------------------------------------------------
 @everywhere begin
     analyticalOWs = false # If true, then no thermal species data is needed. The weight functions will be computed solely from the projected velocity of the ion as it crosses the diagnostic sightline.
+    beamTarget = false
     debug = false
     diagnostic_filepath = "" # The filepath to the LINE21 file containing viewing cone data. Or, automatic sightlines include "TOFOR", "AB" and "". If diagnostic_angles wish to be used, set as "" or nothing
     diagnostic_name = ""
@@ -136,8 +138,7 @@ end
     pm_array = nothing # Array can be specified manually. Otherwise, leave as 'nothing'
     pm_min = -1.0
     pm_max = 1.0
-    product_state = "1L" #!# Can be GS, 1L or 2L. GS means Ground State. 1L and 2L are the first and second excited nucleus levels, respectively. 1L and 2L are only relevant if the 'reaction' input variable is set to a two-step gamma-ray reaction
-    reaction = "9Be(4He,12C)n" # Specified in the form a(b,c)d where a is thermal ion, b is fast ion, c is emitted particle and d is the product nucleus. In the case of a 2-step fusion reaction with the goal of measuring gamma-rays, the c in a(b,c)d refers to the product particle that will de-excite and emit the gamma-ray. If analyticalOWs==true then 'reaction' should be provided in the format 'proj-X' where 'X' is the fast ion species ('D', 'T' etc)
+    reaction = "9Be(4He,12C)n-1L" # Specified in the form a(b,c)d-l where a is thermal ion, b is fast ion, c is emitted particle, d is the product nucleus and l is the nuclear energy state of c. l can be GS, 1L, 2L, etc. If analyticalOWs==true then 'reaction' should be provided in the format 'proj-X' where 'X' is the fast ion species ('D', 'T' etc)
     # PLEASE NOTE! Specify alpha particles as '4he' or '4He' (NOT 'he4' or 'He4'). Same goes for helium-3 (specify as '3he', NOT 'he3')
     Rm_array = nothing # Meter. Array can be specified manually. Otherwise, leave as 'nothing'
     Rm_min = nothing # Automatically use magnetic axis or 4/5 from HFS wall to magnetic axis. Override by specifying together with Rm_max. Meter

@@ -94,13 +94,11 @@ end
 if !analyticalOWs
     reaction_full = deepcopy(reaction) # Make a fully independent copy of the fusion reaction variable
     reaction = full2reactsOnly(reaction; verbose=verbose, projVelocity=analyticalOWs) # Converts from 'a(b,c)d' format to 'a-b' format (reactants only)
-    reaction_name = getReactionName(reaction_full)
 else
     reaction_full = deepcopy(reaction) # Make a fully independent copy of the fusion reaction variable
 end
-#@everywhere reaction_full = $reaction_full # Not yet necessary. Might be necessary when starting to compute two-step fusion reactions with the OWCF via the DRESS code
-@everywhere reaction = $reaction # Transfer to all external processes
-@everywhere reaction_name = $reaction_name # Transfer to all external processes
+@everywhere reaction_full = $reaction_full # Not yet necessary. Might be necessary when starting to compute two-step fusion reactions with the OWCF via the DRESS code
+# @everywhere reaction = $reaction # Transfer to all external processes
 emittedParticleHasCharge = false # By default, assume that the emitted particle 'c' in a(b,c)d does NOT have charge (is neutral)
 RHEPWC = ["D-3He", "3He-D"] # RHEPWC means 'reaction has emitted particle with charge'
 if reaction in RHEPWC # However, there are some fusion reactions which WILL produce an emitted particle with non-zero charge
@@ -496,7 +494,7 @@ F_os = 1.0 .*ones(size(og_orbs)) # Assume one ion for every orbit. This is the d
 # Setting Python variables and structures on all distributed workers/processes...
 verbose && println("Setting all Python variables and structures on all distributed workers/processes... ")
 @everywhere begin
-if analyticCalc
+if !beamTarget
     py"""
     # The '$' in front of many Python variables means that the variable is defined in Julia, not in Python.
     reaction = $reaction
@@ -594,7 +592,7 @@ for iii=1:iiimax
                 end
                 @async begin
                     W = @distributed (+) for i=1:norbs
-                        spec = calcOrbSpec(M, og_orbs[i], F_os[i], py"forwardmodel", py"thermal_dist", py"Ed_bin_edges", reaction, reaction_name; product_state=product_state, thermal_temp=thermal_temp, thermal_dens=thermal_dens,analyticCalc=analyticCalc) # Calculate the diagnostic energy spectrum for the orbit
+                        spec = calcOrbSpec(M, og_orbs[i], F_os[i], py"forwardmodel", py"thermal_dist", py"Ed_bin_edges", reaction_full; thermal_temp=thermal_temp, thermal_dens=thermal_dens, beamTarget=beamTarget) # Calculate the diagnostic energy spectrum for the orbit
                         rows = append!(collect(1:length(spec)),length(spec)) # To be able to tell the sparse framework about the real size of the weight matrix
                         cols = append!(i .*ones(Int64, length(spec)), norbs) # To be able to tell the sparse framework about the real size of the weight matrix
 
@@ -611,7 +609,7 @@ for iii=1:iiimax
             end)
         else
             Wtot = @distributed (+) for i=1:norbs
-                spec = calcOrbSpec(M, og_orbs[i], F_os[i], py"forwardmodel", py"thermal_dist", py"Ed_bin_edges", reaction, reaction_name; product_state=product_state, thermal_temp=thermal_temp, thermal_dens=thermal_dens,analyticCalc=analyticCalc) # Calculate the diagnostic energy spectrum for the orbit
+                spec = calcOrbSpec(M, og_orbs[i], F_os[i], py"forwardmodel", py"thermal_dist", py"Ed_bin_edges", reaction_full; thermal_temp=thermal_temp, thermal_dens=thermal_dens, beamTarget=beamTarget) # Calculate the diagnostic energy spectrum for the orbit
                 rows = append!(collect(1:length(spec)),length(spec)) # Please see similar line earlier in the script
                 cols = append!(i .*ones(Int64, length(spec)), norbs) # Please see similar line earlier in the script
 
@@ -627,7 +625,7 @@ for iii=1:iiimax
             # WRITE CODE TO DEBUG QUANTITIES OF INTEREST
 
         else
-            spec = calcOrbSpec(M, og_orbs[1], F_os[1], py"forwardmodel", py"thermal_dist", py"Ed_bin_edges", reaction, reaction_name; product_state=product_state, thermal_temp=thermal_temp, thermal_dens=thermal_dens,analyticCalc=analyticCalc) # Calculate the diagnostic energy spectrum for the orbit
+            spec = calcOrbSpec(M, og_orbs[1], F_os[1], py"forwardmodel", py"thermal_dist", py"Ed_bin_edges", reaction_full; thermal_temp=thermal_temp, thermal_dens=thermal_dens, beamTarget=beamTarget) # Calculate the diagnostic energy spectrum for the orbit
             rows = append!(collect(1:length(spec)),length(spec)) # # Please see similar line earlier in the script
             cols = append!(1 .*ones(Int64, length(spec)), norbs) # # Please see similar line earlier in the script
 
@@ -643,7 +641,7 @@ for iii=1:iiimax
 
             else
                 verbose && println("Calculating spectra for orbit $(i) of $(norbs)... ")
-                local spec = calcOrbSpec(M, og_orbs[i], F_os[i], py"forwardmodel", py"thermal_dist", py"Ed_bin_edges", reaction, reaction_name; product_state=product_state, thermal_temp=thermal_temp, thermal_dens=thermal_dens,analyticCalc=analyticCalc) # Calculate the diagnostic energy spectrum for the orbit
+                local spec = calcOrbSpec(M, og_orbs[i], F_os[i], py"forwardmodel", py"thermal_dist", py"Ed_bin_edges", reaction_full; thermal_temp=thermal_temp, thermal_dens=thermal_dens, beamTarget=beamTarget) # Calculate the diagnostic energy spectrum for the orbit
                 local rows = append!(collect(1:length(spec)),length(spec)) # Please see similar line earlier in the script
                 local cols = append!(i .*ones(Int64, length(spec)), norbs) # Please see similar line earlier in the script
 
