@@ -4,9 +4,9 @@
 import os
 
 import numpy as np
-import scipy.interpolate as interp
 from scipy.special import legendre
 import pandas as pd
+from scipy.interpolate import interp1d
 from scipy.interpolate import RegularGridInterpolator
 
 import constants
@@ -192,7 +192,7 @@ def sigma_diff(E, costheta, reaction='d-d', product_state='GS', anisotropic=True
     if reaction == 'd-d' and anisotropic:
         # Compute the angular dependence of the DD reaction
         coeff = dd_coeff_endf
-        A     = interp.interp1d(coeff[0],coeff[1:], fill_value=0, bounds_error=False)(E)
+        A     = interp1d(coeff[0],coeff[1:], fill_value=0, bounds_error=False)(E)
         prob  = 0.5*np.ones_like(E)
 
         for i in range(n_dd_coeff):
