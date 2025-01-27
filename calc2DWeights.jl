@@ -244,7 +244,7 @@ if tokamak=="JET" && parse(Float64,replace(timepoint,","=>"."))>=40.0
     # This is sometimes included.
     # The OWCF (and TRANSP) does not count this preparation time.
     # Therefore, deduct it.
-    timepoint = replace("$(parse(Float64,replace(timepoint,","=>"."))-40.0)", "." => ",")
+    timepoint = replace("$(round(parse(Float64,replace(timepoint,","=>"."))-40.0,digits=6))", "." => ",")
 end
 
 if (fileext_thermal=="cdf") && (fileext_FI_cdf=="cdf")
