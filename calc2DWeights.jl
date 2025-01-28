@@ -79,7 +79,7 @@
 # Please note that the diagnostic energy grid will be created as bin centers.
 # That is, the first diagnostic energy grid value will be (Ed_min+Ed_diff/2) and so on.
 
-# Script written by Henrik Järleblad. Last maintained 2024-08-13.
+# Script written by Henrik Järleblad. Last maintained 2025-01-27.
 ################################################################################################
 
 ## ---------------------------------------------------------------------------------------------
@@ -137,6 +137,14 @@ fileext_FI_cdf = (split(filepath_FI_cdf,"."))[end] # Assume last part after fina
 fileext_FI_cdf = lowercase(fileext_FI_cdf)
 @everywhere fileext_thermal = $fileext_thermal
 @everywhere fileext_FI_cdf = $fileext_FI_cdf
+
+# Work with output filename
+if !isnothing(filename_o)
+    if !(typeof(filename_o)==String)
+        error("The 'filename_o' input variable was specified as $(filename_o). This is not 'nothing' nor a String type. Please correct and re-try.")
+    end
+end
+filename_o_orig = deepcopy(filename_o) # Deep copy the output filename variable and value. To be able to re-use the 'filename_o' variable name
 
 ## ---------------------------------------------------------------------------------------------
 # Error checks
@@ -443,14 +451,24 @@ if saveVparaVperpWeights
 end
 println("Results will be saved to: ")
 if iiimax == 1
-    println(folderpath_o*"velWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = analytical2DWs)*"_$(length(range(Ed_min,stop=Ed_max,step=Ed_diff))-1)x$(nE)x$(np).jld2")
+    if isnothing(filename_o_orig)
+        filename_o = "velWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = analytical2DWs)*"_$(length(range(Ed_min,stop=Ed_max,step=Ed_diff))-1)x$(nE)x$(np)"
+    else
+        filename_o = filename_o_orig
+    end
+    println(folderpath_o*filename_o*".jld2")
 else
-    println(folderpath_o*"velWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = analytical2DWs)*"_1.jld2")
+    if isnothing(filename_o_orig)
+        filename_o = "velWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = analytical2DWs)
+    else
+        filename_o = filename_o_orig
+    end
+    println(folderpath_o*filename_o*"_1.jld2")
     println("... ")
-    println(folderpath_o*"velWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = analytical2DWs)*"_$(iiimax).jld2")
+    println(folderpath_o*filename_o*"_$(iiimax).jld2")
     if iii_average
         println("---> Average of all files will be computed and saved to: ")
-        println("---> "*folderpath_o*"velWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = analytical2DWs)*".jld2")
+        println("---> "*folderpath_o*filename_o*".jld2")
     end
 end
 println("")
@@ -469,7 +487,7 @@ println("Please remove previously saved files with the same file name (if any) p
 println("")
 println("If you would like to change any settings, please edit the start_calc2DW_template.jl file or similar.")
 println("")
-println("Written by Henrik Järleblad. Last maintained 2024-08-13.")
+println("Written by Henrik Järleblad. Last maintained 2025-01-27.")
 println("--------------------------------------------------------------------------------------------------")
 println("")
 
@@ -730,9 +748,19 @@ for iii=1:iiimax
     if !debug
         verbose && println("Saving weight function matrix... ")
         if iiimax==1 # If you intend to calculate only one weight matrix
-            global filepath_output_orig = folderpath_o*"velWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = analytical2DWs)*"_$(length(range(Ed_min,stop=Ed_max,step=Ed_diff))-1)x$(nE)x$(np)"
+            if isnothing(filename_o_orig)
+                filename_o = "velWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = analytical2DWs)*"_$(length(range(Ed_min,stop=Ed_max,step=Ed_diff))-1)x$(nE)x$(np)"
+            else
+                filename_o = filename_o_orig
+            end
+            global filepath_output_orig = folderpath_o*filename_o
         else # If you intend to calculate several (identical) weight matrices
-            global filepath_output_orig = folderpath_o*"velWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = analytical2DWs)*"_$(iii)"
+            if isnothing(filename_o_orig)
+                filename_o = "velWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = analytical2DWs)
+            else
+                filename_o = filename_o_orig
+            end
+            global filepath_output_orig = folderpath_o*filename_o*"_$(iii)"
         end
         global filepath_output = deepcopy(filepath_output_orig)
         global count = 1
@@ -850,7 +878,12 @@ if iiimax>1 # If we were supposed to compute more than one weight matrix...
         end
 
         verbose && println("Success! Saving average in separate file... ")
-        myfile = jldopen(folderpath_o*"velWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = analytical2DWs)*".jld2",true,true,false,IOStream)
+        if isnothing(filename_o_orig)
+            filename_o = "velWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = analytical2DWs)
+        else
+            filename_o = filename_o_orig
+        end
+        myfile = jldopen(folderpath_o*filename_o*".jld2",true,true,false,IOStream)
         write(myfile,"W",W_total)
         write(myfile,"E_array",E_array)
         write(myfile,"p_array",p_array)
