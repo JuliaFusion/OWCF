@@ -130,6 +130,7 @@ end
     E_array = [5.0,10.0,100.0,1000.0] # keV. Array can be specified manually. Otherwise, leave as 'nothing'
     Emin = 0.0 # keV
     Emax = 000.0 # keV
+    filename_o = "test_1_output"
     filepath_equil = "equilibrium/JET/g96100/g96100_0-53.0012.eqdsk" # for example "equilibrium/JET/g96100/g96100_0-53.0012.eqdsk" or "myOwnSolovev.jld2"
     filepath_FI_cdf = "" # If filepath_thermal_distr=="96100J01.cdf", then filepath_FI_cdf should be "96100J01_fi_1.cdf" for example
     filepath_thermal_distr = "" # for example "96100J01.cdf", "myOwnThermalDistr.jld2" or ""
@@ -137,8 +138,8 @@ end
     flr_effects = false
     folderpath_o = "tests/outputs/" # Output folder path. Finish with '/'
     folderpath_OWCF = $folderpath_OWCF # Set path to OWCF folder to same as main process (hence the '$')
-    gyro_samples = 100 # 50 is the default discretization number for the gyro-motion
-    iiimax = 20 # The script will calculate iiimax number of weight matrices. They can then be examined in terms of similarity (to determine MC noise influence etc).
+    gyro_samples = 5000 # 50 is the default discretization number for the gyro-motion
+    iiimax = 1 # The script will calculate iiimax number of weight matrices. They can then be examined in terms of similarity (to determine MC noise influence etc).
     (iiimax > 1) && (iii_average = false) # If true, the average of all weight matrices will be computed and saved. Without the "_i" suffix.
     nE = 0
     np = 5
@@ -164,8 +165,8 @@ end
     # but filepath_thermal_distr is NOT a TRANSP output file (and filepath_FI_cdf is not a corresponding NUBEAM output file, as explained above), 
     # a correct specification of the tokamak variable becomes necessary. 
     tokamak = "JET"
-    verbose = true # If true, then the program will be very talkative!
-    visualizeProgress = true # If false, progress bar will not be displayed for computations
+    verbose = false # If true, then the program will be very talkative!
+    visualizeProgress = false # If false, progress bar will not be displayed for computations
     z_of_interest = :z_mag # The vertical coordinate of interest. Specify in meters e.g. "0.3", "0.4" etc. Can also be specified as a symbol :z_mag, then the vertical coordinate of the magnetic axis will automatically be used
 end
 
