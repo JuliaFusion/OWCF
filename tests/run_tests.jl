@@ -52,16 +52,31 @@ cd(folderpath_OWCF)
 using Pkg
 Pkg.activate(".")
 
+using JLD2
 using Dates
+
+oldstd = stdout # To be able to surpress prints from the test scripts, but not errors
+
 date_and_time = split("$(Dates.now())","T")[1]*"at"*split("$(Dates.now())","T")[2][1:5]
+tot_number_o_tests = 20
 println("---------------------------------------- The OWCF tests ----------------------------------------")
 println("---------------------------------------- Current date and time: $(date_and_time)")
 println("---------------------------------------- OWCF folder path: $(folderpath_OWCF)")
 println("---------------------------------------- Starting the OWCF tests... ")
 test_prog = 0
-println("- Running 2D weight function computation test 1 (run_tests progress: $(100*test_prog/1) %)... ")
-include("start_files/start_calc2DW_test.jl")
-# CODE COMPARISON HERE!!
-# CODE COMPARISON HERE!!
-# CODE COMPARISON HERE!!
+# ------------------------------------------------------------------------------------------------#
+println("- Running 2D weight function computation test 1 (run_tests progress: $(100*test_prog/tot_number_o_tests) %)... ")
+redirect_stdout(devnull); include("start_files/start_calc2DW_test_1.jl"); redirect_stdout(oldstd)
+myreffile = jldopen("standards/test_1_standard.jld2",false,false,false,IOStream)
+W_ref = myreffile["W"]; close(myfile)
+myfile = jldopen("outputs/test_1_output.jld2",false,false,false,IOStream)
+W_test = myfile["W"]; close(myfile)
+
+diff = sum(abs.(W_test .- W_ref))
+if diff<1.0e-11 # Standard set via empirical studies
+    test_1_passed = true
+else
+    test_1_passed = false
+end
 test_prog += 1 # First test completed!
+# ------------------------------------------------------------------------------------------------#
