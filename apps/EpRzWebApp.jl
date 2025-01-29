@@ -236,8 +236,7 @@ if length(incompleteInds)>0
         iR = incompleteInd[3]
         iz = incompleteInd[4]
 
-        my_gcp = getGCP(FI_species)
-        o = get_orbit(M,my_gcp(E_array[iE],p_array[ip],R_array[iR],z_array[iz]); wall=wall, extra_kw_args...)
+        o = get_orbit(M,getGCP(FI_species;E=E_array[iE],p=p_array[ip],R=R_array[iR],z=z_array[iz]); wall=wall, extra_kw_args...)
 
         orbInt = orbitClass2Int(M, o; distinguishIncomplete=distinguishIncomplete, distinguishLost=distinguishLost)
         if !(orbInt==6)
@@ -348,9 +347,8 @@ verbose && println("--- When 'Task (runnable)...' has appeared, please visit the
 verbose && println("--- Remember: It might take a minute or two to load the webpage. Please be patient. ---")
 function app(req) # Here is where the app starts!
     @manipulate for tokamak_wall = Dict("on" => true, "off" => false), E=E_array, p=p_array, R=R_array, z=z_array, study = Dict("Valid orbits" => :orbs, "Fast-ion distribution" => :FI, "Poloidal times" => :tpol, "Toroidal times" => :ttor, "(E,pm,Rm) at (R,z)" => :OS), space = Dict("(E,p)" => :EP, "(v_para,v_perp)" => :VEL), save_plots = Dict("on" => true, "off" => false)
-        
-        my_gcp_func = getGCP(FI_species)
-        my_gcp = my_gcp_func(E,p,R,z)
+
+        my_gcp = getGCP(FI_species,E=E,p=p,R=R,z=z)
 
         o = get_orbit(M,my_gcp; wall=wall, extra_kw_args...)
         
@@ -498,7 +496,7 @@ function app(req) # Here is where the app starts!
                 Rm_scatvals_tb[ind] = Rm_array[carinds[2]]
             end
 
-            array_o_orb_tuples = map(i-> (get_orbit(M,my_gcp_func(E,p_array[i],R,z); wall=wall, toa=true), topoMap[Eci,i,Rci,zci]), 1:length(p_array)) # Genius line <3
+            array_o_orb_tuples = map(i-> (get_orbit(M,getGCP(FI_species,E=E,p=p_array[i],R=R,z=z); wall=wall, toa=true), topoMap[Eci,i,Rci,zci]), 1:length(p_array)) # Genius line <3
             
             plt_topo = Plots.scatter(Rm_scatvals_tb,pm_scatvals_tb,markersize=ms,leg=false,markercolor=:black, xlabel="Rm [m]", ylabel="pm")
             for orb_tuple in array_o_orb_tuples

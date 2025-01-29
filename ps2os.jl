@@ -310,7 +310,10 @@ end
 ## --------------------------------------------------------------------------------------
 if trans_distr
     verbose && println("Going into ps2os_streamlined (performance=true manually set)... ")
-    F_os_raw, class_distr, nfast = ps2os_streamlined(F_EpRz, E_array_ps, p_array, R_array, z_array, filepath_equil, og; numOsamples=numOsamples, verbose=verbose, distr_dim=distr_dim, visualizeProgress=visualizeProgress, nbatch=nbatch, distributed=distributed, sign_o_pitch_wrt_B=sign_o_pitch_wrt_B, performance=true, GCP=getGCP(FI_species), extra_kw_args... )
+    F_os_raw, class_distr, nfast = ps2os_streamlined(F_EpRz, E_array_ps, p_array, R_array, z_array, filepath_equil, og; numOsamples=numOsamples, 
+                                                     verbose=verbose, distr_dim=distr_dim, visualizeProgress=visualizeProgress, nbatch=nbatch, 
+                                                     distributed=distributed, sign_o_pitch_wrt_B=sign_o_pitch_wrt_B, performance=true, FI_species=FI_species, 
+                                                     extra_kw_args... )
 else
     if (@isdefined jacobian)
         verbose && println("Transforming a non-distribution quantity from (E,p,R,z) to (E,pm,Rm)... ")

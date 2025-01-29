@@ -654,7 +654,7 @@ for i = i0:size(E_chunks,2)
 
 
     verbose && println("Performing ps2os $(i) of $(size(E_chunks,2))... ")
-    F_os_raw_chunk, nfast_chunk = ps2os(M, wall, F_ps_chunk, E_chunk, pitch, R, z, og; numOsamples=Int64(12*length(og_orbs)), verbose=verbose, distributed=distributed, nbatch = 100_000, saveProgress=false, visualizeProgress=visualizeProgress, GCP=getGCP(FI_species), extra_kw_args...)
+    F_os_raw_chunk, nfast_chunk = ps2os(M, wall, F_ps_chunk, E_chunk, pitch, R, z, og; numOsamples=Int64(12*length(og_orbs)), verbose=verbose, distributed=distributed, nbatch = 100_000, saveProgress=false, visualizeProgress=visualizeProgress, FI_species=FI_species, extra_kw_args...)
 
     wasteOtime = false
     if sum(F_os_raw_chunk)==0 || nfast_chunk==0

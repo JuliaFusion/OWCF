@@ -259,19 +259,19 @@ if distributed
                     torTimeMap_i = zeros(length(p_array),length(R_array),length(z_array))
                     jacobian_i = zeros(length(p_array),length(R_array),length(z_array))
 
-                    my_gcp = getGCP(FI_species)
+                    my_gcp = getGCP(FI_species; E=E, p=p, R=R, z=z)
 
                     if false # for de-bugging purposes. Should it be needed. If so, change to 'true'.
-                        o = get_orbit(M,my_gcp(E,p,R,z);wall=wall,store_path=false, verbose=verbose, extra_kw_args...)
+                        o = get_orbit(M,my_gcp;wall=wall,store_path=false, verbose=verbose, extra_kw_args...)
                     else
-                        o = get_orbit(M,my_gcp(E,p,R,z);wall=wall,store_path=false, extra_kw_args...)
+                        o = get_orbit(M,my_gcp;wall=wall,store_path=false, extra_kw_args...)
                     end
                     ip = first(findall(x-> x==p,p_array))
                     iR = first(findall(x-> x==R,R_array))
                     iz = first(findall(x-> x==z,z_array))
                     polTimeMap_i[ip,iR,iz] = o.tau_p
                     torTimeMap_i[ip,iR,iz] = o.tau_t
-                    jacobian_i[ip,iR,iz] = 4*(pi^2) * R * sqrt(2*E*1000*GuidingCenterOrbits.e0/((my_gcp(E,p,R,z).m)^3))
+                    jacobian_i[ip,iR,iz] = 4*(pi^2) * R * sqrt(2*E*1000*GuidingCenterOrbits.e0/((my_gcp.m)^3))
 
                     if (o.class == :lost) && distinguishLost
                         topoMap_i[ip,iR,iz] = 7
@@ -321,19 +321,19 @@ if distributed
             torTimeMap_i = zeros(length(p_array),length(R_array),length(z_array))
             jacobian_i = zeros(length(p_array),length(R_array),length(z_array))
 
-            my_gcp = getGCP(FI_species)
+            my_gcp = getGCP(FI_species; E=E, p=p, R=R, z=z)
 
             if false # for de-bugging purposes. Should it be needed. If so, change to 'true'.
-                o = get_orbit(M,my_gcp(E,p,R,z);wall=wall,store_path=false, verbose=verbose, extra_kw_args...)
+                o = get_orbit(M,my_gcp;wall=wall,store_path=false, verbose=verbose, extra_kw_args...)
             else
-                o = get_orbit(M,my_gcp(E,p,R,z);wall=wall,store_path=false, extra_kw_args...)
+                o = get_orbit(M,my_gcp;wall=wall,store_path=false, extra_kw_args...)
             end
             ip = first(findall(x-> x==p,p_array))
             iR = first(findall(x-> x==R,R_array))
             iz = first(findall(x-> x==z,z_array))
             polTimeMap_i[ip,iR,iz] = o.tau_p
             torTimeMap_i[ip,iR,iz] = o.tau_t
-            jacobian_i[ip,iR,iz] = 4*(pi^2) * R * sqrt(2*E*1000*GuidingCenterOrbits.e0/((my_gcp(E,p,R,z).m)^3))
+            jacobian_i[ip,iR,iz] = 4*(pi^2) * R * sqrt(2*E*1000*GuidingCenterOrbits.e0/((my_gcp.m)^3))
 
             if (o.class == :lost) && distinguishLost
                 topoMap_i[ip,iR,iz] = 7
@@ -381,19 +381,19 @@ else # ... good luck
 
         verbose && println("$(count)/$(length(topoMap_tottot)):    (E,p,R,z) = ($(E),$(p),$(R),$(z))")
 
-        my_gcp = getGCP(FI_species)
+        my_gcp = getGCP(FI_species; E=E, p=p, R=R, z=z)
 
         if false # for de-bugging purposes. Should it be needed. If so, change to 'true'.
-            o = get_orbit(M,my_gcp(E,p,R,z);wall=wall,store_path=false, verbose=verbose, extra_kw_args...)
+            o = get_orbit(M,my_gcp;wall=wall,store_path=false, verbose=verbose, extra_kw_args...)
         else
-            o = get_orbit(M,my_gcp(E,p,R,z);wall=wall,store_path=false, extra_kw_args...)
+            o = get_orbit(M,my_gcp;wall=wall,store_path=false, extra_kw_args...)
         end
         ip = first(findall(x-> x==p,p_array))
         iR = first(findall(x-> x==R,R_array))
         iz = first(findall(x-> x==z,z_array))
         polTimeMap_i[ip,iR,iz] = o.tau_p
         torTimeMap_i[ip,iR,iz] = o.tau_t
-        jacobian_i[ip,iR,iz] = 4*(pi^2) * R * sqrt(2*E*1000*GuidingCenterOrbits.e0/((my_gcp(E,p,R,z).m)^3))
+        jacobian_i[ip,iR,iz] = 4*(pi^2) * R * sqrt(2*E*1000*GuidingCenterOrbits.e0/((my_gcp.m)^3))
 
         if (o.class == :lost) && distinguishLost
             topoMap_i[ip,iR,iz] = 7
