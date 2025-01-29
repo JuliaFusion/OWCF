@@ -1,4 +1,4 @@
-################################ start_calcOW_template.jl #########################################
+################################################################ start_calcOW_template.jl #########################################################################
 # This file contains all the inputs that the script calcOrbWeights.jl needs to calculate orbit
 # weight functions. This file also executes the script calcOrbWeights.jl after the inputs are defined.
 # The computed orbit weight functions will be two-dimensional and have dimensions (channels, valid orbits)
@@ -12,8 +12,9 @@
 # folderpath_OWCF - The path to the OWCF folder - String
 # numOcores - The number of CPU cores that will be used if distributed is set to true. - Int64
 #
-# beamTarget - if true, then 1- or 2-step reactions can be calculated in the beam-target approximation, for faster results
-# analyticalOWs - If set to true, projected velocities will be used to compute the orbit weight functions. In that case, no thermal data is needed - Bool
+# analytic - If true, the orbit weight functions will be computed using the analytic equations in A. Valentini et al. Nucl. Fusion, Submitted (2025).
+#              Please note! This is an approximation, in which the thermal population is assumed to be at rest. However, using these analytic equations, 
+#              no Monte Carlo methods are necessary, i.e. massive speed-up of computations - Bool
 # debug - If true, then the script will run in debug-mode. Should almost always be set to false - Bool
 # diagnostic_filepath - The path to the LINE21 data diagnostic line-of-sight file. Leave as "" for assumed sperical emission - String
 # diagnostic_name - The name of the diagnostic. Purely for esthetic purposes - String
@@ -53,6 +54,7 @@
 # pm_array - The fast-ion pm grid points of your (E,pm,Rm) grid. If set to 'nothing': npm, pm_min and pm_max must be specified - Vector
 # pm_min - The lower boundary for the orbit-grid pm values - Float64
 # pm_max - THe upper boundary for the orbit-grid pm values - Float64
+# projVel - If set to true, projected velocities will be used to compute the orbit weight functions. In that case, no thermal data is needed - Bool
 # reaction - The nuclear fusion reaction that you want to simulate. Please see OWCF/misc/availReacts.jl for available fusion reactions - String
 # Rm_array - The fast-ion Rm grid points of your (E,pm,Rm) grid. If set to 'nothing': nRm, Rm_min and Rm_max must be specified - Vector
 # Rm_min - The lower boundary for the orbit-grid Rm values - Float64
@@ -68,12 +70,15 @@
 
 ### Other
 # If filepath_thermal_distr is not specified, then an interpolation object will be
-# used as 'analytical' thermal temperature and thermal density profiles, respectively. The thermal_temp_axis
+# used as 'analytic' thermal temperature and thermal density profiles, respectively. The thermal_temp_axis
 # and thermal_dens_axis variables will be used to scale the polynomial profiles to match the specified
 # thermal temperature and thermal density at the magnetic axis. Please see the /misc/temp_n_dens.jl script for info.
+#
+# PLEASE NOTE! The 'analytic' and 'projVel' input variables cannot both be set to true. If both are set to true, the algorithm will give priority to
+# the 'analytic' input variable and automatically set the 'projVel' input variable to false.
 
-# Script written by Henrik Järleblad. Last maintained 2022-10-11.
-######################################################################################################
+# Script written by Henrik Järleblad. Last maintained 2025-01-29.
+#################################################################################################################################################################
 
 ## First you have to set the system specifications
 using Distributed # Needed, even though distributed might be set to false. This is to export all inputs to all workers right away, if needed.
@@ -111,15 +116,14 @@ end
 
 ## -----------------------------------------------------------------------------
 @everywhere begin
-    analyticalOWs = false # If true, then no thermal species data is needed. The weight functions will be computed solely from the projected velocity of the ion as it crosses the diagnostic sightline.
-    beamTarget = false
+    analytic = false
     debug = false
     diagnostic_filepath = "" # The filepath to the LINE21 file containing viewing cone data. Or, automatic sightlines include "TOFOR", "AB" and "". If diagnostic_angles wish to be used, set as "" or nothing
     diagnostic_name = ""
     instrumental_response_filepath = "" # Should be the filepaths to three .txt-files or one .jld2-file. Otherwise, leave as ""
-    Ed_min = 0000.0 # keV (or m/s if analyticalOWs===true)
-    Ed_max = 0000.0 # keV (or m/s if analyticalOWs===true)
-    Ed_diff = 00.0 # keV (or m/s if analyticalOWs===true)
+    Ed_min = 0000.0 # keV (or m/s if projVel===true)
+    Ed_max = 0000.0 # keV (or m/s if projVel===true)
+    Ed_diff = 00.0 # keV (or m/s if projVel===true)
     E_array = nothing # keV. Array can be specified manually. Otherwise, leave as 'nothing'
     Emin = 0.0 # keV
     Emax = 000.0 # keV
@@ -138,8 +142,19 @@ end
     pm_array = nothing # Array can be specified manually. Otherwise, leave as 'nothing'
     pm_min = -1.0
     pm_max = 1.0
-    reaction = "9Be(4He,12C)n-1L" # Specified in the form a(b,c)d-l where a is thermal ion, b is fast ion, c is emitted particle, d is the product nucleus and l is the nuclear energy state of c. l can be GS, 1L, 2L, etc. If analyticalOWs==true then 'reaction' should be provided in the format 'proj-X' where 'X' is the fast ion species ('D', 'T' etc)
-    # PLEASE NOTE! Specify alpha particles as '4he' or '4He' (NOT 'he4' or 'He4'). Same goes for helium-3 (specify as '3he', NOT 'he3')
+    projVel = false # If true, then no thermal species data is needed. The weight functions will be computed solely from the projected velocity of the ion as it crosses the diagnostic sightline.
+    ################################################################################
+    # The 'reaction' input variable should be specified using one of the following forms:
+    # (1) "a(b,c)d" 
+    # (2) "a(b,c)d-l" 
+    # (3) "b" 
+    # where a is thermal ion, b is fast ion, c is emitted particle, d is the product nucleus 
+    # and l is the nuclear energy state of c. l can be GS, 1L and 2L, corresponding to Ground State (GS), 1st excited energy level (1L) and 2nd excited energy level (2L).
+    # HOWEVER, if projVel==true then 'reaction' should be provided simply as a fast ion species ("D", "T" etc), i.e. e.g. reaction = "D". 
+    # Please see OWCF/misc/species_func.jl for a list of available particle species.
+    reaction = "9Be(4He,12C)n-1L"
+    # PLEASE NOTE! Specify alpha particles as '4he' or '4He' (NOT 'he4' or 'He4'). Same goes for helium-3 (specify as '3he', NOT 'he3'). Etc.
+    ################################################################################
     Rm_array = nothing # Meter. Array can be specified manually. Otherwise, leave as 'nothing'
     Rm_min = nothing # Automatically use magnetic axis or 4/5 from HFS wall to magnetic axis. Override by specifying together with Rm_max. Meter
     Rm_max = nothing # Automatically use LFS wall. Override by specifying together with Rm_min. Meter

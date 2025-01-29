@@ -3,15 +3,19 @@
 #### Description:
 # This script computes orbit weight functions, it's as simple as that. It can be considered the flagship
 # of the OWCF. As the rest of the OWCF, it utilizes Luke Stagner's orbit computation codes to compute
-# the guiding-center orbits of fast ions in toroidally symmetric fusion devices. The orbit computation
+# the guiding-center (drift) orbits of fast ions in toroidally symmetric fusion devices. The orbit computation
 # codes are (as of 2022-08-26) packaged into the Julia packages GuidingCenterOrbits.jl and OrbitTomography.jl.
-# Furthermore, in the current version of the OWCF, the calcOrbWeights.jl script is taylored to utilize
-# the DRESS code (J. Eriksson et al, CPC, 199, 40-46, 2016) to compute the orbit weight functions.
-# The calcOrbWeights.jl script does this by computing weighted (E,p,R,z) points for each orbit, and then
-# sends them into the DRESS code which then returns an expected signal for that (E,pm,Rm) grid point.
-# In future versions, it can be easily modified to instead save the weighted (E,p,R,z) points of the
-# orbits in a file readable by e.g. FIDASIM. A direct call to FIDASIM or other codes can also be easily
-# implemented by modifying the calcOrbSpec.jl helper script, on which calcOrbWeights.jl depends.
+# In the current version of the OWCF, the calcOrbWeights.jl script can compute orbit weight functions in 
+# the following ways:
+#   - By sending (E,p,R,z) points into the DRESS code (J. Eriksson et al, CPC, 199, 40-46, 2016)
+#   - By using (E,p,R,z) points together with the equations in A. Valentini, Nucl. Fusion, Submitted (2025)
+# The (E,p,R,z) points are computed for each orbit, using the GuidingCenterOrbits.jl and OrbitTomography.jl 
+# packages. The orbit can be uniquely identified using an (E,pm,Rm) coordinate where E is the energy (in keV)
+# pm is the pitch (v/v_||) at the maximum major radius point Rm of the orbit. Regardless of which approach is 
+# chosen from the list above, an expected 1D signal for the (E,pm,Rm) coordinate is returned and placed into a matrix.
+# Once signals for all (E,pm,Rm) coordinates of interest have been computed, the orbit weight function matrix 
+# is complete and saved into an output file. In future versions of the OWCF, more codes/models can be added 
+# to the list e.g. FIDASIM.
 # 
 # The DRESS code is written in Python and calcOrbWeights.jl utilizes the DRESS code via the Julia-Python
 # interface package PyCall.jl
@@ -56,8 +60,8 @@
 #   Ed_array - The diagnostic energy bin centers - Array{Float64,1}
 #   reaction_full - The nuclear fusion reaction for which the orbit weights are computed - String
 #   filepath_thermal_distr - The filepath of the thermal species distribution. For reference - String
-# If analytical orbit weight functions (with projected velocities) are computed, the saved file will also have the key
-#   analyticalOWs - True if analytical orbit weight functions were computed. False otherwise - Bool
+# If orbit weight functions are computed from projected velocities, the saved file will also have the key
+#   projVel - True if orbit weight functions were computed from projected velocities. False otherwise - Bool
 # If an orbit-space grid file was used to define the orbit grid for the orbit weight functions, the saved file will also have the key
 #   og_filepath - The path to the .jld2-file (should be an output of calcOrbGrid.jl) used as orbit-space grid input - String
 
@@ -65,7 +69,7 @@
 # Please note that the diagnostic energy grid will be created as bin centers.
 # That is, the first diagnostic energy grid value will be (Ed_min+Ed_diff/2) and so on.
 
-# Script written by Henrik Järleblad. Last maintained 2022-10-05.
+# Script written by Henrik Järleblad. Last maintained 2025-01-29.
 ################################################################################################
 
 ## ---------------------------------------------------------------------------------------------
@@ -91,14 +95,14 @@ verbose && println("Loading Julia packages... ")
 end
 
 ## ---------------------------------------------------------------------------------------------
-if !analyticalOWs
-    reaction_full = deepcopy(reaction) # Make a fully independent copy of the fusion reaction variable
-    reaction = full2reactsOnly(reaction; verbose=verbose, projVelocity=analyticalOWs) # Converts from 'a(b,c)d' format to 'a-b' format (reactants only)
-else
-    reaction_full = deepcopy(reaction) # Make a fully independent copy of the fusion reaction variable
+# Fusion reaction and particle-related checks
+if projVel && analytic 
+    @warn "Both the 'analytic' and 'projVel' input variables were set to true. This is not allowed. Priority will be given to the 'analytic' input variable and the 'projVel' input variable will be automatically set to false."
+    projVel = false
 end
-@everywhere reaction_full = $reaction_full # Not yet necessary. Might be necessary when starting to compute two-step fusion reactions with the OWCF via the DRESS code
-# @everywhere reaction = $reaction # Transfer to all external processes
+
+@everywhere reaction = $reaction # Not yet necessary. Might be necessary when starting to compute two-step fusion reactions with the OWCF via the DRESS code
+
 emittedParticleHasCharge = false # By default, assume that the emitted particle 'c' in a(b,c)d does NOT have charge (is neutral)
 RHEPWC = ["D-3He", "3He-D"] # RHEPWC means 'reaction has emitted particle with charge'
 if reaction in RHEPWC # However, there are some fusion reactions which WILL produce an emitted particle with non-zero charge
@@ -158,18 +162,19 @@ end
 if fileext_thermal=="cdf" && !(fileext_FI_cdf=="cdf")
     error("filepath_thermal_distr specified as TRANSP .cdf file, but filepath_FI_cdf was wrongly specified. Please specify and re-try.")
 end
+
 ## ---------------------------------------------------------------------------------------------
-# Safety check for analytical orbit weight function computations
-if analyticalOWs
-    !(split(reaction,"-")[1] == "proj") && error("Analytical orbit weight function computation was specified, but input variable 'reaction' was not correctly specified (it should be specified as 'proj-X' where 'X' is the fast-ion species). Please correct and re-try.")
+# Safety check for analytic orbit weight function computations
+if projVel
+    !(split(reaction,"-")[1] == "proj") && error("analytic orbit weight function computation was specified, but input variable 'reaction' was not correctly specified (it should be specified as 'proj-X' where 'X' is the fast-ion species). Please correct and re-try.")
 end
-if !analyticalOWs
+if !projVel
     (split(reaction,"-")[1] == "proj") && error("Normal orbit weight function computation was specified, but input variable 'reaction' was not correctly specified (it should be specified as 'a(b,c)d' where a is thermal ion, b is fast ion, c is emitted particle and d is the product nucleus. Please correct and re-try.")
 end
 
 ## ---------------------------------------------------------------------------------------------
 # Determine fast-ion and thermal (thermal) species from inputs in start file
-if !analyticalOWs
+if !projVel
     thermal_species, FI_species = checkReaction(reaction_full) # Check the specified fusion reaction, and extract thermal and fast-ion species
 else
     FI_species = split(reaction,"-")[2] # Assumed 'proj-X' format
@@ -205,11 +210,11 @@ else
 end
 
 
-if filepath_thermal_distr=="" && (!(typeof(thermal_temp_axis)==Float64) && !(typeof(thermal_temp_axis)==Int64)) && !analyticalOWs
+if filepath_thermal_distr=="" && (!(typeof(thermal_temp_axis)==Float64) && !(typeof(thermal_temp_axis)==Int64)) && !projVel
     @everywhere thermal_temp_axis = 3.0
     @warn "filepath_thermal_distr was not specified, and thermal_temp_axis was not specified correctly. thermal_temp_axis will be set to default value of 3.0 keV."
 end
-if filepath_thermal_distr=="" && !(typeof(thermal_dens_axis)==Float64) && !analyticalOWs
+if filepath_thermal_distr=="" && !(typeof(thermal_dens_axis)==Float64) && !projVel
     @everywhere thermal_dens_axis = 1.0e20
     @warn "filepath_thermal_distr was not specified, and thermal_dens_axis was not specified correctly. thermal_dens_axis will be set to default value of 1.0e20 m^-3."
 end
@@ -365,22 +370,22 @@ else
 end
 if !(filepath_thermal_distr=="")
     println("Thermal distribution file specified: "*filepath_thermal_distr)
-elseif (filepath_thermal_distr=="") && !analyticalOWs
+elseif (filepath_thermal_distr=="") && !projVel
     println("Thermal distribution file not specified.")
     println("Thermal ion ($((split(reaction,"-"))[1])) temperature on axis will be set to $(thermal_temp_axis) keV.")
     println("Thermal ion ($((split(reaction,"-"))[1])) density on axis will be set to $(thermal_dens_axis) m^-3.")
 else
-    println("Analytical orbit weight functions will be computed using the projected velocity (u) of the fast ions.")
+    println("analytic orbit weight functions will be computed using the projected velocity (u) of the fast ions.")
 end
 println("Magnetic equilibrium file specified: "*filepath_equil)
 println("")
-if !analyticalOWs
+if !projVel
     println("Fusion reaction specified: "*reaction_full)
 else
     println("Projected velocity (u) will be used as weights for the weight functions.")
 end
 println("Fast-ion species specified: "*FI_species)
-if emittedParticleHasCharge && !analyticalOWs
+if emittedParticleHasCharge && !projVel
     println("The emitted "*getEmittedParticle(reaction_full)*" particle of the "*reaction_full*" reaction has non-zero charge!")
     println("The resulting energy distribution for "*getEmittedParticle(reaction_full)*" from the plasma as a whole will be computed.")
 end
@@ -401,7 +406,7 @@ println("")
 if include2Dto4D
     println("Orbit weight matrix will be inflated and saved in its full 4D format upon completion of computations.")
 end
-if !analyticalOWs
+if !projVel
     println("There will be $(length(range(Ed_min,stop=Ed_max,step=Ed_diff))-1) diagnostic energy bin(s) with")
     println("Lower diagnostic energy bound: $(Ed_min) keV")
     println("Upper diagnostic energy bound: $(Ed_max) keV")
@@ -416,11 +421,11 @@ println(extra_kw_args)
 println("")
 println("Results will be saved to: ")
 if iiimax == 1
-    println(folderpath_o*"orbWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = analyticalOWs)*"_$(length(range(Ed_min,stop=Ed_max,step=Ed_diff))-1)x[NUMBER OF VALID ORBITS].jld2")
+    println(folderpath_o*"orbWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = projVel)*"_$(length(range(Ed_min,stop=Ed_max,step=Ed_diff))-1)x[NUMBER OF VALID ORBITS].jld2")
 else
-    println(folderpath_o*"orbWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = analyticalOWs)*"_1.jld2")
+    println(folderpath_o*"orbWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = projVel)*"_1.jld2")
     println("... ")
-    println(folderpath_o*"orbWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = analyticalOWs)*"_$(iiimax).jld2")
+    println(folderpath_o*"orbWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = projVel)*"_$(iiimax).jld2")
 end
 if debug
     println("")
@@ -494,18 +499,18 @@ F_os = 1.0 .*ones(size(og_orbs)) # Assume one ion for every orbit. This is the d
 # Setting Python variables and structures on all distributed workers/processes...
 verbose && println("Setting all Python variables and structures on all distributed workers/processes... ")
 @everywhere begin
-if !beamTarget
+if !analytic
     py"""
     # The '$' in front of many Python variables means that the variable is defined in Julia, not in Python.
     reaction = $reaction
     thermal_species = $thermal_species
-    analyticalOWs = $analyticalOWs
+    projVel = $projVel
     if $verbose:
         print("From Python: Loading forward model with diagnostic... ") 
     forwardmodel = forward.Forward($diagnostic_filepath) # Pre-initialize the forward model
 
     # Load TRANSP simulation data
-    if (not $filepath_FI_cdf=="") and (not analyticalOWs): # If there is some TRANSP_id specified and we do not want to simply compute projected velocities...
+    if (not $filepath_FI_cdf=="") and (not projVel): # If there is some TRANSP_id specified and we do not want to simply compute projected velocities...
         if ($fileext_thermal).lower()=="cdf": # If there is some TRANSP .cdf output file specified...
             if $verbose:
                 print("From Python: Loading TRANSP output from TRANSP files... ")
@@ -564,8 +569,8 @@ end
 
 # If there is a specified valid timepoint,
 # and if a TRANSP .cdf file has been specified, but NOT a TRANSP FI .cdf file, 
-# and we are NOT computing analytical orbit weight functions
-if typeof(timepoint)==String && length(split(timepoint,","))==2 && lowercase(fileext_thermal)=="cdf" && !isfile(filepath_FI_cdf) && !analyticalOWs
+# and we are NOT computing analytic orbit weight functions
+if typeof(timepoint)==String && length(split(timepoint,","))==2 && lowercase(fileext_thermal)=="cdf" && !isfile(filepath_FI_cdf) && !projVel
     thermal_temp = getTempProfileFromTRANSP(timepoint, filepath_thermal_distr; verbose=verbose)
     thermal_dens = getDensProfileFromTRANSP(timepoint, filepath_thermal_distr, thermal_species; verbose=verbose)
 end
@@ -592,7 +597,7 @@ for iii=1:iiimax
                 end
                 @async begin
                     W = @distributed (+) for i=1:norbs
-                        spec = calcOrbSpec(M, og_orbs[i], F_os[i], py"forwardmodel", py"thermal_dist", py"Ed_bin_edges", reaction_full; thermal_temp=thermal_temp, thermal_dens=thermal_dens, beamTarget=beamTarget) # Calculate the diagnostic energy spectrum for the orbit
+                        spec = calcOrbSpec(M, og_orbs[i], F_os[i], py"forwardmodel", py"thermal_dist", py"Ed_bin_edges", reaction_full; thermal_temp=thermal_temp, thermal_dens=thermal_dens, analytic=analytic) # Calculate the diagnostic energy spectrum for the orbit
                         rows = append!(collect(1:length(spec)),length(spec)) # To be able to tell the sparse framework about the real size of the weight matrix
                         cols = append!(i .*ones(Int64, length(spec)), norbs) # To be able to tell the sparse framework about the real size of the weight matrix
 
@@ -609,7 +614,7 @@ for iii=1:iiimax
             end)
         else
             Wtot = @distributed (+) for i=1:norbs
-                spec = calcOrbSpec(M, og_orbs[i], F_os[i], py"forwardmodel", py"thermal_dist", py"Ed_bin_edges", reaction_full; thermal_temp=thermal_temp, thermal_dens=thermal_dens, beamTarget=beamTarget) # Calculate the diagnostic energy spectrum for the orbit
+                spec = calcOrbSpec(M, og_orbs[i], F_os[i], py"forwardmodel", py"thermal_dist", py"Ed_bin_edges", reaction_full; thermal_temp=thermal_temp, thermal_dens=thermal_dens, analytic=analytic) # Calculate the diagnostic energy spectrum for the orbit
                 rows = append!(collect(1:length(spec)),length(spec)) # Please see similar line earlier in the script
                 cols = append!(i .*ones(Int64, length(spec)), norbs) # Please see similar line earlier in the script
 
@@ -625,7 +630,7 @@ for iii=1:iiimax
             # WRITE CODE TO DEBUG QUANTITIES OF INTEREST
 
         else
-            spec = calcOrbSpec(M, og_orbs[1], F_os[1], py"forwardmodel", py"thermal_dist", py"Ed_bin_edges", reaction_full; thermal_temp=thermal_temp, thermal_dens=thermal_dens, beamTarget=beamTarget) # Calculate the diagnostic energy spectrum for the orbit
+            spec = calcOrbSpec(M, og_orbs[1], F_os[1], py"forwardmodel", py"thermal_dist", py"Ed_bin_edges", reaction_full; thermal_temp=thermal_temp, thermal_dens=thermal_dens, analytic=analytic) # Calculate the diagnostic energy spectrum for the orbit
             rows = append!(collect(1:length(spec)),length(spec)) # # Please see similar line earlier in the script
             cols = append!(1 .*ones(Int64, length(spec)), norbs) # # Please see similar line earlier in the script
 
@@ -641,7 +646,7 @@ for iii=1:iiimax
 
             else
                 verbose && println("Calculating spectra for orbit $(i) of $(norbs)... ")
-                local spec = calcOrbSpec(M, og_orbs[i], F_os[i], py"forwardmodel", py"thermal_dist", py"Ed_bin_edges", reaction_full; thermal_temp=thermal_temp, thermal_dens=thermal_dens, beamTarget=beamTarget) # Calculate the diagnostic energy spectrum for the orbit
+                local spec = calcOrbSpec(M, og_orbs[i], F_os[i], py"forwardmodel", py"thermal_dist", py"Ed_bin_edges", reaction_full; thermal_temp=thermal_temp, thermal_dens=thermal_dens, analytic=analytic) # Calculate the diagnostic energy spectrum for the orbit
                 local rows = append!(collect(1:length(spec)),length(spec)) # Please see similar line earlier in the script
                 local cols = append!(i .*ones(Int64, length(spec)), norbs) # Please see similar line earlier in the script
 
@@ -683,9 +688,9 @@ for iii=1:iiimax
     if !debug
         verbose && println("Saving orbit weight function matrix in its 2D form... ")
         if iiimax==1 # If you intend to calculate only one weight function
-            global filepath_output_orig = folderpath_o*"orbWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = analyticalOWs)*"_$(length(vec(py"Ed_vals")))x$(norbs)"
+            global filepath_output_orig = folderpath_o*"orbWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = projVel)*"_$(length(vec(py"Ed_vals")))x$(norbs)"
         else # If you intend to calculate several (identical) weight functions
-            global filepath_output_orig = folderpath_o*"orbWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = analyticalOWs)*"_$(iii)"
+            global filepath_output_orig = folderpath_o*"orbWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = projVel)*"_$(iii)"
         end
         global filepath_output = deepcopy(filepath_output_orig)
         global count = 1
@@ -706,8 +711,8 @@ for iii=1:iiimax
             write(myfile_s, "instrumental_response_matrix", instrumental_response_matrix)
         end
         write(myfile_s, "reaction_full", reaction_full)
-        if analyticalOWs
-            write(myfile_s, "analyticalOWs", analyticalOWs)
+        if projVel
+            write(myfile_s, "projVel", projVel)
         end
         write(myfile_s, "filepath_thermal_distr", filepath_thermal_distr)
         write(myfile_s, "extra_kw_args", extra_kw_args)
