@@ -124,7 +124,7 @@ verbose - If true, the function will talk a lot! - Bool
 """
 function getTempProfileFromTRANSP(timepoint::Float64,filepath_thermal_distr::String, species::String; verbose::Bool=false)
     T_identifier = ""
-    if lowercase(species) in VALID_OWCF_SPECIES
+    if lowercase(species) in OWCF_SPECIES
         if species=="e"
             global T_identifier = "TE"
         else
