@@ -70,7 +70,7 @@
 
 using GuidingCenterOrbits
 
-const OWCF_ChemElemSymbol_to_Z = Dict("e"=>-1,"h"=>1,"he"=>2,"li"=>3,"be"=>4,"b"=>5,"c"=>6,"n"=>7,"o"=>8,"f"=>9,"ne"=>10,"na"=>11,"mg"=>12,) # A dictionary with chemical element (and electron) symbols (lowercase) as keys and nuclear charge number (Z) as values
+const OWCF_ChemElemSymbol_to_Z = Dict("e"=>-1,"h"=>1,"he"=>2,"li"=>3,"be"=>4,"b"=>5,"c"=>6,"n"=>7,"o"=>8,"f"=>9,"ne"=>10,"na"=>11,"mg"=>12,"al"=>13,"si"=>14,"p"=>15,) # A dictionary with chemical element (and electron) symbols (lowercase) as keys and nuclear charge number (Z) as values
 const OWCF_SPECIES = [key for key in keys(OWCF_ChemElemSymbol_to_Z)] # Only the keys of the OWCF_ChemElemSymbol_to_Z dictionary 
 const OWCF_e0 = 1.6021766208e-19 # Coulomb
 const OWCF_u_keV = 931494.0954 # keV
