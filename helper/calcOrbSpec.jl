@@ -1,45 +1,50 @@
 ################################################################ calcOrbSpec.jl ###################################################################
 
 #### Description:
-# This helper script is comprised of functions that take orbit(s) (E,p,R,z) points, weight them and then sends them into a forward model.
+# This helper script is comprised of functions that take orbit(s), extract their (E,p,R,z) points, weight them and then sends them into a forward model.
 # The forward model then acts as a 'black box' and computes the expected signal for that orbit. It is then returned to the functions in 
 # calcOrbSpec.jl who, in turn, return them to whatever script requested it.
 #
-# As of this version of the OWCF, calcOrbSpec.jl is taylored towards interacting with the DRESS code (J. Eriksson et al, CPC, 199, 40-46, 2016).
-# However, in future version of the OWCF, it is envisioned how the 'forward.calc()' call can simply be replaced with a call to a different
-# forward model/synthetic signal computation code, e.g. FIDASIM.
+# As of this version of the OWCF, the functions of calcOrbSpec.jl can compute expected signals via the following two forward models:
+# - Using Monte Carlo sampling with the DRESS code (J. Eriksson et al, Computer Physics Communications 199 (2016) 40–46)
+# - Using analytic formulas developed by A. Valentini ([REFERENCE TO BE INCLUDED HERE])
 #
 # As of this version of the OWCF, calcOrbSpec() has to be used/included ONLY in calcOrbWeights.jl or ps2WF.jl, after the Julia and Python packages, 
 # ,and scripts, have been loaded. That is, the user needs to first load all the Julia packages (with @everywhere if you use the Julia package Distributed).
 # Then, load all the Python packages (with @everywhere ...). Use py""" import ... """ and make sure to include the all necessary Python scripts. Please
 # see calcOrbWeights.jl for an example. Finally, load this script with '@everywhere begin include("calcOrbSpec.jl") end'
 
-# Script written by Henrik Järleblad. Last maintained 2023-09-06.
+# Script written by Henrik Järleblad and Andrea Valentini. Last maintained 2025-03-05.
 ###################################################################################################################################################
 
-include(folderpath_OWCF*"misc/temp_n_dens.jl") # Load 'analytical' thermal species temperature and thermal species density profiles
-include(folderpath_OWCF*"vcone.jl")
-include(folderpath_OWCF*"forward.jl")
+include("../misc/temp_n_dens.jl") # Load 'analytical' thermal species temperature and thermal species density profiles
+include("../misc/availReacts.jl") # Load the possibility to treat fusion reaction strings
+include("../vcone.jl") # Load the possibility to model diagnostic sightlines (in Julia)
+include("../forward.jl") # Load the possibility to compute synthetic signals without Monte Carlo methods
 
 """
-    calcOrbSpec(M, o, nfast, forward, thermal_dist, Ed_bins, reaction)
-    calcOrbSpec(-||-; o_interp_length=500, thermal_temp=3.0, thermal_dens=1.0e19, prompt_gamma_energy=nothing, debug=false)
+    calcOrbSpec(M, o, nfast, forward, thermal_dist, Ed_bin_edges, reaction)
+    calcOrbSpec(-||-; o_interp_length=500, thermal_temp=3.0, thermal_dens=1.0e19, analytic=false, debug=false)
 
-Calculate the expected diagnostic spectrum of one orbit. The inputs are as follows
-- beamTarget - boolean variable for fully analytical spectrum estimation. By default it is set to false
+Calculate the expected diagnostic spectrum for one (drift) orbit. The input arguments are as follows:
 - M - An axisymmetric equilibrium from the Equilibrium.jl Julia package. It is used to utilize its magnetic field.
 - o - The orbit for which to compute the expected synthetic spectrum. It is an Orbit struct from GuidingCenterOrbits.jl/orbit.jl.
-- nfast - The number of fast ions on the orbit. Usually set to 1, by default.
+- nfast - The number of fast ions on the orbit. Set to 1, by default.
 - forward - The Forward Python DRESS object from the forward.py DRESS script. Used to compute the expected synthetic spectrum.
 - thermal_dist -  The Thermal/FBM Python object from the transp_dists.py script. Used to represent the thermal species distribution.
-- Ed_bins - The diagnostic measurement bins into which the synthetic measurements will be binned
-- reaction_full - Reaction complete format, i.e. a(b,c)d-l with a is the thermal species, b is the fast species, c is the emitted species, d is residual species and l is emitted species nuclear energy state 
+- Ed_bin_edges - The diagnostic measurement bin edges into which the synthetic measurements will be binned
+- reaction - Fusion reaction, on any of the forms described in the OWCF/misc/availReacts.jl script.
+The keyword arguments are as follows:
 - o_interp_length - The number of time points onto which the orbit trajectory will be interpolated. Equidistant points in time are used
 - thermal_temp - An input variable with the thermal species temperature profile that the user has specified. It allows for no profile at all, as well as a single value on-axis (in keV)
 - thermal_dens - An input variable with the thermal species density profile that the user has specified. It allows for no profile at all, as well as a single value on-axis (in m^-3)
+- analytic - If set to true, the expected diagnostic spectrum will be computed using analytic equations, instead of Monte Carlo sampling
 - debug - A boolean debug input variable. If set to true, the function will run in debug-mode.
 """
-function calcOrbSpec(M::AbstractEquilibrium, o::Orbit{Float64, EPRCoordinate{Float64}}, nfast::Float64, forward::Union{PyObject,AbstractString}, thermal_dist::Union{Nothing,PyObject,AbstractString}, Ed_bins::AbstractArray, reaction_full::AbstractString; o_interp_length=500, thermal_temp::Union{Nothing,Float64,Int64,Interpolations.Extrapolation,Interpolations.FilledExtrapolation}=3.0, thermal_dens::Union{Nothing,Float64,Int64,Interpolations.Extrapolation,Interpolations.FilledExtrapolation}=1.0e19, beamTarget::Bool=false, debug::Bool=false)
+function calcOrbSpec(M::AbstractEquilibrium, o::Orbit{Float64, EPRCoordinate{Float64}}, nfast::Float64, forward::Union{PyObject,AbstractString}, thermal_dist::Union{Nothing,PyObject,AbstractString}, Ed_bin_edges::AbstractArray, reaction::AbstractString; 
+                     o_interp_length=500, thermal_temp::Union{Nothing,Float64,Int64,Interpolations.Extrapolation,Interpolations.FilledExtrapolation}=3.0, 
+                     thermal_dens::Union{Nothing,Float64,Int64,Interpolations.Extrapolation,Interpolations.FilledExtrapolation}=1.0e19, analytic::Bool=false, 
+                     debug::Bool=false)
 
     # Ensure that every orbit has o_interp_length number of EpRz points to serve as input to the spectrum calculator
     # We can assume that the EpRz points are equally distant in time, because this is ensured by GuidingCenterOrbits.get_orbit()
@@ -49,7 +54,7 @@ function calcOrbSpec(M::AbstractEquilibrium, o::Orbit{Float64, EPRCoordinate{Flo
     o_pitch = zeros(length(tpl)) # All the pitch values of the points along the orbit. Vector.
     o_R = zeros(length(tpl)) # All the R values of the points along the orbit. Vector.
     o_z = zeros(length(tpl)) # All the z values of the points along the orbit. Vector.
-    for i=1:length(tpl)
+    for i in eachindex(tpl)
         Si = o_spline(tpl[i]) #Interpolate onto the tpl time points
         o_energy[i] = Si[1] # Store energy at point i
         o_pitch[i] = Si[2] # Store pitch at point i
@@ -65,7 +70,7 @@ function calcOrbSpec(M::AbstractEquilibrium, o::Orbit{Float64, EPRCoordinate{Flo
     if debug
         # WRITE CODE HERE FOR DEBUGGING
     end
-    if (typeof(thermal_dist) <: AbstractString) && !(split(reaction_full,"-")[1]=="proj") # If you have not specified a TRANSP thermal species and you are not computing analytical orbit weight functions... 
+    if (typeof(thermal_dist) <: AbstractString) && !(getReactionForm(reaction)==3) # If you have not specified a TRANSP thermal species and you are not computing projected velocity orbit spectra... 
         thermal_temp_interp = zeros(length(o_energy))
         thermal_dens_interp = zeros(length(o_energy))
         for (i,crs_c) in enumerate(vec_Rz) # Go through them all and their indices
@@ -103,21 +108,21 @@ function calcOrbSpec(M::AbstractEquilibrium, o::Orbit{Float64, EPRCoordinate{Flo
         return thermal_temp_interp, o_R
     end
 
-    if analyticCalc #!# analyticCalc.jl(...,product_state='GS')
+    if analytic
         vc_name = forward
         if !(vc_name=="")
             viewing_cone = ViewingCone(vc_name)
         else
             error("Analytical model with spherical 4*pi emission is NOT supported!")
         end
-        spec = GetOrbSpec(viewing_cone, o_energy, clamp.(o_pitch,-1,1), o_R, o_z, o_w, Ed_bins, o_B; reaction_full=reaction_full, bulk_dens=thermal_dens_interp)
+        spec = GetOrbSpec(viewing_cone, o_energy, clamp.(o_pitch,-1,1), o_R, o_z, o_w, Ed_bin_edges, o_B; reaction=reaction, bulk_dens=thermal_dens_interp)
         return spec
     else 
-        spec = zeros(length(Ed_bins)-1)
+        spec = zeros(length(Ed_bin_edges)-1)
         stats = 10
-        reactants = split((split(split(reaction_full,"-")[1],","))[1],"(")
+        reactants = split((split(split(reaction,"-")[1],","))[1],"(")
         reaction = reactants[1]*"-"*reactants[2]
-        nuclear_state = split(reaction_full,"-")[2]
+        nuclear_state = split(reaction,"-")[2]
         if lowercase(nuclear_state) !== "gs"
             stats = 100
         end
@@ -125,7 +130,7 @@ function calcOrbSpec(M::AbstractEquilibrium, o::Orbit{Float64, EPRCoordinate{Flo
             py"""
             forward = $forward # Convert the Forward Python object from Julia to Python.
             # Please note, the '$' symbol is used below to convert objects from Julia to Python. Even Julia PyObjects
-            spectrum = forward.calc($o_energy, $o_pitch, $o_R, $o_z, $o_w, $thermal_dist, $Ed_bins, $o_B, n_repeat=50, product_state=$product_state, reaction=$reaction, bulk_temp=$thermal_temp_interp, bulk_dens=$thermal_dens_interp) # Please see the forward.py script, for further specifications
+            spectrum = forward.calc($o_energy, $o_pitch, $o_R, $o_z, $o_w, $thermal_dist, $Ed_bin_edges, $o_B, n_repeat=50, product_state=$product_state, reaction=$reaction, bulk_temp=$thermal_temp_interp, bulk_dens=$thermal_dens_interp) # Please see the forward.py script, for further specifications
             """
             spec += vec(py"spectrum")
         end
@@ -134,7 +139,7 @@ function calcOrbSpec(M::AbstractEquilibrium, o::Orbit{Float64, EPRCoordinate{Flo
 end
 
 """
-    calcOrbSpecs(M, og_orbs, F_os, forward, thermal_dist, Ed_bins, reaction)
+    calcOrbSpecs(M, og_orbs, F_os, forward, thermal_dist, Ed_bin_edges, reaction)
     calcOrbSpecs(-||-; thermal_temp=3.0, thermal_dens=1.0e19, distributed=false, visualizeProgress=false, verbose=false, kwargs... )
 
 Like calcOrbSpec(), but with many orbits. Return all the spectra as a matrix. This function is essentially the script calcOrbWeights.jl, 
@@ -146,14 +151,14 @@ Calculate the expected diagnostic spectra of the orbits in og_orbs. The inputs a
 - F_os - A vector of length(og_orbs) where each element is the number of fast ions on the corresponding orbit in og_orbs. Usually, the value of every element is set to 1.0, by default.
 - forward - The Forward Python DRESS object from the forward.py DRESS script. Used to compute the expected synthetic spectrum.
 - thermal_dist -  The Thermal/FBM Python object from the transp_dists.py script. Used to represent the thermal species distribution.
-- Ed_bins - The diagnostic measurement bins into which the synthetic measurements will be binned
+- Ed_bin_edges - The diagnostic measurement bin edges into which the synthetic measurements will be binned
 - reaction - The reactants of the considered fusion reaction. Format is 'a-b' where a is the thermal species, and b is the fast-ion species
 Keyword arguments include
 - distributed - If true, the orbit spectra will be computed using multiple CPU/GPU processes. If false, single-threaded computing will be used
 - visualizeProgress - If true, a progress bar will be displayed when computing orbit spectra
 - verbose - If true, the function execution will be very talkative
 """
-function calcOrbSpecs(M::AbstractEquilibrium, og_orbs::Vector{Orbit{Float64, EPRCoordinate{Float64}}}, F_os::Union{Array{Int64,1},Array{Float64,1}}, forward::PyObject, thermal_dist::Union{PyObject,AbstractString}, Ed_bins::AbstractArray, reaction::AbstractString; distributed::Bool=false, visualizeProgress::Bool=false, verbose::Bool=false, kwargs...)
+function calcOrbSpecs(M::AbstractEquilibrium, og_orbs::Vector{Orbit{Float64, EPRCoordinate{Float64}}}, F_os::Union{Array{Int64,1},Array{Float64,1}}, forward::PyObject, thermal_dist::Union{PyObject,AbstractString}, Ed_bin_edges::AbstractArray, reaction::AbstractString; distributed::Bool=false, visualizeProgress::Bool=false, verbose::Bool=false, kwargs...)
 
     norbs = length(og_orbs)
     if distributed # If parallel computating is desired...
@@ -166,7 +171,7 @@ function calcOrbSpecs(M::AbstractEquilibrium, og_orbs::Vector{Orbit{Float64, EPR
                 end
                 @async begin
                     W = @distributed (+) for i=1:norbs
-                        spec = calcOrbSpec(M, og_orbs[i], F_os[i], forward, thermal_dist, Ed_bins, reaction; kwargs...) # Calculate the diagnostic energy spectrum for it
+                        spec = calcOrbSpec(M, og_orbs[i], F_os[i], forward, thermal_dist, Ed_bin_edges, reaction; kwargs...) # Calculate the diagnostic energy spectrum for it
                         rows = append!(collect(1:length(spec)),length(spec)) # To be able to tell the sparse framework about the real size of the weight matrix
                         cols = append!(i .*ones(Int64, length(spec)), norbs) # To be able to tell the sparse framework about the real size of the weight matrix
 
@@ -183,7 +188,7 @@ function calcOrbSpecs(M::AbstractEquilibrium, og_orbs::Vector{Orbit{Float64, EPR
             end)
         else
             Wtot = @distributed (+) for i=1:norbs
-            spec = calcOrbSpec(M, og_orbs[i], F_os[i], forward, thermal_dist, Ed_bins, reaction; kwargs...) # Calculate the diagnostic energy spectrum for it
+            spec = calcOrbSpec(M, og_orbs[i], F_os[i], forward, thermal_dist, Ed_bin_edges, reaction; kwargs...) # Calculate the diagnostic energy spectrum for it
                 rows = append!(collect(1:length(spec)),length(spec)) # Please see similar line earlier in the script
                 cols = append!(i .*ones(Int64, length(spec)), norbs) # Please see similar line earlier in the script
 
@@ -194,7 +199,7 @@ function calcOrbSpecs(M::AbstractEquilibrium, og_orbs::Vector{Orbit{Float64, EPR
             end
         end
     else # ... if you do not use multiple cores, good luck!
-        spec = calcOrbSpec(M, og_orbs[1], F_os[1], forward, thermal_dist, Ed_bins, reaction; kwargs...) # Calculate the diagnostic energy spectrum for the first orbit
+        spec = calcOrbSpec(M, og_orbs[1], F_os[1], forward, thermal_dist, Ed_bin_edges, reaction; kwargs...) # Calculate the diagnostic energy spectrum for the first orbit
         rows = append!(collect(1:length(spec)),length(spec)) # # Please see similar line earlier in the script
         cols = append!(1 .*ones(Int64, length(spec)), norbs) # # Please see similar line earlier in the script
 
@@ -204,7 +209,7 @@ function calcOrbSpecs(M::AbstractEquilibrium, og_orbs::Vector{Orbit{Float64, EPR
 
         for i=2:norbs
             verbose && println("Calculating spectra for orbit $(i) of $(norbs)... ")
-            local spec = calcOrbSpec(M, og_orbs[i], F_os[i], forward, thermal_dist, Ed_bins, reaction; kwargs...) # Calculate the diagnostic energy spectrum for it
+            local spec = calcOrbSpec(M, og_orbs[i], F_os[i], forward, thermal_dist, Ed_bin_edges, reaction; kwargs...) # Calculate the diagnostic energy spectrum for it
             local rows = append!(collect(1:length(spec)),length(spec)) # Please see similar line earlier in the script
             local cols = append!(i .*ones(Int64, length(spec)), norbs) # Please see similar line earlier in the script
 

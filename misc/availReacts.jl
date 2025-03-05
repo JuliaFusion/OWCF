@@ -62,7 +62,8 @@ end
 
 function getEmittedParticleEnergyLevel(fusion_reaction::String)
     if !occursin("-",fusion_reaction)
-        error("No energy level specified for the $(getEmittedParticle(fusion_reaction)) particle of the $(fusion_reaction) reaction. Please correct and re-try.")
+        @warn "No energy level specified for the $(getEmittedParticle(fusion_reaction)) particle of the $(fusion_reaction) reaction. Assuming GS (ground state)."
+        return "GS"
     end
     return split(fusion_reaction,"-")[2]
 end
@@ -91,7 +92,7 @@ end
 
 function getFusionReactants(fusion_reaction::String)
     if getReactionForm(fusion_reaction)==3
-        return fusion_reaction
+        return "proj", fusion_reaction
     end
     if getReactionForm(fusion_reaction)==2
         fusion_reaction = split(fusion_reaction,"-")[1]
@@ -99,6 +100,19 @@ function getFusionReactants(fusion_reaction::String)
     reactants = split(split(fusion_reaction,",")[1],"(")
     thermal_particle = reactants[1]; fast_particle = reactants[2]
     return thermal_particle, fast_particle
+end
+
+function getFusionProducts(fusion_reaction::String)
+    if getReactionForm(fusion_reaction)==3
+        @warn "Only (fast) ion species specified in the fusion reaction input ($(fusion_reaction)). Returning 'proj','proj'."
+        return "proj","proj"
+    end
+    if getReactionForm(fusion_reaction)==2
+        fusion_reaction = split(fusion_reaction,"-")[1]
+    end
+    products = split(split(fusion_reaction,",")[1],")")
+    product_of_interest = products[1]; product_of_disinterest = products[2]
+    return product_of_interest, product_of_disinterest
 end
 
 function getThermalParticleSpecies(fusion_reaction::String)
