@@ -2,6 +2,8 @@
 # This script simply keeps track of the available fusion reactions that the OWCF can simulate.
 #
 # In addition, lists of reactions and particles with specific characteristics are included.
+#
+# PLEASE NOTE! A proton is denoted with 'h' and NOT 'p'. 
 
 ### Inputs
 # fusion_reaction - Can be specified on the following forms:
@@ -25,98 +27,92 @@
 #
 # DO NOT ALTER THIS SCRIPT. More fusion reactions might be added in the future.
 #
-# Script written by Henrik Järleblad. Last maintained 2025-01-29.
+# Script written by Henrik Järleblad. Last maintained 2025-03-03.
 ######################################################################################################
 
-NEUTRAL_PARTICLES = ["n","g"] # Neutrons and gamma photons
+include("species_func.jl")
+
+OWCF_AVAILABLE_FUSION_REACTIONS = ["D(D,n)3He","T(h,g)4He","h(T,g)4He","D(T,n)4He",
+                                   "T(D,n)4He","D(3He,h)4He","9Be(4He,12C)n-1L","4He(9Be,12C)n-1L",
+                                   "9Be(4He,12C)n-2L","4He(9Be,12C)n-2L"]
+
+function getReactionForm(fusion_reaction::String)
+    if occursin(fusion_reaction,"-")
+        return 2
+    end
+    if occursin(fusion_reaction,"(")
+        return 1
+    end
+    return 3
+end
 
 function getEmittedParticle(fusion_reaction::String)
-    products = split((split(fusion_reaction,","))[2],")")
-
-    return products[1] # Return 'c' in the fusion reaction a(b,c)d
+    emitted_particle = fusion_reaction # Assume form (3) by default
+    if occursin("(",emitted_particle) # If wrong... 
+        fusion_reaction_form_1 = fusion_reaction # Assume form (1)
+        if occursin("-",fusion_reaction_form_1) # If wrong...
+            # Must be form (2)
+            fusion_reaction_form_1, energy_level = Tuple(split(fusion_reaction,"-")) # Extract fusion reaction without energy level of the emitted particle
+        end
+        emitted_particle = split(split(fusion_reaction_form_1,",")[2],")")[1] # The emitted particle (")" as delimiter) obtained from the fusion products ("," as delimiter)
+        return emitted_particle
+    end
+    return emitted_particle # If function reaches this return statement, input 'fusion_reaction' must be given on form (3) (please see file description above)
 end
 
-function checkReaction(fusion_reaction::String; verbose::Bool=false, projVelocity::Bool=false)
-    if projVelocity
-        thermal_species = split(fusion_reaction,"-")[1]
-        FI_species = split(fusion_reaction,"-")[2]
-        verbose && println("Accepted velocity projection: "*fusion_reaction)
-        return thermal_species, FI_species
+function getEmittedParticleEnergyLevel(fusion_reaction::String)
+    if !occursin("-",fusion_reaction)
+        error("No energy level specified for the $(getEmittedParticle(fusion_reaction)) particle of the $(fusion_reaction) reaction. Please correct and re-try.")
     end
-    
-    reactants = split((split(split(fusion_reaction,"-")[1],","))[1],"(")
-    products = split((split(split(fusion_reaction,"-")[1],","))[2],")")
-    nuclear_state = split(fusion_reaction,"-")[2]
-    if !(length(reactants)==2 && length(products)==2)
-        error("Fusion reaction not specified correctly. Please use the format a(b,c)d and re-try.")
-    end
-
-    thermal_reactant = reactants[1]
-    fast_reactant = reactants[2]
-    emitted_particle = products[1]
-    product_nucleus = products[2]
-
-    if lowercase(nuclear_state) == "gs"
-        # Account for the possibility of faulty user input. D(D,n)3He is correct. But user might input D(D,3He)n.
-        if lowercase(thermal_reactant)=="d" && lowercase(fast_reactant)=="d" && ((lowercase(emitted_particle)=="n" && lowercase(product_nucleus)=="3he") || (lowercase(emitted_particle)=="3he" && lowercase(product_nucleus)=="n"))
-            verbose && println("Accepted nuclear reaction: "*fusion_reaction)
-            return "d","d"
-        end
-
-        # Account for the possibility of faulty user input. T(p,g)4He is correct. But user might input T(p,4He)g.
-        if lowercase(thermal_reactant)=="t" && lowercase(fast_reactant)=="p" && ((lowercase(emitted_particle)=="g" && lowercase(product_nucleus)=="4he") || (lowercase(emitted_particle)=="4he" && lowercase(product_nucleus)=="g"))
-            verbose && println("Accepted nuclear reaction: "*fusion_reaction)
-            return "T","p"
-        end
-
-        # Account for the possibility of faulty user input. p(T,g)4He is correct. But user might input p(T,4He)g.
-        if lowercase(thermal_reactant)=="p" && lowercase(fast_reactant)=="t" && ((lowercase(emitted_particle)=="g" && lowercase(product_nucleus)=="4he") || (lowercase(emitted_particle)=="4he" && lowercase(product_nucleus)=="g"))
-            verbose && println("Accepted nuclear reaction: "*fusion_reaction)
-            return "p","T"
-        end
-
-        # Account for the possibility of faulty user input. D(T,n)4He is correct. But user might input D(T,4He)n.
-        if lowercase(thermal_reactant)=="d" && lowercase(fast_reactant)=="t" && ((lowercase(emitted_particle)=="4he" && lowercase(product_nucleus)=="n") || (lowercase(emitted_particle)=="n" && lowercase(product_nucleus)=="4he"))
-            verbose && println("Accepted nuclear reaction: "*fusion_reaction)
-            return "D","T"
-        end
-
-        # Account for the possibility of faulty user input. T(D,n)4He is correct. But user might input T(D,4He)n.
-        if lowercase(thermal_reactant)=="t" && lowercase(fast_reactant)=="d" && ((lowercase(emitted_particle)=="4he" && lowercase(product_nucleus)=="n") || (lowercase(emitted_particle)=="n" && lowercase(product_nucleus)=="4he"))
-            verbose && println("Accepted nuclear reaction: "*fusion_reaction)
-            return "T","D"
-        end
-
-        # Account for the possibility of faulty user input. 3He(D,p)4He is correct. But user might input 3He(D,4He)p.
-        if lowercase(thermal_reactant)=="3he" && lowercase(fast_reactant)=="d" && ((lowercase(emitted_particle)=="p" && lowercase(product_nucleus)=="4he") || (lowercase(emitted_particle)=="4he" && lowercase(product_nucleus)=="p"))
-            verbose && println("Accepted nuclear reaction: "*fusion_reaction)
-            return "3He","D"
-        end
-
-        # Account for the possibility of faulty user input. D(3He,p)4He is correct. But user might input D(3He,4He)p.
-        if lowercase(thermal_reactant)=="D" && lowercase(fast_reactant)=="3he" && ((lowercase(emitted_particle)=="p" && lowercase(product_nucleus)=="4he") || (lowercase(emitted_particle)=="4he" && lowercase(product_nucleus)=="p"))
-            verbose && println("Accepted nuclear reaction: "*fusion_reaction)
-            return "D","3He"
-        end
-    elseif
-        #!# Account for the possibility of faulty user input. 9Be(4He,12C)n is correct. 
-        if lowercase(thermal_reactant)=="9be" && lowercase(fast_reactant)=="4he" && ((lowercase(emitted_particle)=="12c" && lowercase(product_nucleus)=="n") || (lowercase(emitted_particle)=="n" && lowercase(product_nucleus)=="12c"))
-            if lowercase(nuclear_state)== ("1l" || "2l")
-                verbose && println("Accepted nuclear reaction: "*fusion_reaction)
-                return "9Be","4He"
-            end
-        end
-    end    
-
-    # No valid reaction detected
-    error("Reaction "*fusion_reaction*" is not a valid fusion reaction available in the current version of the OWCF. Please re-specify and re-try.")
-
-    return "X","X" # Will never be reached
+    return split(fusion_reaction,"-")[2]
 end
 
-function full2reactsOnly(fusion_reaction::String; kwargs...)
-    thermal_species, FI_species, = checkReaction(fusion_reaction; kwargs...)
+function reactionIsAvailable(fusion_reaction::String; verbose::Bool=false)
+    if getReactionForm(fusion_reaction)==3
+        verbose && println("Fusion reaction is on form 3!")
+        if fusion_reaction in OWCF_SPECIES
+            return true
+        end
+    end
+    if getReactionForm(fusion_reaction)==2
+        verbose && println("Fusion reaction is on form 2!")
+        if lowercase(getEmittedParticleEnergyLevel(fusion_reaction))=="gs"
+            verbose && println("Removing 'GS'/'gs' from fusion reaction... ")
+            fusion_reaction = split(fusion_reaction,"-")[1]
+        end
+    end
 
-    # Convert the full fusion reaction to reactant format (used as input to Python framework)
+    if lowercase(fusion_reaction) in lowercase.(OWCF_AVAILABLE_FUSION_REACTIONS)
+        return true
+    else
+        return false
+    end
+end
+
+function getFusionReactants(fusion_reaction::String)
+    if getReactionForm(fusion_reaction)==3
+        return fusion_reaction
+    end
+    if getReactionForm(fusion_reaction)==2
+        fusion_reaction = split(fusion_reaction,"-")[1]
+    end
+    reactants = split(split(fusion_reaction,",")[1],"(")
+    thermal_particle = reactants[1]; fast_particle = reactants[2]
+    return thermal_particle, fast_particle
+end
+
+function getThermalParticleSpecies(fusion_reaction::String)
+    return getFusionReactants(fusion_reaction)[1]
+end
+
+function getFastParticleSpecies(fusion_reaction::String)
+    return getFusionReactants(fusion_reaction)[2]
+end
+getEnergeticParticleSpecies = getFastParticleSpecies
+
+function full2reactsOnly(fusion_reaction::String)
+    thermal_species, FI_species = getFusionReactants(fusion_reaction)
+
+    # Convert the full fusion reaction to reactant format (used as input to DRESS Python code)
     return thermal_species*"-"*FI_species
 end

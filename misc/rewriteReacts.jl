@@ -71,7 +71,7 @@ function thermalSpecies_OWCFtoTRANSP(species::String)
         return "T"
     elseif lowercase(species)=="3he"
         return "HE3"
-    elseif lowercase(species)=="p"
+    elseif lowercase(species)=="h"
         return "H"
     elseif lowercase(species)=="e"
         return "E"

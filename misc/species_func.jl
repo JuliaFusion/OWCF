@@ -147,7 +147,11 @@ and zero charge. The keyword arguments are:
 function getGCP(species_identifier::AbstractString; E=0.0, p=0.0, R=0.0, z=0.0, verbose=false)
     if species_identifier=="n"
         @warn "getGCP() input was $(species_identifier). Assuming a neutron."
-        return (GuidingCenterOrbits.GCParticle(E,p,R,z,OWCF_neutron_mass_amu*OWCF_u_kg,0))
+        return (GuidingCenterOrbits.GCParticle(E,p,R,z,OWCF_neutron_mass_amu*OWCF_u_kg,0)) # Neutron mass, zero charge
+    end
+    if species_identifier=="g"
+        @warn "getGCP() input was $(species_identifier). Assuming a gamma photon."
+        return (GuidingCenterOrbits.GCParticle(E,p,R,z,0.0,0)) # Zero mass, zero charge
     end
     species_identifier_lowercase = lowercase(species_identifier)
     species_A = match(number_pattern,species_identifier_lowercase) # The atomic mass number, e.g. RegexMatch("10") of "3he". nothing if only e.g. "he"
