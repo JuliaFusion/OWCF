@@ -75,7 +75,7 @@
 # thermal temperature and thermal density at the magnetic axis. Please see the /misc/temp_n_dens.jl script for info.
 #
 # PLEASE NOTE! The 'analytic' and 'projVel' input variables cannot both be set to true. If both are set to true, the algorithm will give priority to
-# the 'analytic' input variable and automatically set the 'projVel' input variable to false.
+# the 'projVel' input variable and automatically set the 'analytic' input variable to false.
 
 # Script written by Henrik Järleblad. Last maintained 2025-01-29.
 #################################################################################################################################################################
