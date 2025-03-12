@@ -32,9 +32,8 @@
 
 include("species_func.jl")
 
-OWCF_AVAILABLE_FUSION_REACTIONS = ["D(D,n)3He","T(h,g)4He","h(T,g)4He","D(T,n)4He",
-                                   "T(D,n)4He","D(3He,h)4He","9Be(4He,12C)n-1L","4He(9Be,12C)n-1L",
-                                   "9Be(4He,12C)n-2L","4He(9Be,12C)n-2L"]
+OWCF_AVAILABLE_FUSION_REACTIONS = ["D(D,n)3He-GS","T(h,g)4He-GS","h(T,g)4He-GS","D(T,n)4He-GS","T(D,n)4He-GS","D(3He,h)4He-GS","3He(D,h)4He-GS","9Be(4He,12C)n-1L","4He(9Be,12C)n-1L","9Be(4He,12C)n-2L","4He(9Be,12C)n-2L"]
+OWCF_AVAILABLE_FUSION_REACTIONS_FOR_ANALYTIC_COMPUTATION = ["D(T,n)4He-GS","T(D,n)4He-GS","9Be(4He,12C)n-1L","4He(9Be,12C)n-1L","9Be(4He,12C)n-2L","4He(9Be,12C)n-2L"]
 
 function getReactionForm(fusion_reaction::String)
     if occursin(fusion_reaction,"-")
@@ -60,9 +59,9 @@ function getEmittedParticle(fusion_reaction::String)
     return emitted_particle # If function reaches this return statement, input 'fusion_reaction' must be given on form (3) (please see file description above)
 end
 
-function getEmittedParticleEnergyLevel(fusion_reaction::String)
+function getEmittedParticleEnergyLevel(fusion_reaction::String; verbose::Bool=false)
     if !occursin("-",fusion_reaction)
-        @warn "No energy level specified for the $(getEmittedParticle(fusion_reaction)) particle of the $(fusion_reaction) reaction. Assuming GS (ground state)."
+        verbose &&  println("No energy level specified for the $(getEmittedParticle(fusion_reaction)) particle of the $(fusion_reaction) reaction. Assuming GS (ground state).")
         return "GS"
     end
     return split(fusion_reaction,"-")[2]
@@ -75,15 +74,32 @@ function reactionIsAvailable(fusion_reaction::String; verbose::Bool=false)
             return true
         end
     end
-    if getReactionForm(fusion_reaction)==2
-        verbose && println("Fusion reaction is on form 2!")
-        if lowercase(getEmittedParticleEnergyLevel(fusion_reaction))=="gs"
-            verbose && println("Removing 'GS'/'gs' from fusion reaction... ")
-            fusion_reaction = split(fusion_reaction,"-")[1]
-        end
+
+    if getReactionForm(fusion_reaction)==1
+        verbose && println("Fusion reaction is on form 1!")
+        verbose && println("Adding '-GS' to fusion reaction for check... ")
+        fusion_reaction = fusion_reaction*"-GS"
     end
 
     if lowercase(fusion_reaction) in lowercase.(OWCF_AVAILABLE_FUSION_REACTIONS)
+        return true
+    else
+        return false
+    end
+end
+
+function reactionIsAvailableAnalytically(fusion_reaction::String; verbose::Bool=false)
+    if getReactionForm(fusion_reaction)==3
+        verbose && println("Expected diagnostic spectra analytically computed from projected velocity spectra is not possible.")
+        return false
+    end
+
+    if getReactionForm(fusion_reaction)==1
+        verbose && println("Fusion reaction a(d,c)d input has form 1. Assuming ground state for particle c and adding '-GS' for check... ")
+        fusion_reaction *= "-GS"
+    end
+
+    if lowercase(fusion_reaction) in lowercase.(OWCF_AVAILABLE_FUSION_REACTIONS_FOR_ANALYTIC_COMPUTATION)
         return true
     else
         return false

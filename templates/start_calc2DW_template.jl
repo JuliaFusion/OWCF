@@ -12,7 +12,9 @@
 # folderpath_OWCF - The path to the OWCF folder - String
 # numOcores - The number of CPU cores that will be used if distributed is set to true. - Int64
 #
-# analytical2DWs - If set to true, projected velocities will be used to compute the weight functions. In that case, no thermal data is needed - Bool
+# analytic - If true, the 2D weight functions will be computed using the analytic equations in A. Valentini et al. Nucl. Fusion, Submitted (2025).
+#              Please note! This is an approximation, in which the thermal population is assumed to be at rest. However, using these analytic equations, 
+#              no Monte Carlo methods are necessary, i.e. massive speed-up of computations - Bool
 # debug - If true, then the script will run in debug-mode. Should almost always be set to false - Bool
 # diagnostic_filepath - The path to the LINE21 data diagnostic line-of-sight file. Leave as "" for assumed sperical emission - String
 # diagnostic_name - The name of the diagnostic. Purely for esthetic purposes - String
@@ -59,7 +61,7 @@
 # plasma_rot_speed - If plasma_rot_speed_data_source is set to :MANUAL, use this value - Float64 or Int64
 # plasma_rot_dir - The direction of plasma rotation. Either :TOROIDAL (with same sign as plasma current) or along B-field lines with :BFIELD - Symbol
 # R_of_interest - The major radius coordinate of interest, for the (E,p) weight functions. Specified in meters or symbol (see below) - Float64 or symbol
-# reaction - The nuclear fusion reaction that you want to simulate. Please see OWCF/misc/availReacts.jl for available fusion reactions - String
+# reaction - Fusion reaction, on any of the forms described in the OWCF/misc/availReacts.jl script - String
 # saveVparaVperpWeights - If set to true, the weight functions will be saved on a (vpara,vperp) grid, in addition to (E,p)
 # timepoint - The timepoint of the tokamak shot for the magnetic equilibrium. Format XX,YYYY where XX are seconds and YYYY are decimals - String
 # thermal_temp - The temperature of the thermal species distribution at the (R,z) point of interest - Float64
@@ -77,7 +79,7 @@
 # and thermal_dens_axis variables will be used to scale the polynomial profiles to match the specified
 # thermal temperature and thermal density at the magnetic axis. Please see the /misc/temp_n_dens.jl script for info.
 
-# Script written by Henrik Järleblad. Last maintained 2024-08-13.
+# Script written by Henrik Järleblad. Last maintained 2025-03-10.
 ######################################################################################################
 
 ## First you have to set the system specifications
@@ -116,7 +118,7 @@ end
 
 ## -----------------------------------------------------------------------------
 @everywhere begin
-    analytical2DWs = false # If true, then no thermal species data is needed. The weight functions will be computed solely from the projected velocity of the ion onto the diagnostic line-of-sight.
+    analytic = false
     debug = false
     diagnostic_filepath = "" # Currently supported: "TOFOR", "AB" and ""
     diagnostic_name = ""
@@ -149,8 +151,20 @@ end
     plasma_rot_dir = :TOROIDAL # :TOROIDAL or :BFIELD
     R_of_interest = :r_mag # The major radius coordinate of interest. Specify in meters e.g. "3.0", "3.4" etc. Can also be specified as a symbol :r_mag, then the major radius coordinate of the magnetic axis will automatically be used
     saveVparaVperpWeights = false # Set to true, and the weight functions will be saved in (vpara,vperp), in addition to (E,p)
-    reaction = "D(d,n)3He" # Specified on the form a(b,c)d where a is thermal ion, b is fast ion, c is emitted particle and d is the product nucleus. However, if analyticalOWs==true then 'reaction' should be provided in the format 'proj-X' where 'X' is the fast ion species ('D', 'T' etc)
-    # PLEASE NOTE! Specify alpha particles as '4he' or '4He' (NOT 'he4' or 'He4'). Same goes for helium-3 (specify as '3he', NOT 'he3')
+    ################################################################################
+    # The 'reaction' input variable below should be specified using one of the following forms:
+    # (1) "a(b,c)d" 
+    # (2) "a(b,c)d-l" 
+    # (3) "b" 
+    # where a is thermal ion, b is fast ion, c is fusion product particle of interest, d is fusion product particle of disinterest and l is the nuclear energy state of c. 
+    # l can be GS, 1L or 2L, corresponding to Ground State (GS), 1st excited energy level (1L) and 2nd excited energy level (2L).
+    # For lists of available fusion reactions and particle species, please see OWCF/misc/availReacts.jl and OWCF/misc/species_func.jl. The reaction forms imply:
+    # (1) The standard fusion reaction form. The nuclear energy level 'l' of the fusion product particle of interest 'c' is automatically assumed to be GS (if relevant).
+    # (2) The advanced fusion reaction form. The nuclear energy level 'l' of the fusion product particle of interest 'c' is taken to be 'l'.
+    # (3) The projected velocity reaction form. No fusion reaction is computed. Instead, the orbit weight functions are computed from the velocity vectors of the ion 'b', projected onto the diagnostic line-of-sight (LOS), using the points of the (drift) orbits that are inside the LOS 
+    # PLEASE NOTE! Specify alpha particles as '4he' or '4He' (NOT 'he4' or 'He4'). Same goes for helium-3 (specify as '3he', NOT 'he3'). Etc.
+    reaction = "9Be(4He,12C)n-1L"
+    ################################################################################
     timepoint = nothing # If unknown, just leave as nothing. The algorithm will try to figure it out automatically.
     thermal_temp = nothing # The thermal species temperature for the (R,z) point of interest. If filepath_thermal_distr is provided, leave as nothing
     thermal_temp_axis = nothing # keV. Please specify this if filepath_thermal_distr, filepath_FI_cdf and thermal_temp are not specified

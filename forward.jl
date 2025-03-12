@@ -2,14 +2,10 @@
 # This code is a Julia transposition of forward.py and spec.py, with the key difference that the calculations
 # do not account for the thermal reactant dynamics. This is in favor of faster computations with no Monte 
 # Carlo sampling needed.
+#
 # Miscellaneous comments:
 #  - the a+b->1+2 notation from DRESS is swapped here with b+t->d+r, meaning that a beam particle 'b' reacts
 #    with a target particle 't' and generates a detected particle 'd' and a residual particle 'r'. 
-#  - 
-#
-# Queries for Henrik:
-#  - specifying all the argument types for all functions is not necessary here, since most inputs are defined ¨
-#    right here in this script. This saves on computation time.
 #  - 
 #
 # TO DO:
@@ -28,6 +24,7 @@ using DataFrames
 using LegendrePolynomials  # For Legendre polynomials
 using LinearAlgebra
 using PyCall
+include("misc/availReacts.jl") # To be able to handle fusion reaction strings
 pushfirst!(PyVector(pyimport("sys")."path"), "") # To add constants and fusreact modules
 
 cnst = pyimport("constants")
@@ -234,15 +231,18 @@ function dn_dtdE(E_d::Vector{Float64}, l_d::Vector{Float64}, m_d, n_b, E_b, l_b,
 end
 
 """
-SetReaction(reaction_full::String)
+SetReaction(reaction::String)
 
-Set reactants, products and, where needed, gamma-ray nominal energy, according to reaction_full string with format a(b,c)d-l.
+Set reactants, products and, where needed, gamma-ray nominal energy, according to reaction string with format a(b,c)d-l.
 
 """
-function SetReaction(reaction_full)
-    reactants = split((split(split(reaction_full,"-")[1],","))[1],"(")
-    products = split((split(split(reaction_full,"-")[1],","))[2],")")
-    nuclear_state = split(reaction_full,"-")[2]
+function SetReaction(reaction)
+    if !reactionIsAvailableAnalytically(reaction)
+        error("Expected spectra from fusion reaction $(reaction) is currently not available for computation via analytic equations. Currently analytically available fusion reactions include: $(OWCF_AVAILABLE_FUSION_REACTIONS_FOR_ANALYTIC_COMPUTATION). Please correct and re-try.")
+    end
+    reactants = getFusionReactants(reaction)
+    products = getFusionProducts(reaction)
+    nuclear_state = getEmittedParticleEnergyLevel(reaction)
 
     # Beware: fast and thermal reactants are re-mapped here according to a->t, b->b, c->d, d->r (see miscellaneous comments on top)
     if lowercase.(reactants) == ["d","t"] || lowercase.(reactants) == ["t","d"]
@@ -316,56 +316,56 @@ function SetReaction(reaction_full)
                                                             [cnst.m4He, cnst.m9Be, cnst.mn,                      cnst.m12C+7654.07/cnst.u_keV] .* cnst.u_keV
 
             return masses..., 3213.79, (x,y) -> dSigma_dcosCM.(x,y)
+        else
+            error("The $(reaction) fusion reaction needs to have the energy state 'l' (a(b,c)d-l) in either 1L or 2L. Please correct and re-try.")
         end
     else 
-        error("Reaction is not a valid fusion reaction available currently")
+        error("The $(reaction) fusion reaction is currently not available for analytic computation of expected diagnostic spectrum. The following fusion reaction are available: $(OWCF_AVAILABLE_FUSION_REACTIONS_FOR_ANALYTIC_COMPUTATION). Please correct and re-try.")
     end
 end
 
 """
-GetOrbSpec( viewing_cone::Union{Nothing,ViewingCone}, o_E::Vector{Float64}, o_p::Vector{Float64}, o_R::Vector{Float64}, o_z::Vector{Float64}, o_w::Vector{Float64}, Ed_bins::Vector{Float64}, o_B::Matrix{Float64}; 
-            reaction_full::String="T(D,n)4He-GS", bulk_dens::Union{Nothing,Vector{Float64}}=1.0e19)
+forward_calc(viewing_cone::ViewingCone, o_E::Vector{Float64}, o_p::Vector{Float64}, o_R::Vector{Float64}, o_z::Vector{Float64}, o_w::Vector{Float64}, Ed_bins::Vector{Float64}, o_B::Matrix{Float64}; 
+            reaction::String="T(D,n)4He-GS", bulk_dens::Union{Nothing,Vector{Float64}}=1.0e19)
 
-Method to calculate orbit-wise synthetic spectra for 1- and 2-step reactions using the beam-target approximation for faster computations.
+For the input (E,p,R,z) points and weights (please see inputs explanation below), calculate expected diagnostic spectrum for 1- and 2-step fusion reactions using the analytic equations obtained when making the 
+beam-target approximation. Please see [CITE A. VALENTINI PUBLICATION]. Since the approach is straight forward (no Monte Carlo computations needed), a massive speed-up of computations compared to established 
+Monte Carlo codes (e.g. DRESS/GENESIS) is achieved. However, the approximation is only valid as long as the thermal (slow) fusion product particle population can be assumed to be at rest (zero temperature),
+relative to the energetic (fast) fusion product particle population.
 
 The inputs are as follows
-- viewing_cone - viewing cone object as defined in vcone.jl
-- o_E, o_p, o_R, o_z, o_w - fast-ion energies in keV, fast-ion pitch values, major radius position in m, vertical position in m, and geometrical weights along the orbit trajectories
-- Ed_bins - bin edges for product energy spectrum as defined by the user. Units in keVs
-- o_B - 3D magnetic field vector values along orbit trajectory
-- reaction_full - Reaction complete format, i.e. a(b,c)d-l with a is the thermal species, b is the fast species, c is the emitted species, d is residual species and l is emitted species nuclear energy state 
-- bulk_dens - density in m^-3 for target particle along fast-ion orbit trajectory
+- viewing_cone - A viewing cone object as defined in vcone.jl
+- o_E, o_p, o_R, o_z, o_w - Weighted (E,p,R,z) points; fast-ion energies (o_E) in keV, fast-ion pitch (o_p) values, major radius (R) positions in meters, vertical positions (z) in meters, and geometrical weights (w).
+- Ed_bins - Diagnostic measurement bin edges for product energy spectrum as defined by the user. Units in keVs
+- o_B - A (3,N) array containing the (R,phi,z) components of the magnetic field vector at all (E,p,R,z) points (in Teslas)
+- reaction - Fusion reaction. Reaction format 1 and 2 is supported. Please see OWCF/misc/availReacts.jl for explanation.
+- bulk_dens - Number densities in m^-3 for target (thermal) particle species at the (E,p,R,z) points.
 """
-function GetOrbSpec(viewing_cone, o_E, o_p, o_R, o_z, o_w, Ed_bins, o_B; reaction_full="T(D,n)4He-GS", bulk_dens=ones(length(o_E)).*1.0e19) 
-    # Intersect calculated orbits with LOS, if needed
-    if isnothing(viewing_cone)
-        E_b_vc = o_E # No viewing cone specified. All energy points are accepted (/inside the universe)
-        p_b_vc = o_p # No viewing cone specified. All pitch points are accepted (/inside the universe)
-        R_vc = o_R # No viewing cone specified. All R points are accepted (/inside the universe)
-        z_vc = o_z # No viewing cone specified. All z points are accepted (/inside the universe)
-        bulk_dens_vc = bulk_dens # No viewing cone specified. All bulk densities are accepted
-        weights_vc = o_w # No viewing cone specified. All weights are accepted
-        B_vc = o_B # No viewing cone specified. All magnetic field vectors are accepted
-        omega = 4*np.pi # Spherical emission, in all directions
-        dphi = 2*np.pi # All toroidal angles are included
-    else
-        i_voxels, i_points = map_points_voxels(viewing_cone, o_R, o_z) # Map the R,z sample points to the viewing cone voxels
-        if length(i_points) == 0
-            # println("No points inside viewing cone!")
-            return zeros(length(Ed_bins) - 1)
-        end
-        E_b_vc = o_E[i_points] # Extract energy points within diagnostic viewing cone
-        p_b_vc = o_p[i_points] # Extract pitch points within diagnostic viewing cone
-        R_vc = o_R[i_points] # Extract R points within diagnostic viewing cone
-        z_vc = o_z[i_points] # Extract z points within diagnostic viewing cone
-        bulk_dens_vc = bulk_dens[i_points]
-        weights_vc = o_w[i_points] # Extract weights corresponding to R,z points within diagnostic viewing cone
-        B_vc = o_B[:,i_points] # Extract magnetic field vectors corresponding to R,z points within diagnostic viewing cone
-        omega = viewing_cone.OMEGA[i_voxels] # Only specific solid angles, in steradian
-        dphi = viewing_cone.dPHI # What is the incremental toroidal angle that one diagnostic viewing cone voxel occupies?
-        ud_norm = sqrt.(sum(vc.U[:,i_voxels].^2, dims=1))
-        ud = vc.U[:,i_voxels] ./ ud_norm # What is the emission direction of the viewing cone?
+function forward_calc(viewing_cone, o_E, o_p, o_R, o_z, o_w, Ed_bins, o_B; reaction="T(D,n)4He-GS", bulk_dens=ones(length(o_E)).*1.0e19) 
+    
+    if getReactionForm(reaction)==3
+        error("Fusion reaction specified as $(reaction). Spectrum computation via projected velocities assumed. This is not compatible with the analytic forward model. Please use fusion reaction form 1 or 2. Please see OWCF/misc/availReacts.jl for explanation. Please correct and re-try.")
     end
+
+    m_b,m_t,m_d,m_r,g_ray,dSigma_dcosCM = SetReaction(reaction) # Also checks whether reaction is analytically available in the OWCF
+
+    # Keep only (E,p,R,z) points inside diagnostic line-of-sight (LOS)
+    i_voxels, i_points = map_points_voxels(viewing_cone, o_R, o_z) # Map the R,z sample points to the viewing cone voxels. See OWCF/vcone.jl
+    if length(i_points) == 0
+        # println("No points inside viewing cone!")
+        return zeros(length(Ed_bins) - 1)
+    end
+    E_b_vc = o_E[i_points] # Extract energy points within diagnostic viewing cone
+    p_b_vc = o_p[i_points] # Extract pitch points within diagnostic viewing cone
+    R_vc = o_R[i_points] # Extract R points within diagnostic viewing cone
+    z_vc = o_z[i_points] # Extract z points within diagnostic viewing cone
+    bulk_dens_vc = bulk_dens[i_points]
+    weights_vc = o_w[i_points] # Extract weights corresponding to R,z points within diagnostic viewing cone
+    B_vc = o_B[:,i_points] # Extract magnetic field vectors corresponding to R,z points within diagnostic viewing cone
+    omega = viewing_cone.OMEGA[i_voxels] # Only specific solid angles, in steradian
+    dphi = viewing_cone.dPHI # What is the incremental toroidal angle that one diagnostic viewing cone voxel occupies?
+    ud_norm = sqrt.(sum(vc.U[:,i_voxels].^2, dims=1))
+    ud = vc.U[:,i_voxels] ./ ud_norm # What is the emission direction of the viewing cone?
     
     mag_B_vc = sqrt.(sum(B_vc.^2, dims=1))
     lambda_d = vec( acos.( clamp.( sum(ud .* B_vc, dims=1)./mag_B_vc, -1, 1 ) ) )
@@ -374,9 +374,7 @@ function GetOrbSpec(viewing_cone, o_E, o_p, o_R, o_z, o_w, Ed_bins, o_B; reactio
     Ed_vals = Ed_bins[1:end-1] .+ Delta_Ed / 2
     orbit_spectrum = zeros(length(Ed_vals))
 
-    if lowercase(split(reaction_full,"-")[2]) != "gs"
-        m_b,m_t,m_d,m_r,g_ray,dSigma_dcosCM = SetReaction(reaction_full)
-
+    if !(getEmittedParticleEnergyLevel(reaction)=="GS")
         grid_lims = get_lims(E_b_vc, acos.(p_b_vc), m_b, m_t, m_d, m_r)
         # γ_b = LinRange(minimum(grid_lims[:,5]), maximum(grid_lims[:,6]), 50)
         # dγ = γ_b[2] - γ_b[1]
@@ -411,9 +409,7 @@ function GetOrbSpec(viewing_cone, o_E, o_p, o_R, o_z, o_w, Ed_bins, o_B; reactio
                                                            acos.(p_list), m_d, omega[i]) ) * (dphi / (2π))
             end
         end
-            else 
-        m_b,m_t,m_d,m_r,dSigma_dcosCM = SetReaction(reaction_full)
-
+    else 
         for i in eachindex(Ed_vals)
             orbit_spectrum[i] += sum(dn_dtdE(   Ed_vals[i], lambda_d, m_d, 
                                                 10. ^ 0 .* weights_vc .* omega , E_b_vc, acos.(p_b_vc), m_b, 
