@@ -120,8 +120,8 @@ if isfile(filepath_W)
         if haskey(myfile,"reaction")
             reaction = myfile["reaction"]
         end
-        if haskey(myfile,"reaction_full")
-            reaction_full = myfile["reaction_full"]
+        if haskey(myfile,"reaction_full") # An old file. 'reaction_full' key is deprecated
+            reaction_full = myfile["reaction_full"] # An old file. 'reaction_full' key is deprecated
         end
         if haskey(myfile, "FI_species")
             FI_species = myfile["FI_species"]
@@ -175,14 +175,13 @@ end
 ## ---------------------------------------------------------------------------------------------
 # Determine fast-ion plasma species from reaction
 if (@isdefined reaction_full)
-    thermal_species, FI_species = checkReaction(reaction_full; verbose=verbose, projVelocity=analyticalOWs)
-    @everywhere FI_species = $FI_species # Transfer variable to all external processes
+    thermal_species, FI_species = getFusionReactants(reaction_full)
 elseif (@isdefined reaction)
-    FI_species = (split(reaction,"-"))[2] # Assume first species specified in reaction to be the fast-ion species. For example, in 'p-t' the 'p' will be assumed the thermal species.
-    @everywhere FI_species = $FI_species # Transfer variable to all external processes
+    thermal_species, FI_species = getFusionReactants(reaction)
 else
     FI_species = FI_species # Already defined
 end
+@everywhere FI_species = $FI_species # Transfer variable to all external processes
 
 ## ------
 # Printing script info and inputs

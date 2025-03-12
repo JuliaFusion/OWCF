@@ -462,7 +462,7 @@ if ($fileext_thermal=="cdf"):
                                         fbm_files=[$filepath_FI_TRANSP_shot]) # Load the TRANSP shot file
     thermal_dist = transp_dists.Thermal(tr_out, ion=thermal_species) # Then load the thermal ion distribution from that TRANSP object
 else:
-    thermal_dist = "" # Otherwise, just let the thermal_dist variable be the empty string
+    thermal_dist = None # Otherwise, just let the thermal_dist variable be None
     # This doesn't mean that the thermal distribution will be non-existent. It just means the Python framework won't use
     # it's internal processes to sample from the thermal distribution. That is up to Julia instead.
 """

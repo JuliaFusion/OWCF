@@ -55,13 +55,11 @@
 #   E_array - The fast-ion energy grid array used for (E,p) space - Array{Float64,1}
 #   p_array - The fast-ion p grid array used for (E,p) space - Array{Float64,1}
 #   Ed_array - The diagnostic energy bin centers - Array{Float64,1}
-#   reaction_full - The nuclear fusion reaction for which the weights are computed - String
+#   reaction - The nuclear fusion reaction for which the weights are computed - String
 #   filepath_thermal_distr - The filepath of the thermal species distribution. For reference - String
 #   filepath_start - The filepath to the start file used to execute calc2DWeights.jl. For reference - String
 # If plasma_rot was set to true, the output file will contain
 #   plasma_rot_at_Rz - An (R,phi,z) vector with the plasma rotation at the (R,z) point of interest - Array{Float,1}
-# If analytical weight functions (with projected velocities) are computed, the saved file will also have the key
-#   analytical2DWs - True if analytical weight functions were computed. False otherwise - Bool
 # If saveVparaVperpWeights was set to true, the output file will also contain
 #   W_vel - The 2D weights but in (v_para,v_perp). Dimensions are (nEd, nvpara, nvperp) - Array{Float64,3}
 #   vpara_array - The fast-ion vpara grid array used for (v_para, v_perp) space - Array{Float64,1}
@@ -105,29 +103,46 @@ verbose && println("Loading Julia packages... ")
 end
 
 ## ---------------------------------------------------------------------------------------------
-if !analytical2DWs
-    reaction_full = deepcopy(reaction) # Make a fully independent copy of the fusion reaction variable
-    reaction = full2reactsOnly(reaction; verbose=verbose, projVelocity=analytical2DWs) # Converts from 'a(b,c)d' format to 'a-b' format (reactants only)
-else
-    reaction_full = deepcopy(reaction) # Make a fully independent copy of the fusion reaction variable
+# Fusion reaction, diagnostic and particle-related checks
+if getReactionForm(reaction)==3 && analytic 
+    error("The 'analytic' input variable was set to true, but the 'reaction' input variable was specified on form (3)(fast-ion species only). This is not allowed. Please correct and re-try.")
 end
-#@everywhere reaction_full = $reaction_full # Not yet necessary. Might be necessary when starting to compute two-step fusion reactions with the OWCF via the DRESS code
-@everywhere reaction = $reaction # Transfer to all external processes
-emittedParticleHasCharge = false # By default, assume that the emitted particle 'c' in a(b,c)d does NOT have charge (is neutral)
-RHEPWC = ["D-3He", "3He-D"] # RHEPWC means 'reaction has emitted particle with charge'
-if reaction in RHEPWC # However, there are some fusion reactions which WILL produce an emitted particle with non-zero charge
-    emittedParticleHasCharge = true
+if getReactionForm(reaction)==1 # If no excited energy state for the emitted particle (in the case it is an atomic nucleus) has been specified...
+    verbose && println("No energy state specified for the emitted particle $(getEmittedParticle(reaction)). Assuming ground state (GS), if relevant... ")
+    reaction *= "-GS"
 end
+if !reactionIsAvailable(reaction)
+    error("Fusion reaction $(reaction) is not yet available in the OWCF. The following reactions are available: $(OWCF_AVAILABLE_FUSION_REACTIONS). For projected-velocity computations, the following particle species are available: $(OWCF_SPECIES). Please correct and re-try.")
+end
+if analytic && !reactionIsAvailableAnalytically(reaction)
+    error("Expected spectra from fusion reaction $(reaction) is currently not available for computation via analytic equations. Currently analytically available fusion reactions include: $(OWCF_AVAILABLE_FUSION_REACTIONS_FOR_ANALYTIC_COMPUTATION). Please correct and re-try.")
+end
+@everywhere reaction = $reaction # Copy the reaction variable to all external (CPU) processes
 
-if emittedParticleHasCharge
+emittedParticleHasCharge = false
+if !(getSpeciesCharge(getEmittedParticle(reaction))==0) && lowercase(getEmittedParticleEnergyLevel(reaction))=="gs" && !(getReactionForm(reaction)==3)
     verbose && println("")
-    verbose && println("The emitted "*getEmittedParticle(reaction_full)*" particle of the "*reaction_full*" reaction has non-zero charge!")
-    verbose && println("For emitted particles with non-zero charge, the OWCF currently only supports computing the expected energy spectrum from the plasma as a whole (4*pi emission).")
-    verbose && println("Therefore, the 'diagnostic_name' and 'diagnostic_filepath' input variables will be forcibly set to ''.")
+    verbose && println("The fusion product particle of interest ($(getEmittedParticle(reaction))) of the $(reaction) reaction has non-zero charge!")
+    verbose && println("- A 1-step or 2-step gamma-ray reaction is NOT assumed, since the energy level of the $(getEmittedParticle(reaction)) particle is specified to be in ground state (GS).")
+    verbose && println("- Computation of 2D weight functions from projected velocities is also NOT assumed, since the 'reaction' input variable is NOT on form (3)($(reaction))")
+    verbose && println("---> For emitted particles with non-zero charge, the OWCF currently only supports computing the expected energy spectrum from the plasma as a whole (4*pi emission).")
+    verbose && println("---> Therefore, the 'diagnostic_name' and 'diagnostic_filepath' input variables will be forcibly set to \"\".")
     verbose && println("")
     diagnostic_name = ""
     diagnostic_filepath = ""
+    emittedParticleHasCharge = true
 end
+
+if !(lowercase(getEmittedParticleEnergyLevel(reaction))=="gs") && (diagnostic_filepath=="")
+    error("The fusion product particle of interest ($(getEmittedParticle(reaction))) of the $(reaction) reaction is on an excited state, but no diagnostic line-of-sight was specified (the diagnostic_filepath input variable was left unspecified). This is not allowed. Please correct and re-try.")
+end
+if !(lowercase(getEmittedParticleEnergyLevel(reaction))=="gs")
+    verbose && println("")
+    verbose && println("The fusion product particle of interest ($(getEmittedParticle(reaction))) of the $(reaction) reaction is on an excited state!")
+    verbose && println("The OWCF will calculate the spectrum of gamma-rays emitted from the de-excitation of the $(getEmittedParticle(reaction)) particle, towards the specified detector.")
+    verbose && println("")
+end
+
 
 ## ---------------------------------------------------------------------------------------------
 # Determine filepath_thermal_distr file extension
@@ -153,25 +168,18 @@ end
 if fileext_thermal=="cdf" && !(fileext_FI_cdf=="cdf")
     error("filepath_thermal_distr specified as TRANSP .cdf file, but filepath_FI_cdf was wrongly specified. Please specify and re-try.")
 end
-## ---------------------------------------------------------------------------------------------
-# Safety check for analytical orbit weight function computations
-if analytical2DWs
-    !(split(reaction,"-")[1] == "proj") && error("Analytical orbit weight function computation was specified, but input variable 'reaction' was not correctly specified (it should be specified as 'proj-X' where 'X' is the fast-ion species). Please correct and re-try.")
-end
-if !analytical2DWs
-    (split(reaction,"-")[1] == "proj") && error("Normal orbit weight function computation was specified, but input variable 'reaction' was not correctly specified (it should be specified as 'a(b,c)d' where a is thermal ion, b is fast ion, c is emitted particle and d is the product nucleus. Please correct and re-try.")
-end
 
 ## ---------------------------------------------------------------------------------------------
 # Determine fast-ion and thermal (thermal) species from inputs in start file
-if !analytical2DWs
-    thermal_species, FI_species = checkReaction(reaction_full) # Check the specified fusion reaction, and extract thermal and fast-ion species
-else
-    FI_species = split(reaction,"-")[2] # Assumed 'proj-X' format
-    thermal_species = split(reaction,"-")[1] # Will just be 'proj', assumed 'proj-X' format
-end
+thermal_species, FI_species = getFusionReactants(reaction) # Check the specified fusion reaction, and extract thermal and fast-ion species
 @everywhere thermal_species = $thermal_species # Transfer variable to all external processes
 @everywhere FI_species = $FI_species # Transfer variable to all external processes
+
+# projVel variable. To clarify when 2D weight functions are computed from projected velocities, in code below
+projVel = false
+if getReactionForm(reaction)==3 # If fusion reaction is specified as a single particle species..
+    projVel = true # ...2D weight functions will be computed using projected velocities!
+end
 
 ## ---------------------------------------------------------------------------------------------
 # Loading tokamak information and TRANSP RUN-ID
@@ -201,11 +209,11 @@ else
 end
 
 
-if filepath_thermal_distr=="" && (!(typeof(thermal_temp_axis)==Float64) && !(typeof(thermal_temp_axis)==Int64)) && !analytical2DWs
+if filepath_thermal_distr=="" && (!(typeof(thermal_temp_axis)==Float64) && !(typeof(thermal_temp_axis)==Int64)) && !projVel
     @everywhere thermal_temp_axis = 3.0
     @warn "filepath_thermal_distr was not specified, and thermal_temp_axis was not specified correctly. thermal_temp_axis will be set to default value of 3.0 keV."
 end
-if filepath_thermal_distr=="" && !(typeof(thermal_dens_axis)==Float64) && !analytical2DWs
+if filepath_thermal_distr=="" && !(typeof(thermal_dens_axis)==Float64) && !projVel
     @everywhere thermal_dens_axis = 1.0e20
     @warn "filepath_thermal_distr was not specified, and thermal_dens_axis was not specified correctly. thermal_dens_axis will be set to default value of 1.0e20 m^-3."
 end
@@ -367,15 +375,15 @@ else
 end
 println("Timepoint: "*timepoint*" seconds")
 println("")
-if !analytical2DWs
-    println("Fusion reaction specified: "*reaction_full)
+if !projVel
+    println("Fusion reaction specified: "*reaction)
 else
-    println("Projected velocity (u) will be used as weights for the weight functions.")
+    println("2D weight functions will be computed using the projected velocity (u) of fast $(getFastParticleSpecies(reaction)) ions for all (E,p) points.")
 end
 println("Fast-ion species specified: "*FI_species)
-if emittedParticleHasCharge && !analytical2DWs
-    println("The emitted "*getEmittedParticle(reaction_full)*" particle of the "*reaction_full*" reaction has non-zero charge!")
-    println("The resulting energy distribution for "*getEmittedParticle(reaction_full)*" from the plasma as a whole will be computed.")
+if emittedParticleHasCharge && !projVel
+    println("The emitted "*getEmittedParticle(reaction)*" particle of the "*reaction*" reaction has non-zero charge!")
+    println("The resulting energy distribution for "*getEmittedParticle(reaction)*" from the plasma as a whole will be computed.")
 end
 println("")
 print("---> Finite Larmor radius (FLR) effects included? ")
@@ -411,12 +419,12 @@ end
 println("")
 if !(filepath_thermal_distr=="")
     println("Thermal distribution file specified: "*filepath_thermal_distr)
-elseif (filepath_thermal_distr=="") && !analytical2DWs
+elseif (filepath_thermal_distr=="") && !projVel
     println("Thermal distribution file not specified.")
-    println("Thermal ion ($((split(reaction,"-"))[1])) temperature on axis will be set to $(thermal_temp_axis) keV.")
-    println("Thermal ion ($((split(reaction,"-"))[1])) density on axis will be set to $(thermal_dens_axis) m^-3.")
+    println("Thermal ion ($(thermal_species)) temperature on-axis will be set to $(thermal_temp_axis) keV.")
+    println("Thermal ion ($(thermal_species)) density on axis will be set to $(thermal_dens_axis) m^-3.")
 else
-    println("Analytical 2D weight functions will be computed using the projected velocity (u) of the fast ions.")
+    println("2D weight functions will be computed using the projected velocity (u) of the fast $(getFastParticleSpecies(reaction)) ions.")
 end
 println("Magnetic equilibrium file specified: "*filepath_equil)
 println("")
@@ -427,7 +435,7 @@ println("Energy: [$(minimum(E_array)),$(maximum(E_array))] keV")
 println("Pitch: [$(minimum(p_array)),$(maximum(p_array))]")
 println("The (R,z) point of interest is: ($(R_of_interest),$(z_of_interest)) m")
 println("")
-if !analytical2DWs
+if !projVel
     println("There will be $(length(range(Ed_min,stop=Ed_max,step=Ed_diff))-1) diagnostic energy bin(s) with")
     println("Lower diagnostic energy bound: $(Ed_min) keV")
     println("Upper diagnostic energy bound: $(Ed_max) keV")
@@ -443,14 +451,14 @@ if saveVparaVperpWeights
 end
 println("Results will be saved to: ")
 if iiimax == 1
-    println(folderpath_o*"velWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = analytical2DWs)*"_$(length(range(Ed_min,stop=Ed_max,step=Ed_diff))-1)x$(nE)x$(np).jld2")
+    println(folderpath_o*"velWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*"_$(length(range(Ed_min,stop=Ed_max,step=Ed_diff))-1)x$(nE)x$(np).jld2")
 else
-    println(folderpath_o*"velWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = analytical2DWs)*"_1.jld2")
+    println(folderpath_o*"velWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*"_1.jld2")
     println("... ")
-    println(folderpath_o*"velWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = analytical2DWs)*"_$(iiimax).jld2")
+    println(folderpath_o*"velWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*"_$(iiimax).jld2")
     if iii_average
         println("---> Average of all files will be computed and saved to: ")
-        println("---> "*folderpath_o*"velWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = analytical2DWs)*".jld2")
+        println("---> "*folderpath_o*"velWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*".jld2")
     end
 end
 println("")
@@ -469,7 +477,7 @@ println("Please remove previously saved files with the same file name (if any) p
 println("")
 println("If you would like to change any settings, please edit the start_calc2DW_template.jl file or similar.")
 println("")
-println("Written by Henrik Järleblad. Last maintained 2024-08-13.")
+println("Written by Henrik Järleblad. Last maintained 2025-03-10.")
 println("--------------------------------------------------------------------------------------------------")
 println("")
 
@@ -502,39 +510,51 @@ end
 # Setting Python variables and structures on all distributed workers/processes...
 verbose && println("Setting all Python variables and structures on all distributed workers/processes... ")
 @everywhere begin
-    py"""
-    # The '$' in front of many Python variables means that the variable is defined in Julia, not in Python.
-    reaction = $reaction
-    thermal_species = $thermal_species
-    analytical2DWs = $analytical2DWs
-    if $verbose:
-        print("From Python: Loading forward model with diagnostic... ") 
-    forwardmodel = forward.Forward($diagnostic_filepath) # Pre-initialize the forward model
+    if !analytic
+        py"""
+        # The '$' in front of many Python variables means that the variable is defined in Julia, not in Python.
+        reaction = $reaction
+        test_thermal_particle = Particle($thermal_species) # Check so that thermal species is available in DRESS code
+        thermal_species = $thermal_species
+        analytical2DWs = $analytical2DWs
+        if $verbose:
+            print("From Python: Loading forward model with diagnostic... ") 
+        forwardmodel = forward.Forward($diagnostic_filepath) # Pre-initialize the forward model
 
-    # Load TRANSP simulation data
-    if (not $TRANSP_id=="") and (not analytical2DWs): # If there is some TRANSP_id specified and we do not want to simply compute projected velocities...
-        if ($fileext_thermal).lower()=="cdf": # If there is some TRANSP .cdf output file specified...
-            if $verbose:
-                print("From Python: Loading TRANSP output from TRANSP files... ")
-            tr_out = transp_output.TranspOutput($TRANSP_id, step=1, out_file=$filepath_thermal_distr,fbm_files=[$filepath_FI_cdf]) # Load the TRANSP shot file. Assume first step. This is likely to be patched in the future.
-            if $verbose:
-                print("From Python: Setting thermal distribution... ")
-            thermal_dist = transp_dists.Thermal(tr_out, ion=thermal_species) # Then load the thermal ion distribution from that .cdf file
+        # Load TRANSP simulation data
+        if (not $TRANSP_id=="") and (not analytical2DWs): # If there is some TRANSP_id specified and we do not want to simply compute projected velocities...
+            if ($fileext_thermal).lower()=="cdf": # If there is some TRANSP .cdf output file specified...
+                if $verbose:
+                    print("From Python: Loading TRANSP output from TRANSP files... ")
+                tr_out = transp_output.TranspOutput($TRANSP_id, step=1, out_file=$filepath_thermal_distr,fbm_files=[$filepath_FI_cdf]) # Load the TRANSP shot file. Assume first step. This is likely to be patched in the future.
+                if $verbose:
+                    print("From Python: Setting thermal distribution... ")
+                thermal_dist = transp_dists.Thermal(tr_out, ion=thermal_species) # Then load the thermal ion distribution from that .cdf file
+            else:
+                raise ValueError('From Python: TRANSP_id was specified, but filepath_thermal_distr was not (this should be impossible). Please correct and re-try.')
         else:
-            raise ValueError('From Python: TRANSP_id was specified, but filepath_thermal_distr was not (this should be impossible). Please correct and re-try.')
-    else:
-        thermal_dist = "" # Otherwise, just let the thermal_dist variable be the empty string
+            thermal_dist = "" # Otherwise, just let the thermal_dist variable be the empty string
 
-    Ed_bin_edges = np.arange($Ed_min,$Ed_max,$Ed_diff) # diagnostic spectrum bin edges (keV or m/s)
-    if len(Ed_bin_edges)==1: # Make sure that there are at least one lower and one upper bin edge
-        dEd = (($Ed_max)-($Ed_min))/10
-        Ed_bin_edges = np.arange($Ed_min,($Ed_max)+dEd,$Ed_diff)
-    Ed_vals = 0.5*(Ed_bin_edges[1:] + Ed_bin_edges[:-1]) # bin centers (keV or m/s)
-    nEd = len(Ed_vals)
-    """
+        Ed_bin_edges = np.arange($Ed_min,$Ed_max,$Ed_diff) # diagnostic spectrum bin edges (keV or m/s)
+        if len(Ed_bin_edges)==1: # Make sure that there are at least one lower and one upper bin edge
+            dEd = (($Ed_max)-($Ed_min))/10
+            Ed_bin_edges = np.arange($Ed_min,($Ed_max)+dEd,$Ed_diff)
+        Ed_vals = 0.5*(Ed_bin_edges[1:] + Ed_bin_edges[:-1]) # bin centers (keV or m/s)
+        nEd = len(Ed_vals)
+        """
+    else
+        py"""
+        forwardmodel = $diagnostic_filepath # If analytic formulas are to be used to compute weight functions, we just need the diagnostic viewing cone to complete the forward model
+        thermal_dist = None # If analytic formulas are to be used to compute weight functions, we assume zero temperature for the thermal ions
+        Ed_bin_edges = np.arange($Ed_min,$Ed_max,$Ed_diff) # diagnostic spectrum bin edges (keV or m/s)
+        if len(Ed_bin_edges)==1: # Make sure that there are at least one lower and one upper bin edge
+            dEd = (($Ed_max)-($Ed_min))/10
+            Ed_bin_edges = np.arange($Ed_min,($Ed_max)+dEd,$Ed_diff)
+        Ed_vals = 0.5*(Ed_bin_edges[1:] + Ed_bin_edges[:-1]) # bin centers (keV or m/s)
+        """
+    end
+    Ed_array = Vector(py"Ed_vals"); nEd = length(Ed_array)
 end
-nEd = py"nEd"
-global Ed_array = vec(py"Ed_vals")
 
 ## ---------------------------------------------------------------------------------------------
 # Pre-processing thermal density and temperature data
@@ -623,8 +643,13 @@ for iii=1:iiimax
                         p = E_iE_p_ip[3]
                         ip = E_iE_p_ip[4]
 
+                        ### CONTINUE CODING HERE!!!
+                        ### IMPLEMENT ANALYTIC COMPUTATIONS!!!
+                        ### CONTINUE CODING HERE!!!
+                        ### CONTINUE ALSO CRTL + F SCRIPT FOR 'reaction' AND 'analytic'
+                        ### WHAT ABOUT calc4DWeights.jl ??? 
+                        ### CONTINUE WITH grep -rnw ... -e "checkReaction" UPDATE
                         py"""
-                        #forwardmodel = $forwardmodel # Convert the Forward Python object from Julia to Python.
                         # Please note, the '$' symbol is used below to convert objects from Julia to Python. Even Julia PyObjects
                         spec = forwardmodel.calc($([E]), $([p]), $([R_of_interest]), $([z_of_interest]), $([1.0]), thermal_dist, Ed_bin_edges, $B_at_Rz, n_repeat=$gyro_samples, reaction=$reaction, bulk_temp=$thermal_temp, bulk_dens=$thermal_dens, flr=$flr_effects, v_rot=$plasma_rot_at_Rz) # Please see the forward.py script, for further specifications
                         """
@@ -647,7 +672,6 @@ for iii=1:iiimax
                 ip = E_iE_p_ip[4]
 
                 py"""
-                #forwardmodel = $forwardmodel # Convert the Forward Python object from Julia to Python.
                 # Please note, the '$' symbol is used below to convert objects from Julia to Python. Even Julia PyObjects
                 spec = forwardmodel.calc($([E]), $([p]), $([R_of_interest]), $([z_of_interest]), $([1.0]), thermal_dist, Ed_bin_edges, $B_at_Rz, n_repeat=$gyro_samples, reaction=$reaction, bulk_temp=$thermal_temp, bulk_dens=$thermal_dens, flr=$flr_effects, v_rot=$plasma_rot_at_Rz) # Please see the forward.py script, for further specifications
                 """
@@ -671,7 +695,6 @@ for iii=1:iiimax
             ip = E_iE_p_ip[4]
 
             py"""
-            #forwardmodel = $forwardmodel # Convert the Forward Python object from Julia to Python.
             # Please note, the '$' symbol is used below to convert objects from Julia to Python. Even Julia PyObjects
             spec = forwardmodel.calc($([E]), $([p]), $([R_of_interest]), $([z_of_interest]), $([1.0]), thermal_dist, Ed_bin_edges, $B_at_Rz, n_repeat=$gyro_samples, reaction=$reaction, bulk_temp=$thermal_temp, bulk_dens=$thermal_dens, flr=$flr_effects, v_rot=$plasma_rot_at_Rz) # Please see the forward.py script, for further specifications
             """
@@ -695,7 +718,6 @@ for iii=1:iiimax
                 ip = E_iE_p_ip[4]
 
                 py"""
-                #forwardmodel = $forwardmodel # Convert the Forward Python object from Julia to Python.
                 # Please note, the '$' symbol is used below to convert objects from Julia to Python. Even Julia PyObjects
                 spec = forwardmodel.calc($([E]), $([p]), $([R_of_interest]), $([z_of_interest]), $([1.0]), thermal_dist, Ed_bin_edges, $B_at_Rz, n_repeat=$gyro_samples, reaction=$reaction, bulk_temp=$thermal_temp, bulk_dens=$thermal_dens, flr=$flr_effects, v_rot=$plasma_rot_at_Rz) # Please see the forward.py script, for further specifications
                 """

@@ -342,9 +342,9 @@ end
 ## ---------------------------------------------------------------------------------------------
 # Determine fast-ion species from reaction
 if (@isdefined reaction_full)
-    thermal_species, FI_species = checkReaction(reaction_full; verbose=verbose, projVelocity=analyticalOWs)
+    thermal_species, FI_species = getFusionReactants(reaction_full)
 elseif (@isdefined reaction)
-    FI_species = (split(reaction,"-"))[2] # Assume second species specified in reaction to be the fast-ion species. For example, in 'p-t' the 't' will be assumed the fast species.
+    FI_species = getFusionReactants(reaction)[2]
 else
     FI_species = FI_species # Already defined
 end

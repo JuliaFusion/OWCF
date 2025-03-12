@@ -11,6 +11,17 @@ import tokapart
 import vcone
 import constants
 
+"""
+A very short, but necessary, Python implementation of a function from the
+OWCF/misc/availReacts.jl script.
+"""
+def getReactionForm(fusion_reaction):
+    if "-" in fusion_reaction:
+        return 2
+    if "(" in fusion_reaction:
+        return 1
+    return 3
+
 class Forward(object):
     """
     A class representing a forward model. Please note, compared to the old version of the forward.py script
@@ -32,36 +43,60 @@ class Forward(object):
             return 'Forward model with spherical 4*pi emission'
 
 
-    def calc(self, E, p, R, z, weights, bulk_dist, Ed_bins, B_vec,
-            n_repeat=1, product_state='GS', reaction='d-d', bulk_temp='', bulk_dens='', flr=False, v_rot=np.reshape(np.array([0.0,0.0,0.0]),(3,1))):
+    def calc(self, E, p, R, z, weights, bulk_dist, Ed_bins, B_vec, n_repeat=1, reaction='D(T,n)4He', 
+             bulk_temp='', bulk_dens='', flr=False, v_rot=np.reshape(np.array([0.0,0.0,0.0]),(3,1))):
         """
-        Calculate spectrum for fast ion(s) (specified by the N (E,p,R,z) points)
-        reacting with the given bulk distribution, for a given viewing cone
-        (which is set with the set_view function above).
+        Compute the (total) expected energy spectrum of fusion product particles of interest, given
+        the fusion reaction specified by the 'reaction' input variable and the diagnostic 
+        viewing cone set via the set_view() function above. The fusion reaction is
+        specified via the 'reaction' input variable. The 'reaction' input variable should be 
+        specified using one of the following forms:
+            (1) 'a(b,c)d' 
+            (2) 'a(b,c)d-l' 
+            (3) 'b' 
+        where a is thermal ion, b is fast ion, c is fusion product particle of interest, 
+        d is fusion product particle of disinterest and l is the nuclear energy state of c. 
+        l can be GS, 1L or 2L, corresponding to Ground State (GS), 1st excited energy level (1L) 
+        and 2nd excited energy level (2L). For lists of available fusion reactions and particle species, 
+        please see OWCF/misc/availReacts.jl and OWCF/misc/species_func.jl. The reaction forms imply:
+            (1) The standard fusion reaction form. The nuclear energy level 'l' of the fusion product 
+                particle of interest 'c' is automatically assumed to be GS (if relevant).
+            (2) The advanced fusion reaction form. The nuclear energy level 'l' of the fusion product 
+                particle of interest 'c' is taken to be 'l'.
+            (3) The projected velocity reaction form. No fusion reaction is computed. Instead, the 
+                (energy) spectrum is returned as a velocity spectrum from the velocity vectors of 
+                the ion 'b', projected onto the diagnostic line-of-sight (LOS), using the (E,p,R,z) 
+                points that are inside the LOS.
+        PLEASE NOTE! Specify alpha particles as '4he' or '4He' (NOT 'he4' or 'He4'). The same goes 
+        for helium-3 (specify as '3he', NOT 'he3'). Etc.
+
+        The E, p, R and z inputs are the energy (E)(in keV), pitch (p), major radius (R)(in meters)
+        and vertical position (z)(in meters) coordinates of the fast ions. len(E)==len(p)==
+        len(R)==len(z)==len(weights) must hold. PLEASE NOTE! The E, p, R and z inputs are NOT
+        grid points, but points! I.e. the total energy spectrum of fusion product particles of
+        interest is computed from the combined spectra produced by each (E[i],p[i],R[i],z[i])
+        point for i in range(len(E)).
 
         The array weights ´weights´ contains the statistical weights of each MC sample.
         The sum of the weights should be equal to the total number of particles in the
         sampled distribution.
 
-        Ed_bins specifies the neutron bin edges (keV).
+        The thermal ion temperature and density distributions are specified via the bulk_dist
+        input object. This is an object of the Thermal class, defined in OWCF/transp_dists.py.
+        The bulk_dist input object can also be specified as ''. The 'bulk_temp' and 'bulk_dens'
+        inputs will then be used to model the thermal ion temperature and density (see below).
+
+        Ed_bins specifies the diagnostic measurement bin edges (in keV).
 
         B_vec is a (3,N) array containing the (R,phi,z) components of the magnetic field 
-        vector at all of the N (E,p,R,z) points.
+        vector at all of the N (E,p,R,z) points (in Teslas).
 
-        n_repeat is the number of gyro angles sampled for each energy-pitch value.
+        n_repeat is the number of gyro angles sampled for each (E,p) point.
 
-        product_state is the string defining the nuclear energy level for the product
+        bulk_temp will be used as the (mean) Maxwellian bulk plasma temperature, if bulk_dist 
+        is not specified (''). It should be an array equal in length to E,p,R,z and weights.
 
-        reaction is the fusion reaction to simulate ('D-D', 'D-T' etc). The species the the left of the '-' is always the 
-        thermal species and the species to the right of the '-' is always the fast ion. However, as can be seen in the code,
-        the order is flipped once it's been provided as input to the calc() function:
-        reaction = reaction[::-1]
-        This is because the DRESS Python code framework assumes the order to be the other way around, compared to the OWCF. 
-
-        bulk_temp will be used as the bulk plasma temperature, if bulk_dist is not specified.
-        It should be an array equal in length to E,p,R,z and weights.
-
-        bulk_dens will be used as the bulk plasma density, if bulk_dist is not specified.
+        bulk_dens will be used as the bulk plasma density, if bulk_dist is not specified ('').
         It should be an array equal in length to E,p,R,z and weights.
 
         flr should be set to true if finite Larmor radius effects should be taken into account.
@@ -72,11 +107,27 @@ class Forward(object):
 
         All input arrays are assumed to be numpy arrays. 
         """
-        
-        # Here, the ordering in the input variable reaction is a-b, where 'a' is the thermal species and 'b' is the fast-ion species.
-        a,b = reaction.split('-') # This annoying scheme needs to be performed because the OWCF uses the ordering 'thermal-fast' while the DRESS code uses 'fast-thermal'
-        reaction = b+"-"+a # So, D-T becomes T-D. And proj-D becomes D-proj. So here, the ordering has been reversed.
-        a,b = reaction.split('-') # So here, D-T becomes T-D. And proj-D becomes D-proj. 'a' will be the fast-ion species, and 'b' will be the thermal species.
+
+        # Check fusion reaction input. Deduce thermal ion, fast ion and the nucleus energy level of the fusion product particle of interest.
+        reaction_form = getReactionForm(reaction)
+
+        if reaction_form==1:
+            energy_state = 'GS'
+            reactants, products = reaction.split(',')
+            thermal_ion, fast_ion = reactants.split('(')
+            a = fast_ion
+            b = thermal_ion
+        elif reaction_form==2:
+            fusion_reaction, energy_state = reaction.split('-')
+            reactants, products = fusion_reaction.split(',')
+            thermal_ion, fast_ion = fusion_reaction.split('(')
+            a = fast_ion
+            b = thermal_ion
+        else:
+            energy_state = 'GS'
+            a = fast_ion
+            b = 'proj'
+        reaction_short = a+"-"+b # Only the reactants, on the form [fast ion]-[thermal ion]
 
         calcProjVel = False # By default, assume that the user does not wish to compute projected velocities
         if b == 'proj': # But if b is 'proj'...
@@ -97,7 +148,7 @@ class Forward(object):
             bulk_dens = bulk_dens.repeat(n_repeat)
         if not (np.sum(v_rot) == 0.0):
             v_rot = v_rot.repeat(n_repeat, axis=1) # Repeat n_repeat number of times, for gyro-angle sampling        
-        spec_calc = spec.SpectrumCalculator(reaction=reaction,product_state=product_state)
+        spec_calc = spec.SpectrumCalculator(reaction=reaction_short,product_state=energy_state)
         m = spec_calc.ma # The mass of the fast ion (in keV/c**2)
 
         # Expand to gyro-radius points, if FLR effects are to be included

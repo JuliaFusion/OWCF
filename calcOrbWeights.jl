@@ -104,6 +104,9 @@ end
 if !reactionIsAvailable(reaction)
     error("Fusion reaction $(reaction) is not yet available in the OWCF. The following reactions are available: $(OWCF_AVAILABLE_FUSION_REACTIONS). For projected-velocity computations, the following particle species are available: $(OWCF_SPECIES). Please correct and re-try.")
 end
+if analytic && !reactionIsAvailableAnalytically(reaction)
+    error("Expected spectra from fusion reaction $(reaction) is currently not available for computation via analytic equations. Currently analytically available fusion reactions include: $(OWCF_AVAILABLE_FUSION_REACTIONS_FOR_ANALYTIC_COMPUTATION). Please correct and re-try.")
+end
 @everywhere reaction = $reaction # Copy the reaction variable to all external (CPU) processes
 
 emittedParticleHasCharge = false
@@ -355,14 +358,14 @@ elseif (filepath_thermal_distr=="") && !projVel
     println("Thermal ion ($(thermal_species)) temperature on-axis will be set to $(thermal_temp_axis) keV.")
     println("Thermal ion ($(thermal_species)) density on axis will be set to $(thermal_dens_axis) m^-3.")
 else
-    println("")
+    println("Orbit weight functions will be computed using the projected velocity (u) of the fast $(getFastParticleSpecies(reaction)) ions.")
 end
 println("Magnetic equilibrium file specified: "*filepath_equil)
 println("")
 if !projVel
     println("Fusion reaction specified: "*reaction)
 else
-    println("Orbit weight functions will be computed using the projected velocity (u) of fast $(getEmittedParticle(reaction)) ions for all relevant (drift) orbit points.")
+    println("Orbit weight functions will be computed using the projected velocity (u) of fast $(getFastParticleSpecies(reaction)) ions for all relevant (drift) orbit points.")
 end
 println("Fast-ion species specified: "*FI_species)
 if emittedParticleHasCharge && !projVel
@@ -500,7 +503,7 @@ verbose && println("Setting all Python variables and structures on all distribut
             else:
                 raise ValueError('From Python: TRANSP_id was specified, but filepath_thermal_distr was not (this should be impossible). Please correct and re-try.')
         else:
-            thermal_dist = "" # Otherwise, just let the thermal_dist variable be the empty string
+            thermal_dist = None # Otherwise, just let the thermal_dist variable be None
 
         Ed_bin_edges = np.arange($Ed_min,$Ed_max,$Ed_diff) # diagnostic spectrum bin edges (keV or m/s)
         if len(Ed_bin_edges)==1: # Make sure that there are at least one lower and one upper bin edge
@@ -519,9 +522,8 @@ verbose && println("Setting all Python variables and structures on all distribut
         Ed_vals = 0.5*(Ed_bin_edges[1:] + Ed_bin_edges[:-1]) # bin centers (keV or m/s)
         """
     end
-    Ed_array = vec(py"Ed_vals")
+    Ed_array = Vector(py"Ed_vals")
 end
-@everywhere Ed_array = $Ed_array
 
 ## ---------------------------------------------------------------------------------------------
 # If a .jld2 file has been specified for the thermal species distribution, we will need interpolation objects
