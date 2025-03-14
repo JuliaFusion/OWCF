@@ -273,10 +273,10 @@ bad_coords = findall(x-> (x==9.0 || x==6.0 || x==7.0), topoMap) # Invalid, incom
 enable_COM && (bad_coords_COM = findall(x-> (x==9.0 || x==6.0 || x==7.0), topoMap_COM))
 
 # Taking care of bad coordinates for the poloidal and toroidal transit times. NaNs will lead to those pixels not being plotted
-polTransTimes[bad_coords] = NaN
-torTransTimes[bad_coords] = NaN
-enable_COM && (polTransTimes_COM[bad_coords_COM] = NaN)
-enable_COM && (torTransTimes_COM[bad_coords_COM] = NaN)
+polTransTimes[bad_coords] .= NaN
+torTransTimes[bad_coords] .= NaN
+enable_COM && (polTransTimes_COM[bad_coords_COM] .= NaN)
+enable_COM && (torTransTimes_COM[bad_coords_COM] .= NaN)
 
 ω_θ = map(x-> !isnan(x) ? 2*pi/x : x, polTransTimes)
 ω_ϕ = map(x-> !isnan(x) ? 2*pi/x : x, torTransTimes)

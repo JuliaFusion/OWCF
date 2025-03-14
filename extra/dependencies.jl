@@ -3363,7 +3363,10 @@ Keyword arguments:
 This function should not be used directly, but always via the slowing_down_function() function, to avoid confusing between 
 energy (E) and speed (v) grid points input.
 """
-function _slowing_down_function_core(v_0::Real, p_0::Real, v_array::Vector{T} where {T<:Real}, p_array::Vector{T} where {T<:Real}, n_e::Real, T_e::Real, species_f::String, species_th_vec::Vector{String}, n_th_vec::Vector{T} where {T<:Real}, T_th_vec::Vector{T} where {T<:Real}; S0::Float64=1.0, g=(v-> v), dampen::Bool=false, damp_type::Symbol=:erfc, sigma::Union{Nothing,Real}=nothing, v_damp::Union{Nothing,Real}=nothing, returnExtra::Bool=false)
+function _slowing_down_function_core(v_0::Real, p_0::Real, v_array::Vector{T} where {T<:Real}, p_array::Vector{T} where {T<:Real}, n_e::Real, T_e::Real, 
+                                     species_f::String, species_th_vec::Vector{String}, n_th_vec::Vector{T} where {T<:Real}, T_th_vec::Vector{T} where {T<:Real}; 
+                                     S0::Float64=1.0, g=(v-> v), dampen::Bool=false, damp_type::Symbol=:erfc, sigma::Union{Nothing,Real}=nothing, 
+                                     v_damp::Union{Nothing,Real}=nothing, returnExtra::Bool=false)
     m_e = (GuidingCenterOrbits.e_amu)*(GuidingCenterOrbits.mass_u) # Electron mass, kg
     τ_s = spitzer_slowdown_time(n_e, T_e, species_f, species_th_vec, n_th_vec, T_th_vec) # Spitzer slowing-down time, s
     Z_th_vec = getSpeciesEcu.(species_th_vec) # Atomic charge number for all thermal plasma ion species
@@ -3383,6 +3386,8 @@ function _slowing_down_function_core(v_0::Real, p_0::Real, v_array::Vector{T} wh
     end
     if returnExtra || dampen
         v_L = v_c * ((1+(v_c/v_0)^3)*exp((3/(4*β))*((1-abs(p_0))/(1+abs(p_0))))-1)^(-1/3)
+    end
+    if dampen
         v_damp = isnothing(v_damp) ? v_L : v_damp # If v_damp is specified, use v_damp. If not, use v_L
         nv = length(v_array)
         if damp_type==:erfc && (v_damp>0.0)
@@ -3397,13 +3402,11 @@ function _slowing_down_function_core(v_0::Real, p_0::Real, v_array::Vector{T} wh
                 error("Unknown damp_type. Currently valid types are :erfc and :linear. Please correct and re-try.")
             end
         end
-        if returnExtra
-            return f_SD, v_c, v_L, τ_s, α_0
-        end
-        return f_SD
-    else
-        return f_SD
     end
+    if returnExtra
+        return f_SD, v_c, v_L, τ_s, α_0
+    end
+    return f_SD
 end
 
 """
