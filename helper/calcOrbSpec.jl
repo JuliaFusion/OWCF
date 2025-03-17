@@ -126,9 +126,8 @@ function calcOrbSpec(M::AbstractEquilibrium, o::Orbit{Float64, EPRCoordinate{Flo
     end
 
     if analytic
-        vc_name = forward
-        if !(vc_name=="")
-            viewing_cone = ViewingCone(vc_name)
+        if isfile(forward)
+            viewing_cone = ViewingCone(forward)
         else
             error("Analytical model with spherical 4*pi emission is NOT supported! Please correct and re-try.")
         end

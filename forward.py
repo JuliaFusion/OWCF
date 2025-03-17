@@ -26,8 +26,7 @@ class Forward(object):
     """
     A class representing a forward model. Please note, compared to the old version of the forward.py script
     (where there was no Forward class), this approach is used simply to be able to pre-load and prepare
-    as much as possible, prior to using the forward model in a distributed (parallel computing) for-loop
-    in Julia, and sending it as input into a Julia function.
+    as much as possible, prior to using the forward model in a distributed (parallel computing) for-loop.
     """
 
     def __init__(self, viewing_cone_name):

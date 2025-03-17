@@ -38,6 +38,11 @@
 ## Finally, you could also choose not to specify a thermal species distribution. The thermal
 # species temperature and density profiles will then be set to default profiles with specified
 # thermal_temp_axis and thermal_dens_axis temperature and density on-axis values, respectively.
+# If thermal_profiles_type==:FLAT, flat thermal plasma temperature and density profiles will be used.
+#
+### The 2D weight functions can also be computed using the analytic equations implemented in the OWCF/forward.jl 
+# script. [CITE A. VALENTINI ET AL]. If so, no thermal temperature data is needed, since the analytic equations 
+# assume zero temperature for the thermal species.
 #
 # Please see the start_calc2DW_template.jl file for further input information.
 
@@ -77,7 +82,7 @@
 # Please note that the diagnostic energy grid will be created as bin centers.
 # That is, the first diagnostic energy grid value will be (Ed_min+Ed_diff/2) and so on.
 
-# Script written by Henrik Järleblad. Last maintained 2024-08-13.
+# Script written by Henrik Järleblad. Last maintained 2025-03-17.
 ################################################################################################
 
 ## ---------------------------------------------------------------------------------------------
@@ -87,8 +92,6 @@ verbose && println("Loading Julia packages... ")
     using PyCall # For using Python code in Julia
     using EFIT # For calculating magn½etic equilibrium quantities
     using Equilibrium # For loading flux function data, tokamak geometry data etc.
-    using GuidingCenterOrbits # For calculating guiding-center orbits
-    using OrbitTomography # This is what all this is about!
     using ProgressMeter # To display computational progress during parallel computations
     using JLD2 # To write/open .jld2 files (Julia files, basically)
     using FileIO # To write/open files in general
@@ -100,6 +103,14 @@ verbose && println("Loading Julia packages... ")
     include("misc/rewriteReacts.jl") # To rewrite a fusion reaction from the A(b,c)D format to the A-b=c-D format
     include("extra/dependencies.jl")
     pushfirst!(PyVector(pyimport("sys")."path"), "") # To add the forward, transp_dists, transp_output and vcone modules (scripts in current path)
+end
+
+if analytic
+    verbose && println("'analytic' input variable set to true. Loading analytic equations for forward modelling in forward.jl... ")
+    @everywhere begin
+        include("forward.jl")
+        include("vcone.jl")
+    end
 end
 
 ## ---------------------------------------------------------------------------------------------
@@ -134,7 +145,7 @@ if !(getSpeciesCharge(getEmittedParticle(reaction))==0) && lowercase(getEmittedP
 end
 
 if !(lowercase(getEmittedParticleEnergyLevel(reaction))=="gs") && (diagnostic_filepath=="")
-    error("The fusion product particle of interest ($(getEmittedParticle(reaction))) of the $(reaction) reaction is on an excited state, but no diagnostic line-of-sight was specified (the diagnostic_filepath input variable was left unspecified). This is not allowed. Please correct and re-try.")
+    error("The fusion product particle of interest ($(getEmittedParticle(reaction))) of the $(reaction) reaction is on an excited state, but no diagnostic line-of-sight was specified (the diagnostic_filepath input variable was left unspecified). This is not yet allowed. Please correct and re-try.")
 end
 if !(lowercase(getEmittedParticleEnergyLevel(reaction))=="gs")
     verbose && println("")
@@ -160,8 +171,7 @@ if (nprocs()>1) && !distributed
 end
 
 if !(fileext_thermal=="cdf" || fileext_thermal=="jld2" || fileext_thermal=="")
-    println("Thermal distribution file format: ."*fileext_thermal)
-    error("Unknown thermal distribution file format. Please re-specify file and re-try.")
+    error("Unknown thermal distribution file format ($(filepath_thermal_distr)). Please re-specify file and re-try.")
 end
 
 # REWRITE THESE ERROR CHECKS TO TAKE THE DIFFERENT FILE EXTENSIONS INTO ACCOUNT
@@ -194,11 +204,6 @@ if fileext_thermal=="jld2"
     ρ_pol_array = myfile["rho_pol"]
     @everywhere ρ_pol_array = $ρ_pol_array # These are sent to external processes here, for efficiency
     close(myfile)
-
-    @everywhere begin
-        verbose && println("Loading the Interpolations package (needed because .jld2 thermal file was specified)... ")
-        using Interpolations
-    end
 end
 # Loading tokamak information and TRANSP RUN-ID from thermal .cdf file
 if fileext_thermal=="cdf"
@@ -248,7 +253,7 @@ else # Otherwise, assume magnetic equilibrium is a saved .jld2 file
 end
 
 if tokamak=="JET" && parse(Float64,replace(timepoint,","=>"."))>=40.0
-    # Standard JET pulse needs 40 seconds to prepare.
+    # Standard JET pulse needed 40 seconds to prepare.
     # This is sometimes included.
     # The OWCF (and TRANSP) does not count this preparation time.
     # Therefore, deduct it.
@@ -417,15 +422,26 @@ else
     println("No.")
 end
 println("")
-if !(filepath_thermal_distr=="")
+if isfile(filepath_thermal_distr)
     println("Thermal distribution file specified: "*filepath_thermal_distr)
-elseif (filepath_thermal_distr=="") && !projVel
-    println("Thermal distribution file not specified.")
-    println("Thermal ion ($(thermal_species)) temperature on-axis will be set to $(thermal_temp_axis) keV.")
-    println("Thermal ion ($(thermal_species)) density on axis will be set to $(thermal_dens_axis) m^-3.")
 else
-    println("2D weight functions will be computed using the projected velocity (u) of the fast $(getFastParticleSpecies(reaction)) ions.")
+    if projVel
+        println("2D weight functions will be computed using the projected velocity (u) of the fast $(getFastParticleSpecies(reaction)) ions.")
+    else
+        if thermal_profiles_type==:FLAT
+            println("Flat thermal plasma profiles will be assumed.")
+            println("Thermal ion ($(thermal_species)) temperature will be set to $(thermal_temp_axis) keV.")
+            println("Thermal ion ($(thermal_species)) density will be set to $(thermal_dens_axis) m^-3.")
+        elseif thermal_profiles_type==:DEFAULT
+            println("Default OWCF thermal plasma profiles will be used (OWCF/misc/default_temp_n_dens.png).")
+            println("Thermal ion ($(thermal_species)) temperature on-axis will be set to $(thermal_temp_axis) keV.")
+            println("Thermal ion ($(thermal_species)) density on axis will be set to $(thermal_dens_axis) m^-3.")
+        else
+            error("The 'thermal_profiles_type' input variable was not correctly specified (available options are :FLAT and :DEFAULT). Please correct and re-try.")
+        end
+    end
 end
+println("")
 println("Magnetic equilibrium file specified: "*filepath_equil)
 println("")
 println("$(iiimax) weight matrix/matrices will be computed.")
@@ -477,7 +493,7 @@ println("Please remove previously saved files with the same file name (if any) p
 println("")
 println("If you would like to change any settings, please edit the start_calc2DW_template.jl file or similar.")
 println("")
-println("Written by Henrik Järleblad. Last maintained 2025-03-10.")
+println("Written by Henrik Järleblad. Last maintained 2025-03-17.")
 println("--------------------------------------------------------------------------------------------------")
 println("")
 
@@ -499,8 +515,9 @@ verbose && println("Loading Python modules... ")
 end
 
 ## ---------------------------------------------------------------------------------------------
-## If no thermal distribution has been specified, we are going to need the OWCF default temp. and dens. profiles
-if filepath_thermal_distr==""
+# If no thermal distribution file was specified, and default temp. and dens. profiles were specified,
+# we need to load the OWCF/misc/temp_n_dens.jl script 
+if !isfile(filepath_thermal_distr) && (thermal_profiles_type==:DEFAULT)
     @everywhere begin
         include("misc/temp_n_dens.jl")
     end
@@ -510,113 +527,104 @@ end
 # Setting Python variables and structures on all distributed workers/processes...
 verbose && println("Setting all Python variables and structures on all distributed workers/processes... ")
 @everywhere begin
-    if !analytic
-        py"""
-        # The '$' in front of many Python variables means that the variable is defined in Julia, not in Python.
-        reaction = $reaction
-        test_thermal_particle = Particle($thermal_species) # Check so that thermal species is available in DRESS code
-        thermal_species = $thermal_species
-        analytical2DWs = $analytical2DWs
-        if $verbose:
-            print("From Python: Loading forward model with diagnostic... ") 
-        forwardmodel = forward.Forward($diagnostic_filepath) # Pre-initialize the forward model
+    py"""
+    # The '$' in front of many Python variables means that the variable is defined in Julia, not in Python.
+    reaction = $reaction
+    test_thermal_particle = Particle($thermal_species) # Check so that thermal species is available in DRESS code
+    thermal_species = $thermal_species
+    projVel = $projVel
+    if $verbose:
+        print("From Python: Loading forward model with diagnostic... ") 
+    forwardmodel = forward.Forward($diagnostic_filepath) # Pre-initialize the forward model
 
-        # Load TRANSP simulation data
-        if (not $TRANSP_id=="") and (not analytical2DWs): # If there is some TRANSP_id specified and we do not want to simply compute projected velocities...
-            if ($fileext_thermal).lower()=="cdf": # If there is some TRANSP .cdf output file specified...
-                if $verbose:
-                    print("From Python: Loading TRANSP output from TRANSP files... ")
-                tr_out = transp_output.TranspOutput($TRANSP_id, step=1, out_file=$filepath_thermal_distr,fbm_files=[$filepath_FI_cdf]) # Load the TRANSP shot file. Assume first step. This is likely to be patched in the future.
-                if $verbose:
-                    print("From Python: Setting thermal distribution... ")
-                thermal_dist = transp_dists.Thermal(tr_out, ion=thermal_species) # Then load the thermal ion distribution from that .cdf file
-            else:
-                raise ValueError('From Python: TRANSP_id was specified, but filepath_thermal_distr was not (this should be impossible). Please correct and re-try.')
+    # Load TRANSP simulation data
+    if (not $TRANSP_id=="") and (not projVel): # If there is some TRANSP_id specified and we do not want to simply compute projected velocities...
+        if ($fileext_thermal).lower()=="cdf": # If there is some TRANSP .cdf output file specified...
+            if $verbose:
+                print("From Python: Loading TRANSP output from TRANSP files... ")
+            tr_out = transp_output.TranspOutput($TRANSP_id, step=1, out_file=$filepath_thermal_distr,fbm_files=[$filepath_FI_cdf]) # Load the TRANSP shot file. Assume first step. This is likely to be patched in the future.
+            if $verbose:
+                print("From Python: Setting thermal distribution... ")
+            thermal_dist = transp_dists.Thermal(tr_out, ion=thermal_species) # Then load the thermal ion distribution from that .cdf file
         else:
-            thermal_dist = "" # Otherwise, just let the thermal_dist variable be the empty string
+            raise ValueError('From Python: TRANSP_id was specified, but filepath_thermal_distr was not (this should be impossible). Please post an issue at www.github.com/JuliaFusion/OWCF.com.')
+    else:
+        thermal_dist = "" # Otherwise, just let the thermal_dist variable be the empty string
 
-        Ed_bin_edges = np.arange($Ed_min,$Ed_max,$Ed_diff) # diagnostic spectrum bin edges (keV or m/s)
-        if len(Ed_bin_edges)==1: # Make sure that there are at least one lower and one upper bin edge
-            dEd = (($Ed_max)-($Ed_min))/10
-            Ed_bin_edges = np.arange($Ed_min,($Ed_max)+dEd,$Ed_diff)
-        Ed_vals = 0.5*(Ed_bin_edges[1:] + Ed_bin_edges[:-1]) # bin centers (keV or m/s)
-        nEd = len(Ed_vals)
-        """
-    else
-        py"""
-        forwardmodel = $diagnostic_filepath # If analytic formulas are to be used to compute weight functions, we just need the diagnostic viewing cone to complete the forward model
-        thermal_dist = None # If analytic formulas are to be used to compute weight functions, we assume zero temperature for the thermal ions
-        Ed_bin_edges = np.arange($Ed_min,$Ed_max,$Ed_diff) # diagnostic spectrum bin edges (keV or m/s)
-        if len(Ed_bin_edges)==1: # Make sure that there are at least one lower and one upper bin edge
-            dEd = (($Ed_max)-($Ed_min))/10
-            Ed_bin_edges = np.arange($Ed_min,($Ed_max)+dEd,$Ed_diff)
-        Ed_vals = 0.5*(Ed_bin_edges[1:] + Ed_bin_edges[:-1]) # bin centers (keV or m/s)
-        """
-    end
+    Ed_bin_edges = np.arange($Ed_min,$Ed_max,$Ed_diff) # diagnostic spectrum bin edges (keV or m/s)
+    if len(Ed_bin_edges)==1: # Make sure that there are at least one lower and one upper bin edge
+        dEd = (($Ed_max)-($Ed_min))/10
+        Ed_bin_edges = np.arange($Ed_min,($Ed_max)+dEd,$Ed_diff)
+    Ed_vals = 0.5*(Ed_bin_edges[1:] + Ed_bin_edges[:-1]) # bin centers (keV or m/s)
+    nEd = len(Ed_vals)
+    """
     Ed_array = Vector(py"Ed_vals"); nEd = length(Ed_array)
 end
 
 ## ---------------------------------------------------------------------------------------------
 # Pre-processing thermal density and temperature data
-if !isnothing(thermal_dens) && (typeof(thermal_dens)==Float64 || typeof(thermal_dens)==Int64)
-    thermal_dens = [thermal_dens]
-else
-    if fileext_thermal=="jld2"
-        verbose && println("Creating thermal density interpolations object and setting data... ")
-        thermal_dens_itp = Interpolations.interpolate((ρ_pol_array,), thermal_dens_array, Gridded(Linear()))
-        thermal_dens_etp = Interpolations.extrapolate(thermal_dens_itp,0) # Add what happens in extrapolation scenario. 0 means we assume vacuum scrape-off layer (SOL)
-        ψ_rz = M(R_of_interest,z_of_interest)
-        psi_on_axis, psi_at_bdry = psi_limits(M)
-        ρ_pol_rz = sqrt((ψ_rz-psi_on_axis)/(psi_at_bdry-psi_on_axis)) # The formula for the normalized flux coordinate ρ_pol = sqrt((ψ-ψ_axis)/(ψ_edge-ψ_axis))
-        thermal_dens = [thermal_dens_etp(ρ_pol_rz)]
-    end
+ψ_rz = M(R_of_interest,z_of_interest)
+psi_on_axis, psi_at_bdry = psi_limits(M)
+ρ_pol_rz = sqrt((ψ_rz-psi_on_axis)/(psi_at_bdry-psi_on_axis)) # The formula for the normalized flux coordinate ρ_pol = sqrt((ψ-ψ_axis)/(ψ_edge-ψ_axis))
 
-    # If a thermal species distribution has not been specified
-    if !isfile(filepath_thermal_distr)
-        ψ_rz = M(R_of_interest,z_of_interest)
-        psi_on_axis, psi_at_bdry = psi_limits(M)
-        ρ_pol_rz = sqrt((ψ_rz-psi_on_axis)/(psi_at_bdry-psi_on_axis)) # The formula for the normalized flux coordinate ρ_pol = sqrt((ψ-ψ_axis)/(ψ_edge-ψ_axis))
-        thermal_dens = [getAnalyticalDens(thermal_dens_axis,ρ_pol_rz)] # Use the default OWCF density profile
-    end
-
-    # If a TRANSP .cdf file has been specified for the thermal species distribution, we have everything we need in the Python thermal_dist variable
-    if lowercase(fileext_thermal)=="cdf"
-        thermal_dens = ""
-    end
-
-    # Transfer the thermal_dens variables to external processes
-    @everywhere thermal_dens = $thermal_dens
+if fileext_thermal=="jld2"
+    verbose && println("Setting thermal particle species temperature and density using data in $(filepath_thermal_distr)... ")
+    thermal_temp_itp = Interpolations.interpolate((ρ_pol_array,), thermal_temp_array, Gridded(Linear()))
+    thermal_dens_itp = Interpolations.interpolate((ρ_pol_array,), thermal_dens_array, Gridded(Linear()))
+    thermal_temp_etp = Interpolations.extrapolate(thermal_temp_itp,0) # Add what happens in extrapolation scenario. 0 means we assume vacuum scrape-off layer (SOL)
+    thermal_dens_etp = Interpolations.extrapolate(thermal_dens_itp,0) # Add what happens in extrapolation scenario. 0 means we assume vacuum scrape-off layer (SOL)
+    thermal_temp = [thermal_temp_etp(ρ_pol_rz)]
+    thermal_dens = [thermal_dens_etp(ρ_pol_rz)]
 end
 
-if !isnothing(thermal_temp) && (typeof(thermal_temp)==Float64 || typeof(thermal_temp)==Int64)
-    thermal_temp = [thermal_temp]
-else
-    if fileext_thermal=="jld2"
-        verbose && println("Creating thermal temperature interpolations object and setting data... ")
-        thermal_temp_itp = Interpolations.interpolate((ρ_pol_array,), thermal_temp_array, Gridded(Linear()))
+# If a thermal species distribution has not been specified, we simply need the thermal species temperature and density on axis
+if !isfile(filepath_thermal_distr)
+    verbose && println("The 'filepath_thermal_distr' was not specified. Checking the 'thermal_profiles_type' input variable... ")
+    if thermal_profiles_type==:FLAT
+        verbose && println("Found :FLAT! Thermal profiles will be assumed constant throughout the plasma.")
+        thermal_temp = [thermal_temp_axis]
+        thermal_dens = [thermal_dens_axis]
+    elseif thermal_profiles_type==:DEFAULT
+        verbose && println("Found :DEFAULT! Thermal profiles will be as returned by getAnalyticalTemp() and getAnalyticalDens() functions in OWCF/misc/temp_n_dens.jl.")
+        rho_array = collect(0.0,stop=1.0,length=100)
+        thermal_temp_array = [getAnalyticalTemp(thermal_temp_axis, rho) for rho in rho_array]
+        thermal_dens_array = [getAnalyticalDens(thermal_dens_axis, rho) for rho in rho_array]
+        thermal_temp_itp = Interpolations.interpolate((rho_array,), thermal_temp_array, Gridded(Linear()))
+        thermal_dens_itp = Interpolations.interpolate((rho_array,), thermal_dens_array, Gridded(Linear()))
         thermal_temp_etp = Interpolations.extrapolate(thermal_temp_itp,0) # Add what happens in extrapolation scenario. 0 means we assume vacuum scrape-off layer (SOL)
-        ψ_rz = M(R_of_interest,z_of_interest)
-        psi_on_axis, psi_at_bdry = psi_limits(M)
-        ρ_pol_rz = sqrt((ψ_rz-psi_on_axis)/(psi_at_bdry-psi_on_axis)) # The formula for the normalized flux coordinate ρ_pol = sqrt((ψ-ψ_axis)/(ψ_edge-ψ_axis))
+        thermal_dens_etp = Interpolations.extrapolate(thermal_dens_itp,0) # Add what happens in extrapolation scenario. 0 means we assume vacuum scrape-off layer (SOL)
         thermal_temp = [thermal_temp_etp(ρ_pol_rz)]
+        thermal_dens = [thermal_dens_etp(ρ_pol_rz)]
+    else
+        error("The 'thermal_profiles_type' input variable was not specified correctly. Currently available options are :FLAT and :DEFAULT. Please correct and re-try.")
     end
-
-    # If a thermal species distribution has not been specified
-    if !isfile(filepath_thermal_distr)
-        ψ_rz = M(R_of_interest,z_of_interest)
-        psi_on_axis, psi_at_bdry = psi_limits(M)
-        ρ_pol_rz = sqrt((ψ_rz-psi_on_axis)/(psi_at_bdry-psi_on_axis)) # The formula for the normalized flux coordinate ρ_pol = sqrt((ψ-ψ_axis)/(ψ_edge-ψ_axis))
-        thermal_temp = [getAnalyticalDens(thermal_temp_axis,ρ_pol_rz)] # Use the default OWCF temperature profile
-    end
-
-    # If a TRANSP .cdf file has been specified for the thermal species distribution, we have everything we need in the Python thermal_dist variable
-    if lowercase(fileext_thermal)=="cdf"
-        thermal_temp = ""
-    end
-
-    # Transfer the thermal_temp variables to external processes
-    @everywhere thermal_temp = $thermal_temp
 end
+
+# If a TRANSP .cdf file and a TRANSP FI .cdf file have been specified for the thermal species distribution, we have everything we need in the Python thermal_dist variable
+if lowercase(fileext_thermal)=="cdf" && isfile(filepath_FI_cdf)
+    if !analytic # If not analytic, we know that the 'thermal_dist' variable will take care of everything
+        thermal_temp = ""
+        thermal_dens = ""
+    else
+        # CONTINUE CODING HERE!!!
+    end
+end
+
+# If there is a specified valid timepoint,
+# and if a TRANSP .cdf file has been specified, but NOT a TRANSP FI .cdf file, 
+# and we are NOT computing analytical orbit weight functions
+if lowercase(fileext_thermal)=="cdf" && !isfile(filepath_FI_cdf)
+    if typeof(timepoint)==String && length(split(timepoint,","))==2
+        thermal_temp = getTempProfileFromTRANSP(timepoint, filepath_thermal_distr, thermal_species; verbose=verbose)
+        thermal_dens = getDensProfileFromTRANSP(timepoint, filepath_thermal_distr, thermal_species; verbose=verbose)
+    else
+        # CONTINUE CODING HERE!!!
+    end
+end
+
+# Transfer the thermal_temp and thermal_dens variables to external processes
+@everywhere thermal_temp = $thermal_temp
+@everywhere thermal_dens = $thermal_dens
 
 ## ---------------------------------------------------------------------------------------------
 E_iE_p_ip_array = zip(repeat(E_array,outer=length(p_array)),repeat(eachindex(E_array),outer=length(p_array)),repeat(p_array,inner=length(E_array)),repeat(eachindex(p_array),inner=length(E_array)))
@@ -649,10 +657,14 @@ for iii=1:iiimax
                         ### CONTINUE ALSO CRTL + F SCRIPT FOR 'reaction' AND 'analytic'
                         ### WHAT ABOUT calc4DWeights.jl ??? 
                         ### CONTINUE WITH grep -rnw ... -e "checkReaction" UPDATE
-                        py"""
-                        # Please note, the '$' symbol is used below to convert objects from Julia to Python. Even Julia PyObjects
-                        spec = forwardmodel.calc($([E]), $([p]), $([R_of_interest]), $([z_of_interest]), $([1.0]), thermal_dist, Ed_bin_edges, $B_at_Rz, n_repeat=$gyro_samples, reaction=$reaction, bulk_temp=$thermal_temp, bulk_dens=$thermal_dens, flr=$flr_effects, v_rot=$plasma_rot_at_Rz) # Please see the forward.py script, for further specifications
-                        """
+                        if analytic
+                            spec = forward_calc(ViewingCone(diagnostic_filepath), [E], clamp.([p],-1,1), [R_of_interest], [z_of_interest], [1.0], Ed_array, B_at_Rz; reaction=reaction, bulk_dens=thermal_dens)
+                        else
+                            py"""
+                            # Please note, the '$' symbol is used below to convert objects from Julia to Python. Even Julia PyObjects
+                            spec = forwardmodel.calc($([E]), $([p]), $([R_of_interest]), $([z_of_interest]), $([1.0]), thermal_dist, Ed_bin_edges, $B_at_Rz, n_repeat=$gyro_samples, reaction=$reaction, bulk_temp=$thermal_temp, bulk_dens=$thermal_dens, flr=$flr_effects, v_rot=$plasma_rot_at_Rz) # Please see the forward.py script, for further specifications
+                            """
+                        end
 
                         spec = vec(py"spec")
                         W_iEip = zeros(length(spec),nE,np)
@@ -752,9 +764,9 @@ for iii=1:iiimax
     if !debug
         verbose && println("Saving weight function matrix... ")
         if iiimax==1 # If you intend to calculate only one weight matrix
-            global filepath_output_orig = folderpath_o*"velWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = analytical2DWs)*"_$(length(range(Ed_min,stop=Ed_max,step=Ed_diff))-1)x$(nE)x$(np)"
+            global filepath_output_orig = folderpath_o*"velWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = projVel)*"_$(length(range(Ed_min,stop=Ed_max,step=Ed_diff))-1)x$(nE)x$(np)"
         else # If you intend to calculate several (identical) weight matrices
-            global filepath_output_orig = folderpath_o*"velWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = analytical2DWs)*"_$(iii)"
+            global filepath_output_orig = folderpath_o*"velWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = projVel)*"_$(iii)"
         end
         global filepath_output = deepcopy(filepath_output_orig)
         global count = 1
@@ -776,8 +788,8 @@ for iii=1:iiimax
         write(myfile_s, "reaction_full", reaction_full)
         write(myfile_s, "R", R_of_interest)
         write(myfile_s, "z", z_of_interest)
-        if analytical2DWs
-            write(myfile_s, "analytical2DWs", analytical2DWs)
+        if projVel
+            write(myfile_s, "projVel", projVel)
         end
         if saveVparaVperpWeights
             write(myfile_s, "W_vel", W_vel)
@@ -817,8 +829,8 @@ if iiimax>1 # If we were supposed to compute more than one weight matrix...
         reaction_full = myfile["reaction_full"]
         R = myfile["R"]
         z = myfile["z"]
-        if analytical2DWs
-            analytical2DWs = myfile["analytical2DWs"]
+        if projVel
+            projVel = myfile["projVel"]
         end
         if saveVparaVperpWeights
             W_vel_total = zeros(size(myfile["W_vel"]))
@@ -869,7 +881,7 @@ if iiimax>1 # If we were supposed to compute more than one weight matrix...
         end
 
         verbose && println("Success! Saving average in separate file... ")
-        myfile = jldopen(folderpath_o*"velWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = analytical2DWs)*".jld2",true,true,false,IOStream)
+        myfile = jldopen(folderpath_o*"velWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = projVel)*".jld2",true,true,false,IOStream)
         write(myfile,"W",W_total)
         write(myfile,"E_array",E_array)
         write(myfile,"p_array",p_array)
@@ -877,8 +889,8 @@ if iiimax>1 # If we were supposed to compute more than one weight matrix...
         write(myfile,"reaction_full",reaction_full)
         write(myfile,"R",R)
         write(myfile,"z",z)
-        if analytical2DWs
-            write(myfile,"analytical2DWs",analytical2DWs)
+        if projVel
+            write(myfile,"projVel",projVel)
         end
         if saveVparaVperpWeights
             write(myfile,"W_vel",W_vel_total)

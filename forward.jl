@@ -325,7 +325,7 @@ function SetReaction(reaction)
 end
 
 """
-forward_calc(viewing_cone::ViewingCone, o_E::Vector{Float64}, o_p::Vector{Float64}, o_R::Vector{Float64}, o_z::Vector{Float64}, o_w::Vector{Float64}, Ed_bins::Vector{Float64}, o_B::Matrix{Float64}; 
+forward_calc(viewing_cone::ViewingCone, o_E::Vector{Float64}, o_p::Vector{Float64}, o_R::Vector{Float64}, o_z::Vector{Float64}, o_w::Vector{Float64}, Ed_bin_centers::Vector{Float64}, o_B::Matrix{Float64}; 
             reaction::String="T(D,n)4He-GS", bulk_dens::Union{Nothing,Vector{Float64}}=1.0e19)
 
 For the input (E,p,R,z) points and weights (please see inputs explanation below), calculate expected diagnostic spectrum for 1- and 2-step fusion reactions using the analytic equations obtained when making the 
@@ -335,13 +335,13 @@ relative to the energetic (fast) fusion product particle population.
 
 The inputs are as follows
 - viewing_cone - A viewing cone object as defined in vcone.jl
-- o_E, o_p, o_R, o_z, o_w - Weighted (E,p,R,z) points; fast-ion energies (o_E) in keV, fast-ion pitch (o_p) values, major radius (R) positions in meters, vertical positions (z) in meters, and geometrical weights (w).
-- Ed_bins - Diagnostic measurement bin edges for product energy spectrum as defined by the user. Units in keVs
-- o_B - A (3,N) array containing the (R,phi,z) components of the magnetic field vector at all (E,p,R,z) points (in Teslas)
+- o_E, o_p, o_R, o_z, o_w - N weighted (E,p,R,z) points; fast-ion energies (o_E) in keV, fast-ion pitch (o_p) values, major radius (R) positions in meters, vertical positions (z) in meters, and geometrical weights (w).
+- Ed_bin_centers - Diagnostic measurement bin centers for product energy spectrum as defined by the user. Units in keVs
+- o_B - A (3,N) array containing the (R,phi,z) components of the magnetic field vector at all N (E,p,R,z) points (in Teslas)
 - reaction - Fusion reaction. Reaction format 1 and 2 is supported. Please see OWCF/misc/availReacts.jl for explanation.
 - bulk_dens - Number densities in m^-3 for target (thermal) particle species at the (E,p,R,z) points.
 """
-function forward_calc(viewing_cone, o_E, o_p, o_R, o_z, o_w, Ed_bins, o_B; reaction="T(D,n)4He-GS", bulk_dens=ones(length(o_E)).*1.0e19) 
+function forward_calc(viewing_cone, o_E, o_p, o_R, o_z, o_w, Ed_bin_centers, o_B; reaction="T(D,n)4He-GS", bulk_dens=ones(length(o_E)).*1.0e19) 
     
     if getReactionForm(reaction)==3
         error("Fusion reaction specified as $(reaction). Spectrum computation via projected velocities assumed. This is not compatible with the analytic forward model. Please use fusion reaction form 1 or 2. Please see OWCF/misc/availReacts.jl for explanation. Please correct and re-try.")
@@ -353,7 +353,7 @@ function forward_calc(viewing_cone, o_E, o_p, o_R, o_z, o_w, Ed_bins, o_B; react
     i_voxels, i_points = map_points_voxels(viewing_cone, o_R, o_z) # Map the R,z sample points to the viewing cone voxels. See OWCF/vcone.jl
     if length(i_points) == 0
         # println("No points inside viewing cone!")
-        return zeros(length(Ed_bins) - 1)
+        return zeros(length(Ed_bin_centers))
     end
     E_b_vc = o_E[i_points] # Extract energy points within diagnostic viewing cone
     p_b_vc = o_p[i_points] # Extract pitch points within diagnostic viewing cone
@@ -369,10 +369,7 @@ function forward_calc(viewing_cone, o_E, o_p, o_R, o_z, o_w, Ed_bins, o_B; react
     
     mag_B_vc = sqrt.(sum(B_vc.^2, dims=1))
     lambda_d = vec( acos.( clamp.( sum(ud .* B_vc, dims=1)./mag_B_vc, -1, 1 ) ) )
-
-    Delta_Ed = Ed_bins[2] - Ed_bins[1]
-    Ed_vals = Ed_bins[1:end-1] .+ Delta_Ed / 2
-    orbit_spectrum = zeros(length(Ed_vals))
+    orbit_spectrum = zeros(length(Ed_bin_centers))
 
     if !(getEmittedParticleEnergyLevel(reaction)=="GS")
         grid_lims = get_lims(E_b_vc, acos.(p_b_vc), m_b, m_t, m_d, m_r)
@@ -403,15 +400,15 @@ function forward_calc(viewing_cone, o_E, o_p, o_R, o_z, o_w, Ed_bins, o_B; react
             deleteat!(p_list, isnan.(w_list))
             filter!(!isnan, w_list)
         
-            @turbo for j in eachindex(Ed_vals)
-                orbit_spectrum[j] += sum(Doppler_spectrum( g_ray, Ed_vals[j], lambda_d[i], 
+            @turbo for j in eachindex(Ed_bin_centers)
+                orbit_spectrum[j] += sum(Doppler_spectrum( g_ray, Ed_bin_centers[j], lambda_d[i], 
                                                            w_list,  e_list, 
                                                            acos.(p_list), m_d, omega[i]) ) * (dphi / (2π))
             end
         end
     else 
-        for i in eachindex(Ed_vals)
-            orbit_spectrum[i] += sum(dn_dtdE(   Ed_vals[i], lambda_d, m_d, 
+        for i in eachindex(Ed_bin_centers)
+            orbit_spectrum[i] += sum(dn_dtdE(   Ed_bin_centers[i], lambda_d, m_d, 
                                                 10. ^ 0 .* weights_vc .* omega , E_b_vc, acos.(p_b_vc), m_b, 
                                                 bulk_dens_vc, m_t, 
                                                 m_r, 

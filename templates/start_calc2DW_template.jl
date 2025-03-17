@@ -64,14 +64,21 @@
 # reaction - Fusion reaction, on any of the forms described in the OWCF/misc/availReacts.jl script - String
 # saveVparaVperpWeights - If set to true, the weight functions will be saved on a (vpara,vperp) grid, in addition to (E,p)
 # timepoint - The timepoint of the tokamak shot for the magnetic equilibrium. Format XX,YYYY where XX are seconds and YYYY are decimals - String
-# thermal_temp - The temperature of the thermal species distribution at the (R,z) point of interest - Float64
 # thermal_temp_axis - The temperature of the thermal species distribution on axis, if filepath_thermal_distr is not specified - Float64
-# thermal_dens - The density of the thermal species distribution at the (R,z) point of interest - Float64
 # thermal_dens_axis - The density of the thermal species distribution on axis, if filepath_thermal_distr is not specified - Float64
-# tokamak - The identification abbreviation for the tokamak. E.g. "JET", "ITER" etc - String
+# thermal_profiles_type - If 'filepath_thermal_distr' has not been specified (""), choose between options for thermal temperature and density profiles. 
+#                         The options are: 
+#                           - :FLAT - The 'thermal_temp_axis' and 'thermal_dens_axis' will be the (constant) values for the thermal temperature and thermal 
+#                                     density across the entire plasma, respectively.
+#                           - :DEFAULT - The 'thermal_temp_axis' and 'thermal_dens_axis' will be the values for the thermal temperature and thermal density
+#                                        at the magnetic axis, and the OWCF default temperature and density profiles will be used. Please see the 
+#                                        OWCF/misc/temp_n_dens.jl function collection, as well as the OWCF/misc/default_temp_n_dens.png plot.
+#                         typeof(thermal_profiles_type) is a 'Symbol'.
 # verbose - If true, lots of information will be printed during execution - Bool
 # visualizeProgress - If false, progress bar will not be displayed during computations - Bool
 # z_of_interest - The vertical coordinate of interest, for the (E,p) weight functions. Specified in meters or symbol (see below) - Float64 or symbol
+#
+# tokamak - The identification abbreviation for the tokamak. E.g. "JET", "ITER" etc - String
 
 ### Other
 # If filepath_thermal_distr is not specified, then an interpolation object will be
@@ -166,18 +173,18 @@ end
     reaction = "9Be(4He,12C)n-1L"
     ################################################################################
     timepoint = nothing # If unknown, just leave as nothing. The algorithm will try to figure it out automatically.
-    thermal_temp = nothing # The thermal species temperature for the (R,z) point of interest. If filepath_thermal_distr is provided, leave as nothing
-    thermal_temp_axis = nothing # keV. Please specify this if filepath_thermal_distr, filepath_FI_cdf and thermal_temp are not specified
-    thermal_dens = nothing # The thermal species density for the (R,z) point of interest. If filepath_thermal_distr is provided, leave as nothing
-    thermal_dens_axis = nothing # m^-3. Please specify this if filepath_thermal_distr, filepath_FI_cdf and thermal_dens are not specified
-    # Below, you should specify the tokamak as well, if you know it. E.g. "JET", "ITER" etc.
-    # PLEASE NOTE! When plasma_rot is set to true and filepath_plasma_rot_TRANSP is specified 
-    # but filepath_thermal_distr is NOT a TRANSP output file (and filepath_FI_cdf is not a corresponding NUBEAM output file, as explained above), 
-    # a correct specification of the tokamak variable becomes necessary. 
-    tokamak = "JET"
+    thermal_temp_axis = 0.0 # keV. Please specify this if filepath_thermal_distr and filepath_FI_cdf are not specified
+    thermal_dens_axis = 0.0e20 # m^-3. Please specify this if filepath_thermal_distr and filepath_FI_cdf are not specified
+    thermal_profiles_type = :DEFAULT # Currently available options are :DEFAULT and :FLAT
     verbose = true # If true, then the program will be very talkative!
     visualizeProgress = false # If false, progress bar will not be displayed for computations
     z_of_interest = :z_mag # The vertical coordinate of interest. Specify in meters e.g. "0.3", "0.4" etc. Can also be specified as a symbol :z_mag, then the vertical coordinate of the magnetic axis will automatically be used
+
+    # Below, you should specify the tokamak as well, if you know it. E.g. "JET", "ITER" etc.
+    # PLEASE NOTE! When plasma_rot is set to true and (plasma_rot_speed_data_source_type==:TRANSP) and plasma_rot_speed_data_source is correctly specified 
+    # but filepath_thermal_distr is NOT a TRANSP output file (and filepath_FI_cdf is not a corresponding NUBEAM output file, as explained above), 
+    # a correct specification of the tokamak variable becomes necessary. 
+    tokamak = "JET"
 end
 
 ## -----------------------------------------------------------------------------
