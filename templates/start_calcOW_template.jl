@@ -67,7 +67,7 @@
 # extra_kw_args - Here you can define extra keyword arguments to be used when integrating the equations-of-motion
 # for the guiding-center orbits. Please consult the OWCF manual for further info on this.
 #
-# tokamak - The nickname/acronym/name of the tokamak being simulated. Only for aesthetic purposes - String
+# tokamak - The identification abbreviation for the tokamak. E.g. "JET", "ITER" etc - String
 
 ### Other
 # If filepath_thermal_distr is not specified, then an interpolation object will be used as thermal temperature and thermal density profiles, respectively. 
