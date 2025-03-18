@@ -120,7 +120,7 @@ if isfile(filepath_Q)
         error("filepath_Q did not contain weights functions, topological map, topological boundaries or indices for null orbits (via include2Dto4D when executing extractNullOrbits.jl). Please correct and re-try.")
     end
     if haskey(myfile,"reaction")
-        reaction = myfile["reaction"]
+        reaction_full = myfile["reaction"]
     end
     if haskey(myfile,"reaction_full")
         reaction_full = myfile["reaction_full"]
@@ -144,7 +144,7 @@ end
 # Determine fast-ion species from reaction
 verbose && println("Identifying fast-ion species... ")
 if (@isdefined reaction_full)
-    thermal_species, FI_species = checkReaction(reaction_full; verbose=verbose, projVelocity=analyticalOWs)
+    thermal_species, FI_species = getFusionReactants(reaction_full)
     @everywhere FI_species = $FI_species # Transfer variable to all external processes
 elseif (@isdefined reaction)
     FI_species = (split(reaction,"-"))[1] # Assume first species specified in reaction to be the fast-ion species. For example, in 'p-t' the 'p' will be assumed the thermal species.
