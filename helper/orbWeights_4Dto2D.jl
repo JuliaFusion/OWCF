@@ -69,7 +69,7 @@ else
     error("orbWeights_4Dto2D did not recognize known diagnostic data array type in provide 'filepath_W'. Please re-try another file.")
 end
 if haskey(myfile,"reaction")
-    reaction = myfile["reaction"]
+    reaction_full = myfile["reaction"]
 end
 if haskey(myfile,"reaction_full")
     reaction_full = myfile["reaction_full"]
@@ -79,7 +79,7 @@ close(myfile)
 ## ---------------------------------------------------------------------------------------------
 # Determine fast-ion species from reaction
 if (@isdefined reaction_full)
-    thermal_species, FI_species = checkReaction(reaction_full)
+    thermal_species, FI_species = getFusionReactants(reaction_full)
     @everywhere FI_species = $FI_species # Transfer variable to all external processes
 elseif (@isdefined reaction)
     FI_species = (split(reaction,"-"))[1] # Assume first species specified in reaction to be the fast-ion species. For example, in 'p-t' the 'p' will be assumed the thermal species.

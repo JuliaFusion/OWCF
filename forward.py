@@ -128,11 +128,11 @@ class Forward(object):
             b = 'proj'
         reaction_short = a+"-"+b # Only the reactants, on the form [fast ion]-[thermal ion]
 
-        calcProjVel = False # By default, assume that the user does not wish to compute projected velocities
+        projVel = False # By default, assume that the user does not wish to compute projected velocities
         if b == 'proj': # But if b is 'proj'...
-            calcProjVel = True # ... Then the calc() function should simply compute, bin and return a spectrum of binned projected velocities
+            projVel = True # ... Then the calc() function should simply compute, bin and return a spectrum of binned projected velocities
 
-        if bulk_dist=='' and (not calcProjVel):
+        if bulk_dist=='' and (not projVel):
                 if (not len(bulk_temp)==len(E)) or (not len(bulk_dens)==len(E)):
                     raise Exception("bulk_temp and/or bulk_dens was not equal in length to the E,p,R,z and weights input. Please correct and re-try.")
         # Repeat inputs, to prepare for gyro-angle sampling
@@ -142,7 +142,7 @@ class Forward(object):
         z = z.repeat(n_repeat)
         weights = weights.repeat(n_repeat)
         B_vec = B_vec.repeat(n_repeat, axis=1)
-        if bulk_dist=='' and (not calcProjVel):
+        if bulk_dist=='' and (not projVel):
             bulk_temp = bulk_temp.repeat(n_repeat)
             bulk_dens = bulk_dens.repeat(n_repeat)
         if not (np.sum(v_rot) == 0.0):
@@ -191,7 +191,7 @@ class Forward(object):
             if not (np.sum(v_rot) == 0.0):
                 v_rot_vc = v_rot[:,i_points] # Extract v_rot vectors with origins within diagnostic viewing cone
             weights_vc = weights[i_points] # Extract weights corresponding to R,z points within diagnostic viewing cone
-            if bulk_dist=='' and (not calcProjVel):
+            if bulk_dist=='' and (not projVel):
                 bulk_temp_vc = bulk_temp[i_points]
                 bulk_dens_vc = bulk_dens[i_points]
             B_vec_vc = B_vec[:,i_points] # Extract magnetic field vectors corresponding to R,z points within diagnostic viewing cone
@@ -200,7 +200,7 @@ class Forward(object):
             u1 = self.viewing_cone.U[:,i_voxels] # What is the emission direction of the viewing cone?
             spec_calc.u1 = u1 # Specify it for the spectrum calculator. Otherwise, 4*pi emission will be assumed
         
-        if calcProjVel: # If we simply want the projected fast-ion velocities...
+        if projVel: # If we simply want the projected fast-ion velocities...
             spec_weights = weights_vc * omega * (dphi/(2*np.pi)) / n_repeat # Use weighting without bulk density
             if spec_calc.u1 is None:
                 v_vc = np.linalg.norm(v_vc, axis=0) # Just compute the speed of all velocity vectors
