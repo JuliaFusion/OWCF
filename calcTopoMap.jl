@@ -109,7 +109,7 @@ end
 
 ## ------
 # Defining orbit space basis vectors
-analyticalOWs = false # Define this for its own sake
+projVel = false # Define this for its own sake
 if isfile(filepath_W)
     verbose && println("Loading orbit-space grid points from weight file... ")
     if weightsFileJLD2
@@ -129,8 +129,8 @@ if isfile(filepath_W)
         if haskey(myfile,"extra_kw_args")
             extra_kw_args = myfile["extra_kw_args"]
         end
-        if haskey(myfile,"analyticalOWs")
-            analyticalOWs = true
+        if haskey(myfile,"projVel")
+            projVel = true
         end
         close(myfile)
     else

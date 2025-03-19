@@ -289,7 +289,7 @@ end
 
 ## ------
 # Read the file containing the pre-computed weight function
-analyticalOWs = false # Define this for its own sake
+projVel = false # Define this for its own sake
 verbose && println("Loading weight function ("*filepath_W*")... ")
 myfile = jldopen(filepath_W,false,false,false,IOStream)
 if haskey(myfile,"W")
@@ -315,8 +315,8 @@ end
 if haskey(myfile,"reaction_full")
     reaction_full = myfile["reaction_full"]
 end
-if haskey(myfile,"analyticalOWs")
-    analyticalOWs = true
+if haskey(myfile,"projVel")
+    projVel = true
 end
 close(myfile)
 fW_array = split(filepath_W,"_")

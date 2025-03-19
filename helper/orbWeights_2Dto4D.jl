@@ -25,7 +25,7 @@
 # If the full form of the fusion reaction a(b,c)d is defined, the saved file will also include the key
 #   reaction_full - The fusion reaction a(b,c)d. a is thermal, b is fast, c is emitted particle and d is the product nucleus - String
 # If analical orbit weight functions were inflated, the saved file will also include the key
-#   analyticalOWs - If true, then the orbit weight functions were computed using projected velocities - Bool
+#   projVel - If true, then the orbit weight functions were computed using projected velocities - Bool
 
 ### Other
 # You should delete the orbWeights4D file once you're done with it. These files are massive and take
@@ -110,10 +110,9 @@ end
 if haskey(myfile,"reaction_full")
     reaction_full = myfile["reaction_full"]
 end
-if haskey(myfile,"analyticalOWs")
-    analyticalOWs = true
-else
-    analyticalOWs = false
+projVel = false
+if haskey(myfile,"projVel")
+    projVel = true
 end
 close(myfile)
 
@@ -242,7 +241,7 @@ end
 
 verbose && println("Saving inflated 4D orbit weight functions... ")
 if (@isdefined reaction_full)
-    global filepath_output_orig = output_folder*"orbWeights4D_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = analyticalOWs)*"_$(length(Ed_array[Edi_array]))x$(length(E_array))x$(length(pm_array))x$(length(Rm_array))"
+    global filepath_output_orig = output_folder*"orbWeights4D_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction_full; projVel = projVel)*"_$(length(Ed_array[Edi_array]))x$(length(E_array))x$(length(pm_array))x$(length(Rm_array))"
 elseif (@isdefined reaction)
     global filepath_output_orig = output_folder*"orbWeights4D_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*reaction*"_$(length(Ed_array[Edi_array]))x$(length(E_array))x$(length(pm_array))x$(length(Rm_array))"
 else
@@ -267,8 +266,8 @@ end
 if (@isdefined reaction_full)
     write(myfile, "reaction_full", reaction_full)
 end
-if analyticalOWs
-    write(myfile, "analyticalOWs", analyticalOWs)
+if projVel
+    write(myfile, "projVel", projVel)
 end
 close(myfile)
 println("Done!")

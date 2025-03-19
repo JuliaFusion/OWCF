@@ -81,7 +81,7 @@ end
 
 ## ---------------------------------------------------------------------------------------------
 # Load orbit grid vectors and quantities to be mapped from (E,pm,Rm) to (E,mu,Pphi;sigma) filepath_Q
-analyticalOWs = false # Assume by default that, if orbit weight functions, the orbit weight functions are not analytical
+projVel = false # Assume by default that, if orbit weight functions, the orbit weight functions are not analytical
 Q_dict = Dict() # A dictionary containing all the quantities to be mapped
 Q_message = "" # A message that will be printed informing the user of the quantitie(s) to be mapped
 if isfile(filepath_Q)
@@ -131,8 +131,8 @@ if isfile(filepath_Q)
     if haskey(myfile,"extra_kw_args")
         extra_kw_args = myfile["extra_kw_args"]
     end
-    if haskey(myfile,"analyticalOWs")
-        analyticalOWs = true
+    if haskey(myfile,"projVel")
+        projVel = true
     end
     close(myfile)
 else
@@ -247,6 +247,9 @@ write(myfile,"pm_array",pm_array)
 write(myfile,"Rm_array",Rm_array)
 if @isdefined FI_species
     write(myfile,"FI_species",FI_species)
+end
+if @isdefined projVel
+    write(myfile,"projVel",projVel)
 end
 write(myfile,"filepath_equil",filepath_equil)
 write(myfile,"tokamak",tokamak)
