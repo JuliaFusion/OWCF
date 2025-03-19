@@ -269,56 +269,40 @@ function SetReaction(reaction)
     # Beware: fast and thermal reactants are re-mapped here according to a->t, b->b, c->d, d->r (see miscellaneous comments on top)    
     elseif lowercase.(reactants) == ["4he","9be"] || lowercase.(reactants) == ["9be","4he"]
         if nuclear_state == "1L"
-            # Read the data file
-            lines = readlines("fit_data/AlphaBe9_1L.txt")
-            # 1. Energies of CM in MeV (from the second line of the file)
-            energy_line = lines[2]  # Assumes energies are on the second line
-            energies = parse.(Float64, split(energy_line, r"\s+"))  # Split by spaces and parse as Float64
-            # 2. Cosine values of the scattering angle in the CM frame
-            cosines = [parse(Float64, split(line, r"\s+")[1]) for line in lines[3:end] if !isempty(line)]  # First value in each row
-            # 3. Differential cross-section values
-            diff_cross = [
-                parse.(Float64, split(line, r"\s+")[2:end]) for line in lines[3:end] if !isempty(line)
-            ]  # Parse remaining columns
-            # Define 2D interpolator
-            energies = collect(energies * 10^3 * (cnst.m4He + cnst.m9Be) / cnst.m9Be)
-            diff_cross = hcat(diff_cross...) * 1e-31
-            if lowercase(products[1]) == "12c"
-                diff_cross = reverse(diff_cross, dims=2)
-            end
-            dSigma_dcosCM = extrapolate(interpolate((energies, cosines), 2 * π * diff_cross, Gridded(Linear())), 0)
-            
-            masses = (lowercase(products[1]) == "12c") ?    [cnst.m4He, cnst.m9Be, cnst.m12C+4439.82/cnst.u_keV, cnst.mn                     ] .* cnst.u_keV : 
-                                                            [cnst.m4He, cnst.m9Be, cnst.mn,                      cnst.m12C+4439.82/cnst.u_keV] .* cnst.u_keV
-
-            return masses..., 4438.94, (x,y) -> dSigma_dcosCM.(x,y)
+            filepath_cross_section_data = "fit_data/AlphaBe9_1L.txt"
+            carbon_nucleus_excitation_energy = 4439.82 # keV
+            gamma_ray_nominal_energy = 4438.94 # keV
         elseif nuclear_state == "2L"
-            # Read the data file
-            lines = readlines("fit_data/AlphaBe9_2L.txt")
-            # 1. Energies of CM in MeV (from the second line of the file)
-            energy_line = lines[2]  # Assumes energies are on the second line
-            energies = parse.(Float64, split(energy_line, r"\s+"))  # Split by spaces and parse as Float64
-            # 2. Cosine values of the scattering angle in the CM frame
-            cosines = [parse(Float64, split(line, r"\s+")[1]) for line in lines[3:end] if !isempty(line)]  # First value in each row
-            # 3. Differential cross-section values
-            diff_cross = [
-                parse.(Float64, split(line, r"\s+")[2:end]) for line in lines[3:end] if !isempty(line)
-            ]  # Parse remaining columns
-            # Define 2D interpolator
-            energies = collect(energies * 10^3 * (cnst.m4He + cnst.m9Be) / cnst.m9Be)
-            diff_cross = hcat(diff_cross...) * 1e-31
-            if lowercase(products[1]) == "12c"
-                diff_cross = reverse(diff_cross, dims=2)
-            end
-            dSigma_dcosCM = extrapolate(interpolate((energies, cosines), 2 * π * diff_cross, Gridded(Linear())), 0)
-            
-            masses = (lowercase(products[1]) == "12c") ?    [cnst.m4He, cnst.m9Be, cnst.m12C+7654.07/cnst.u_keV, cnst.mn                     ] .* cnst.u_keV :      
-                                                            [cnst.m4He, cnst.m9Be, cnst.mn,                      cnst.m12C+7654.07/cnst.u_keV] .* cnst.u_keV
-
-            return masses..., 3213.79, (x,y) -> dSigma_dcosCM.(x,y)
+            filepath_cross_section_data = "fit_data/AlphaBe9_2L.txt"
+            carbon_nucleus_excitation_energy = 7654.07 # keV
+            gamma_ray_nominal_energy = 3213.79 # keV
         else
-            error("The $(reaction) fusion reaction needs to have the energy state 'l' (a(b,c)d-l) in either 1L or 2L. Please correct and re-try.")
+            error("The $(reaction) fusion reaction needs to have the excitation state 'l' (a(b,c)d-l) in either 1L or 2L. Please correct and re-try.")
         end
+
+        # Read the data file
+        lines = readlines(filepath_cross_section_data)
+        # 1. Energies of CM in MeV (from the second line of the file)
+        energy_line = lines[2]  # Assumes energies are on the second line
+        energies = parse.(Float64, split(energy_line, r"\s+"))  # Split by spaces and parse as Float64
+        # 2. Cosine values of the scattering angle in the CM frame
+        cosines = [parse(Float64, split(line, r"\s+")[1]) for line in lines[3:end] if !isempty(line)]  # First value in each row
+        # 3. Differential cross-section values
+        diff_cross = [
+            parse.(Float64, split(line, r"\s+")[2:end]) for line in lines[3:end] if !isempty(line)
+        ]  # Parse remaining columns
+        # Define 2D interpolator
+        energies = collect(energies * 10^3 * (cnst.m4He + cnst.m9Be) / cnst.m9Be)
+        diff_cross = hcat(diff_cross...) * 1e-31
+        if lowercase(products[1]) == "12c"
+            diff_cross = reverse(diff_cross, dims=2)
+        end
+        dSigma_dcosCM = extrapolate(interpolate((energies, cosines), 2 * π * diff_cross, Gridded(Linear())), 0)
+        
+        masses = (lowercase(products[1]) == "12c") ?    [cnst.m4He, cnst.m9Be, cnst.m12C+carbon_nucleus_excitation_energy/cnst.u_keV, cnst.mn                     ] .* cnst.u_keV : 
+                                                        [cnst.m4He, cnst.m9Be, cnst.mn,                      cnst.m12C+carbon_nucleus_excitation_energy/cnst.u_keV] .* cnst.u_keV
+
+        return masses..., gamma_ray_nominal_energy, (x,y) -> dSigma_dcosCM.(x,y)
     else 
         error("The $(reaction) fusion reaction is currently not available for analytic computation of expected diagnostic spectrum. The following fusion reaction are available: $(OWCF_AVAILABLE_FUSION_REACTIONS_FOR_ANALYTIC_COMPUTATION). Please correct and re-try.")
     end
