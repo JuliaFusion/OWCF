@@ -34,7 +34,7 @@ Calculate the expected diagnostic spectrum for one (drift) orbit. The input argu
             'reaction input variable is specified as "b" where b is a fast-ion particle species, this input variable should instead be specified 
             as a String with the filepath to an output file from the LINE21 code or the OWCF/extra/createCustomLOS.jl script.
 - thermal_dist -  The Thermal/FBM Python object from the transp_dists.py script. Used to represent the thermal species distribution. Can also be nothing.
-- Ed_bin_edges - The diagnostic measurement bin edges into which the synthetic measurements will be binned
+- Ed_bin_edges - The diagnostic measurement bin edges into which the synthetic measurements will be binned (in keV or m/s).
 - reaction - Fusion reaction, on any of the forms described in the OWCF/misc/availReacts.jl script.
 The keyword arguments are as follows:
 - o_interp_length - The number of time points onto which the orbit trajectory will be interpolated. Equidistant points in time are used.
@@ -166,7 +166,7 @@ Calculate the expected diagnostic spectra of the orbits in og_orbs. The inputs a
 - F_os - A vector of length(og_orbs) where each element is the number of fast ions on the corresponding orbit in og_orbs. Usually, the value of every element is set to 1.0, by default.
 - forward - The Forward Python DRESS object from the forward.py DRESS script. Used to compute the expected synthetic spectrum.
 - thermal_dist -  The Thermal/FBM Python object from the transp_dists.py script. Used to represent the thermal species distribution. Can also be nothing.
-- Ed_bin_edges - The diagnostic measurement bin edges into which the synthetic measurements will be binned
+- Ed_bin_edges - The diagnostic measurement bin edges into which the synthetic measurements will be binned (in keV or m/s).
 - reaction - Fusion reaction, on any of the forms described in the OWCF/misc/availReacts.jl script.
 Keyword arguments include
 - distributed - If true, the orbit spectra will be computed using multiple CPU/GPU processes. If false, single-threaded computing will be used

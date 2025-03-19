@@ -13,7 +13,8 @@ import constants
 
 """
 A very short, but necessary, Python implementation of a function from the
-OWCF/misc/availReacts.jl script.
+OWCF/misc/availReacts.jl script. This is to avoid having to import a Julia
+function into Python.
 """
 def getReactionForm(fusion_reaction):
     if "-" in fusion_reaction:
