@@ -83,7 +83,7 @@
 
 #### Other
 # Warning! Please note! For orbit-space grids containing more than approximately 150 000 valid orbits (e.g. 20x100x100),
-# you should NOT use weightsWebApp.jl (or any other interactive app). As of OWCF version 1.0, the 
+# you should NOT use weightsWebApp.jl (or any other interactive app). As of OWCF version 1.4, the 
 # web interface simply becomes too slow. Please do instead plot the energy slices manually instead (in scratch.jl for example).
 # You do this by, for example, coding
 #

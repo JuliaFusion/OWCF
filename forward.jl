@@ -1,46 +1,46 @@
 ########################################## forward.jl ##################################################
-# This code is a Julia transposition of forward.py and spec.py, with the key difference that the calculations
+# This code is a Julia translation of forward.py and spec.py, with the key difference that the calculations
 # do not account for the thermal reactant dynamics. This is in favor of faster computations with no Monte 
 # Carlo sampling needed.
 #
 # Miscellaneous comments:
-#  - the a+b->1+2 notation from DRESS is swapped here with b+t->d+r, meaning that a beam particle 'b' reacts
-#    with a target particle 't' and generates a detected particle 'd' and a residual particle 'r'. 
-#  - 
+#  - the a+b->1+2 notation from DRESS [J. Eriksson et al, Comp. Phys. Comm., 2016] is swapped here with 
+#    b+t->d+r, meaning that a beam particle 'b' reacts with a target particle 't' and generates a detected 
+#    particle 'd' and a residual particle 'r'.
 #
 # TO DO:
 #  - check the jacobian for the gamma-ray in spec.py as well. It might not be there
-#  - 
 #
 # THIS SCRIPT IS FUNCTIONALLY DONE. ONLY DOCUMENTATION REMAINS TO BE FINALIZED.
 #
-# Written by Andrea Valentini. Last maintained 2025-01-20
+# Written by Andrea Valentini, with smaller changes by Henrik Järleblad. Last maintained 2025-03-19
 ######################################################################################################
 
-using NaNMath
-using LoopVectorization
-using DelimitedFiles
-using DataFrames
-using LegendrePolynomials  # For Legendre polynomials
-using LinearAlgebra
-using PyCall
+using NaNMath # To avoid errors when NaN values are encountered in arrays
+using LoopVectorization # To enhance computational speed
+using DelimitedFiles # For I/O of text files
+using DataFrames # -||- 
+using LegendrePolynomials # Self-explanatory
+using LinearAlgebra # Math
+using PyCall # To use Python function and variables in Julia
 include("misc/availReacts.jl") # To be able to handle fusion reaction strings
 pushfirst!(PyVector(pyimport("sys")."path"), "") # To add constants and fusreact modules
 
-cnst = pyimport("constants")
-fsrct = pyimport("fusreact")
+cnst = pyimport("constants") # Import the physical constants of the DRESS code
+fsrct = pyimport("fusreact") # Import the fusion reaction data from the DRESS code
 
 """
 get_lims(E_b::Vector{Float64}, l_b::Vector{Float64}, m_b::Float64, m_t::Float64, m_d::Float64, m_r::Float64)
 
-Method to calculate detected particle energy, pitch-angle limits (first 4 outputs) given a specific beam particle cold ring (E_b,l_b). 
-Outputs 5 and 6 are the corresponding beam particle gyro-angle limits (since, for every E_d, one and only one γ_b corresponds). 
+Method to calculate detected particle energy limits and pitch-angle limits (first 4 outputs) given a specific 
+beam particle cold ring (E_b,l_b). Outputs 5 and 6 are the corresponding beam particle gyro-angle limits 
+(since, for every E_d, one and only one γ_b corresponds). 
 
-This helps because, once the arrays lenghts are fixed, smaller grids provide higher resolution.
+This helps because, once the arrays lengths are fixed, smaller grids provide higher resolution.
 The inputs are as follows
-- E_b - beam particle energy in keV
-- l_b - beam particle pitch-angle in rad
-- m_b, m_t, m_d, m_r - masses in keV for beam, target, detected and residual particles
+- E_b - Beam particle energy in keV
+- l_b - Beam particle pitch-angle in rad
+- m_b, m_t, m_d, m_r - masses in keV for beam (m_b), target (m_t), detected (m_d) and residual (m_r) particles
 """
 function get_lims(E_b, l_b, m_b, m_t, m_d, m_r)
     cosLAB = 1.0 # grid limit in energy is found at maximum value for the cosine of the emission angle
