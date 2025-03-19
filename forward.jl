@@ -353,7 +353,7 @@ function forward_calc(viewing_cone, o_E, o_p, o_R, o_z, o_w, Ed_bin_centers, o_B
     
     mag_B_vc = sqrt.(sum(B_vc.^2, dims=1))
     lambda_d = vec( acos.( clamp.( sum(ud .* B_vc, dims=1)./mag_B_vc, -1, 1 ) ) )
-    orbit_spectrum = zeros(length(Ed_bin_centers))
+    expected_spectrum = zeros(length(Ed_bin_centers))
 
     if !(getEmittedParticleEnergyLevel(reaction)=="GS")
         grid_lims = get_lims(E_b_vc, acos.(p_b_vc), m_b, m_t, m_d, m_r)
@@ -385,14 +385,14 @@ function forward_calc(viewing_cone, o_E, o_p, o_R, o_z, o_w, Ed_bin_centers, o_B
             filter!(!isnan, w_list)
         
             @turbo for j in eachindex(Ed_bin_centers)
-                orbit_spectrum[j] += sum(Doppler_spectrum( g_ray, Ed_bin_centers[j], lambda_d[i], 
+                expected_spectrum[j] += sum(Doppler_spectrum( g_ray, Ed_bin_centers[j], lambda_d[i], 
                                                            w_list,  e_list, 
                                                            acos.(p_list), m_d, omega[i]) ) * (dphi / (2π))
             end
         end
     else 
         for i in eachindex(Ed_bin_centers)
-            orbit_spectrum[i] += sum(dn_dtdE(   Ed_bin_centers[i], lambda_d, m_d, 
+            expected_spectrum[i] += sum(dn_dtdE(   Ed_bin_centers[i], lambda_d, m_d, 
                                                 10. ^ 0 .* weights_vc .* omega , E_b_vc, acos.(p_b_vc), m_b, 
                                                 bulk_dens_vc, m_t, 
                                                 m_r, 
@@ -401,6 +401,6 @@ function forward_calc(viewing_cone, o_E, o_p, o_R, o_z, o_w, Ed_bin_centers, o_B
     end
 
 
-    return orbit_spectrum
+    return expected_spectrum
 end
 
