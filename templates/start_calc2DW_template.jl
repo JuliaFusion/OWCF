@@ -130,9 +130,9 @@ end
     diagnostic_filepath = "" # Currently supported: "TOFOR", "AB" and ""
     diagnostic_name = ""
     instrumental_response_filepath = "" # Should be the filepath to three .txt-files or one .jld2-file. Otherwise, leave as ""
-    Ed_min = 0000.0 # keV (or m/s if analyticalOWs===true)
-    Ed_max = 0000.0 # keV (or m/s if analyticalOWs===true)
-    Ed_diff = 00.0 # keV (or m/s if analyticalOWs===true)
+    Ed_min = 0000.0 # keV (or m/s if 'reaction' input variable is specified on form (3))
+    Ed_max = 0000.0 # keV (or m/s if 'reaction' input variable is specified on form (3))
+    Ed_diff = 00.0 # keV (or m/s if 'reaction' input variable is specified on form (3))
     E_array = nothing # keV. Array can be specified manually. Otherwise, leave as 'nothing'
     Emin = 0.0 # keV
     Emax = 000.0 # keV

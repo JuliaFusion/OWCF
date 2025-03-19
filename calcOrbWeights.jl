@@ -8,6 +8,7 @@
 # In the current version of the OWCF, the calcOrbWeights.jl script can compute orbit weight functions in 
 # the following ways:
 #   - By sending (E,p,R,z) points into the DRESS code (J. Eriksson et al, CPC, 199, 40-46, 2016)
+#   - By using (E,p,R,z) points to compute projected fast-ion velocities
 #   - By using (E,p,R,z) points together with the equations in A. Valentini, Nucl. Fusion, Submitted (2025)
 # The (E,p,R,z) points are computed for each orbit, using the GuidingCenterOrbits.jl and OrbitTomography.jl 
 # packages. The orbit can be uniquely identified using an (E,pm,Rm) coordinate where E is the energy (in keV)
@@ -67,7 +68,7 @@
 # Please note that the diagnostic energy grid will be created as bin centers.
 # That is, the first diagnostic energy grid value will be (Ed_min+Ed_diff/2) and so on.
 
-# Script written by Henrik Järleblad. Last maintained 2025-03-05.
+# Script written by Henrik Järleblad. Last maintained 2025-03-19.
 ################################################################################################
 
 ## ---------------------------------------------------------------------------------------------
@@ -93,8 +94,9 @@ verbose && println("Loading Julia packages... ")
 end
 
 ## ---------------------------------------------------------------------------------------------
-# Fusion reaction, diagnostic and particle-related checks
-if getReactionForm(reaction)==3 && analytic 
+## Fusion reaction, diagnostic and particle-related checks
+# Reaction
+if getReactionForm(reaction)==3 && analytic
     error("The 'analytic' input variable was set to true, but the 'reaction' input variable was specified on form (3)(fast-ion species only). This is not allowed. Please correct and re-try.")
 end
 if getReactionForm(reaction)==1 # If no excited energy state for the emitted particle (in the case it is an atomic nucleus) has been specified...
@@ -109,6 +111,7 @@ if analytic && !reactionIsAvailableAnalytically(reaction)
 end
 @everywhere reaction = $reaction # Copy the reaction variable to all external (CPU) processes
 
+# Charge of fusion product particle of interest
 emittedParticleHasCharge = false
 if !(getSpeciesCharge(getEmittedParticle(reaction))==0) && lowercase(getEmittedParticleEnergyLevel(reaction))=="gs" && !(getReactionForm(reaction)==3)
     verbose && println("")
@@ -123,6 +126,7 @@ if !(getSpeciesCharge(getEmittedParticle(reaction))==0) && lowercase(getEmittedP
     emittedParticleHasCharge = true
 end
 
+# Energy state of the nucleus of the fusion product particle of interest
 if !(lowercase(getEmittedParticleEnergyLevel(reaction))=="gs") && (diagnostic_filepath=="")
     error("The fusion product particle of interest ($(getEmittedParticle(reaction))) of the $(reaction) reaction is on an excited state, but no diagnostic line-of-sight was specified (the diagnostic_filepath input variable was left unspecified). This is not allowed. Please correct and re-try.")
 end
@@ -168,7 +172,7 @@ if getReactionForm(reaction)==3 # If fusion reaction is specified as a single pa
     projVel = true # ...orbit weight functions will be computed using projected velocities!
 end
 ## ---------------------------------------------------------------------------------------------
-# Loading tokamak information and TRANSP RUN-ID
+# Loading thermal information and TRANSP RUN-ID, and perform checks
 if fileext_thermal=="jld2"
     verbose && println("Loading thermal .jld2 file data... ")
     myfile = jldopen(filepath_thermal_distr,false,false,false,IOStream)
@@ -206,7 +210,7 @@ end
 @everywhere tokamak = $tokamak
 
 ## ---------------------------------------------------------------------------------------------
-# Loading tokamak equilibrium
+# Loading magnetic equilibrium and deduce timepoint, if possible
 verbose && println("Loading tokamak equilibrium... ")
 if ((split(filepath_equil,"."))[end] == "eqdsk") || ((split(filepath_equil,"."))[end] == "geqdsk")
     M, wall = read_geqdsk(filepath_equil,clockwise_phi=false) # Assume counter-clockwise phi-direction
@@ -243,7 +247,7 @@ end
 
 ## ---------------------------------------------------------------------------------------------
 # Defining orbit grid vectors
-if !(og_filepath===nothing)
+if isfile(og_filepath)
     verbose && println("Filepath to .jld2 file containing orbit grid was specified. Loading orbit grid... ")
     myfile = jldopen(og_filepath,false,false,false,IOStream)
     og = myfile["og"]
@@ -417,7 +421,7 @@ if debug
 end
 println("If you would like to change any settings, please edit the start_calcOW_template.jl file or similar.")
 println("")
-println("Written by Henrik Järleblad. Last maintained 2025-03-05.")
+println("Written by Henrik Järleblad. Last maintained 2025-03-19.")
 println("--------------------------------------------------------------------------------------------------")
 println("")
 
@@ -446,7 +450,7 @@ verbose && println("Loading helper functions... ")
 end
 
 ## If no thermal distribution has been specified, we are going to need the default temp. and dens. profiles
-if filepath_thermal_distr==""
+if !isfile(filepath_thermal_distr)
     @everywhere begin
         include("misc/temp_n_dens.jl")
     end
@@ -538,7 +542,7 @@ if fileext_thermal=="jld2"
 end
 
 # If a thermal species distribution has not been specified, we simply need the thermal species temperature and density on axis
-if filepath_thermal_distr==""
+if !isfile(filepath_thermal_distr)
     thermal_temp = thermal_temp_axis
     thermal_dens = thermal_dens_axis
 end
@@ -666,10 +670,6 @@ for iii=1:iiimax
             Ed_array = instrumental_response_output # Update the outputs of calcOrbWeights.jl with the diagnostic response
         end
     end
-
-    # CONTINUE CODING HERE!!!
-    # CONTINUE CODING HERE!!!
-    # CONTINUE CODING HERE!!!
 
     if !debug
         verbose && println("Saving orbit weight function matrix in its 2D form... ")
