@@ -65,13 +65,13 @@
 # cd(folderpath_OWCF)#
 # Pkg.activate(".")
 
-# Script written by Henrik Järleblad. Last maintained 2025-01-29.
+# Script written by Henrik Järleblad. Last maintained 2025-03-19.
 ###################################################################################################
 
 using GuidingCenterOrbits
 const OWCF_e0 = 1.6021766208e-19 # Coulomb
-const OWCF_u_keV = 931494.0954 # keV
-const OWCF_u_kg  = 1.660539040e-27 # kg
+const OWCF_amu_to_keV = 931494.0954 # keV. To be multiplied with atomic mass units (amu) to convert to keV
+const OWCF_amu_to_kg  = 1.660539040e-27 # kg. To be multiplied with atomic mass units (amu) to convert to kg
 const OWCF_electron_mass_amu = 5.48579909070e-4 # atomic mass units (amu)
 const OWCF_neutron_mass_amu = 1.00866491588 # amu
 const OWCF_proton_mass_amu = 1.007276466879 # amu
@@ -107,9 +107,10 @@ const letter_pattern = r"[a-z]+" # To be able to isolate chemical element symbol
 
 # ---------------------------------------------------------------------------------------------------------------------------------
 """
-    B_e(Z)
+    OWCF_B_e(Z)
 
-Function description to be written here.
+An empirical model for the total binding energy of all removed electrons for an atomic nucleus with charge Z.
+Please see Wang Meng et al 2017 Chinese Phys. C 41 030003 for further details. Binding energy B_e returned in eV.
 """
 function OWCF_B_e(Z)
     return 14.4381*(Z^2.39) + 1.55468*(10^-6)*(Z^5.35)
@@ -147,7 +148,7 @@ and zero charge. The keyword arguments are:
 function getGCP(species_identifier::AbstractString; E=0.0, p=0.0, R=0.0, z=0.0, verbose=false)
     if species_identifier=="n"
         @warn "getGCP() input was $(species_identifier). Assuming a neutron."
-        return (GuidingCenterOrbits.GCParticle(E,p,R,z,OWCF_neutron_mass_amu*OWCF_u_kg,0)) # Neutron mass, zero charge
+        return (GuidingCenterOrbits.GCParticle(E,p,R,z,OWCF_neutron_mass_amu*OWCF_amu_to_kg,0)) # Neutron mass, zero charge
     end
     if species_identifier=="g"
         @warn "getGCP() input was $(species_identifier). Assuming a gamma photon."
@@ -167,7 +168,7 @@ function getGCP(species_identifier::AbstractString; E=0.0, p=0.0, R=0.0, z=0.0, 
     species_Z = OWCF_ChemElemSymbol_to_Z[species_ChemElemSymbol] # Determine the nuclear charge number
     if species_Z==-1 # If electron
         verbose && println("getGCP() input was $(species_identifier). Deduced electron!")
-        return (GuidingCenterOrbits.GCParticle(E,p,R,z,OWCF_electron_mass_amu*OWCF_u_kg,species_Z))
+        return (GuidingCenterOrbits.GCParticle(E,p,R,z,OWCF_electron_mass_amu*OWCF_amu_to_kg,species_Z))
     end
     if species_A>size(OWCF_ATOMIC_MASS_TABLE,1)
         m_A = species_A # Use the atomic mass number as an approximation. This will be refined in future versions of the OWCF
@@ -175,15 +176,15 @@ function getGCP(species_identifier::AbstractString; E=0.0, p=0.0, R=0.0, z=0.0, 
         m_A = OWCF_ATOMIC_MASS_TABLE[species_A,species_Z] # The atomic mass (in amu)
     end
     species_B_e = (1.0e-3)*OWCF_B_e(species_Z) # eV to keV
-    m_N = m_A - species_Z*OWCF_electron_mass_amu + species_B_e/OWCF_u_keV # Please see Wang Meng et al 2017 Chinese Phys. C 41 030003
+    m_N = m_A - species_Z*OWCF_electron_mass_amu + species_B_e/OWCF_amu_to_keV # Please see Wang Meng et al 2017 Chinese Phys. C 41 030003
 
-    return GuidingCenterOrbits.GCParticle(E,p,R,z,m_N*OWCF_u_kg,species_Z)
+    return GuidingCenterOrbits.GCParticle(E,p,R,z,m_N*OWCF_amu_to_kg,species_Z)
 end
 
 """
     getSpeciesMass(species_identifier)
 
-Function description to be written here.
+For a particle species identifier 'species_identifier' input string, return the particle species mass in kg.
 """
 function getSpeciesMass(species_identifier::AbstractString)
     return getGCP(species_identifier).m
@@ -192,7 +193,7 @@ end
 """
     getSpeciesAmu(species_identifier)
 
-Function description to be written here.
+For a particle species identifier 'species_identifier' input string, return the particle species mass in atomic mass units (amu).
 """
 function getSpeciesAmu(species_identifier::AbstractString)
     return getSpeciesMass(species_identifier) / GuidingCenterOrbits.mass_u
@@ -201,7 +202,7 @@ end
 """
     getSpeciesEcu(species_identifier)
 
-Function description to be written here.
+For a particle species identifier 'species_identifier' input string, return the particle species charge in elementary charge units (ecu).
 """
 function getSpeciesEcu(species_identifier::AbstractString)
     return getGCP(species_identifier).q
@@ -210,7 +211,7 @@ end
 """
     getSpeciesCharge(species_identifier)
 
-Function description to be written here.
+For a particle species identifier 'species_identifier' input string, return the particle species charge in Coulomb.
 """
 function getSpeciesCharge(species_identifier::AbstractString)
     return getSpeciesEcu(species_identifier) * GuidingCenterOrbits.e0
