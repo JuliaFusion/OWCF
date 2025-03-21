@@ -7,7 +7,7 @@
 #
 # As of this version of the OWCF, the functions of calcOrbSpec.jl can compute expected signals via the following two forward models:
 # - Using Monte Carlo sampling with the DRESS code (J. Eriksson et al, Computer Physics Communications 199 (2016) 40–46)
-# - Using analytic formulas developed by A. Valentini ([REFERENCE TO BE INCLUDED HERE])
+# - Using analytic formulas developed by A. Valentini ([https://doi.org/10.1088/1741-4326/adc1df, https://doi.org/10.1088/1741-4326/ad9bc8])
 #
 # As of this version of the OWCF, calcOrbSpec() has to be used/included ONLY in calcOrbWeights.jl or ps2WF.jl, after the Julia and Python packages, 
 # ,and scripts, have been loaded. That is, the user needs to first load all the Julia packages (with @everywhere if you use the Julia package Distributed).
