@@ -1,7 +1,8 @@
 ########################################## forward.jl ##################################################
 # This code is a Julia translation of forward.py and spec.py, with the key difference that the calculations
 # do not account for the thermal reactant dynamics. This is in favor of faster computations with no Monte 
-# Carlo sampling needed.
+# Carlo sampling needed. The physical and mathematical prescription for the reactions is described in 
+# https://doi.org/10.1088/1741-4326/adc1df (two-step) and https://doi.org/10.1088/1741-4326/ad9bc8 (one-step).
 #
 # Miscellaneous comments:
 #  - the a+b->1+2 notation from DRESS [J. Eriksson et al, Comp. Phys. Comm., 2016] is swapped here with 
@@ -10,8 +11,6 @@
 #
 # TO DO:
 #  - check the jacobian for the gamma-ray in spec.py as well. It might not be there
-#
-# THIS SCRIPT IS FUNCTIONALLY DONE. ONLY DOCUMENTATION REMAINS TO BE FINALIZED.
 #
 # Written by Andrea Valentini, with smaller changes by Henrik Järleblad. Last maintained 2025-03-19
 ######################################################################################################
@@ -73,9 +72,9 @@ Method to calculate the relativistic-Doppler-shifted gamma-ray spectrum at energ
 Please note, the beam now is the excited product, eg a carbon-12, and not the same beam particle of the 1st step of the reaction!
 
 The inputs are as follows
-- E_nominal - gamma-ray energy in the frame of the moving particle
-- E_g - gamma-ray energy at a specific point of the spectrum, corresponding to the middle-point of an energy bin
-- phi - emission angle of the gamma-ray with respect to the local magnetic field
+- E_nominal - gamma-ray energy in keV in the frame of the moving particle
+- E_g - gamma-ray energy in keV at a specific point of the spectrum, corresponding to the middle-point of an energy bin
+- phi - emission angle in rad of the gamma-ray with respect to the local magnetic field
 - n_b, E_b, l_b, m_b - density in m^-3, energy in keV, pitch-angle in rad and mass in keV of the inputted beam particle cold rings
 - dOmega - fraction of solid angle seen by the detector
 """
@@ -113,7 +112,7 @@ end
 relativistic_inverse_jacobian(γ_b::Vector{Float64}, cosLAB::Vector{Float64}, E_b::Vector{Float64}, m_b::Float64, m_t::Float64, m_d::Float64, m_r::Float64, A::Vector{Float64}, B::Vector{Float64}, D::Vector{Float64})
 
 Method to calculate the relativistic inverse jacobian for the cosLAB->E_d transformation. Obtained by differentiating 4-momentum conservation laws.
-Please look at: ...paperDOI... for thorough explanation on this.
+Please look at: https://doi.org/10.1088/1741-4326/adc1df for thorough explanation on this.
 
 The inputs are as follows
 - γ_b - beam particle gyro-angle in rad, which in case of beam-target reactions fully specifies E_d as well (but has better resolution for same grid size, hence why it is used)
@@ -141,7 +140,7 @@ end
 dn_dtdγ(γ_b::Vector{Float64}, l_d::Vector{Float64}, m_d::Float64, n_b::Vector{Float64}, E_b::Vector{Float64}, l_b::Vector{Float64}, m_b::Float64, n_t::Vector{Float64}, m_t::Float64, m_r::Float64, dSigma_dcosCM::Function)
 
 Method to calculate differential rate of excited product emitted per unit beam particle gyro angle dγ_b (subscript omitted for brevity).
-This is a new algorithm developed just for an even faster implementation of 2step reaction spectra. Most formulas can be still derived from ...paperDOI...
+This is a new algorithm developed just for an even faster implementation of 2step reaction spectra. Most formulas can be still derived from https://doi.org/10.1088/1741-4326/adc1df
 
 The inputs are as follows
 - γ_b - beam particle gyro-angle in rad, which in case of beam-target reactions fully specifies E_d as well (but has better resolution for same grid size, hence why it is used)
@@ -247,17 +246,17 @@ function SetReaction(reaction)
     # Beware: fast and thermal reactants are re-mapped here according to a->t, b->b, c->d, d->r (see miscellaneous comments on top)
     if lowercase.(reactants) == ["d","t"] || lowercase.(reactants) == ["t","d"]
         mass_ratio = (lowercase(reactants[2]) == "d") ? cnst.mt / (cnst.md + cnst.mt) : cnst.md / (cnst.md + cnst.mt)
-        # Read the data file
+        # Read the data file containing the differential cross section information
         df = readdlm("fit_data/dtn4He_legendre_Drosg.txt", '\t', Float64, '\n')  
         # Convert column data for interpolation
-        E_col = Array{Float64}(df[!, 1])
-        A_data = Matrix{Float64}(df[!, 3:end])  # Exclude first two columns
+        E_col = Array{Float64}(df[!, 1]) # energies in MeV
+        A_data = Matrix{Float64}(df[!, 3:end])  # Legendre polynomial coefficient matrix
         # Interpolation in 1D
         A = [ extrapolate(interpolate((E_col*1000,), A_data[:,i],Gridded(Linear())),0) for i in 1:size(A_data, 2) ]
         # Define differential cross section anonymous function
         lmax = size(A, 1) - 1  # Assuming df.shape[1] - 2 is equivalent to number of columns in `A` matrix
-        flip = (lowercase(products[1]) == "4he") ? -1 : 1
-        # dSigma_dcosCM = (x,y) -> (fsrct.sigma_tot(mass_ratio * x, "d-t") ./ (2 .* A[1](x))) .* sum([A[l+1](x) .* Pl(flip*y,l) for l in 0:lmax])
+        flip = (lowercase(products[1]) == "4he") ? -1 : 1 # If we look at the other reactant, the emission angle cosine needs flipping
+        # Use fsrct (from DRESS) to get the total cross section and Pl (from LegendrePolynomials) to express the angular part (see fusreact.py) 
         dSigma_dcosCM = (x, y) -> (fsrct.sigma_tot(mass_ratio .* x, "d-t") ./ (2 .* A[1].(x))) .* sum(A[l+1].(x) .* Pl.(flip .* y, l) for l in 0:lmax)
 
         masses = (lowercase.(reactants) == ["t","d"] && lowercase.(products) == ["n","4he"]) ? [cnst.md, cnst.mt, cnst.mn,   cnst.m4He] .* cnst.u_keV   :
@@ -313,9 +312,9 @@ forward_calc(viewing_cone::ViewingCone, o_E::Vector{Float64}, o_p::Vector{Float6
             reaction::String="T(D,n)4He-GS", bulk_dens::Union{Nothing,Vector{Float64}}=1.0e19)
 
 For the input (E,p,R,z) points and weights (please see inputs explanation below), calculate expected diagnostic spectrum for 1- and 2-step fusion reactions using the analytic equations obtained when making the 
-beam-target approximation. Please see [CITE A. VALENTINI PUBLICATION]. Since the approach is straight forward (no Monte Carlo computations needed), a massive speed-up of computations compared to established 
-Monte Carlo codes (e.g. DRESS/GENESIS) is achieved. However, the approximation is only valid as long as the thermal (slow) fusion product particle population can be assumed to be at rest (zero temperature),
-relative to the energetic (fast) fusion product particle population.
+beam-target approximation. Please see [https://doi.org/10.1088/1741-4326/adc1df] and [https://doi.org/10.1088/1741-4326/ad9bc8]. Since the approach is straight forward (no Monte Carlo computations needed), a 
+massive speed-up of computations compared to established Monte Carlo codes (e.g. DRESS/GENESIS) is achieved. However, the approximation is only valid as long as the thermal (slow) fusion product particle population 
+can be assumed to be at rest (zero temperature), relative to the energetic (fast) fusion product particle population.
 
 The inputs are as follows
 - viewing_cone - A viewing cone object as defined in vcone.jl
