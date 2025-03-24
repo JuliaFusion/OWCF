@@ -41,7 +41,9 @@
 # If thermal_profiles_type==:FLAT, flat thermal plasma temperature and density profiles will be used.
 #
 ### The 2D weight functions can also be computed using the analytic equations implemented in the OWCF/forward.jl 
-# script. https://doi.org/10.1088/1741-4326/adc1df (two-step) and https://doi.org/10.1088/1741-4326/ad9bc8 (one-step). 
+# script. The analytic equations are derived and described in the following publications:
+#   - https://doi.org/10.1088/1741-4326/adc1df (two-step fusion reactions),  
+#   - https://doi.org/10.1088/1741-4326/ad9bc8 (one-step fusion reactions). 
 # If so, no thermal temperature data is needed, since the analytic equations assume zero temperature
 # for the thermal species.
 #
