@@ -882,7 +882,7 @@ function app(req)
         end
 
         # Signal plot
-        if plot_S || plot_WF || show_delta_signal # CONTINUE CODING HERE! WEIGHT DELTA SIGNAL WILL NOT BE SAME ORDER OF MAGNITUDE AS S AND WF
+        if plot_S || plot_WF || show_delta_signal
             if uppercase(diagnostic_name)=="TOFOR"
                 sig_color = :green3
             elseif uppercase(diagnostic_name)=="AB"
