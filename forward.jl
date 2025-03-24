@@ -254,7 +254,7 @@ function SetReaction(reaction)
         # Convert column data for interpolation
         E_col = Array{Float64}(df[!, 1]) # energies in MeV
         A_data = Matrix{Float64}(df[!, 3:end])  # Legendre polynomial coefficient matrix
-        # Interpolation in 1D
+        # Interpolation in 1D, multiply energies by a factor 1000, to match keV energy input in subsequent functions
         A = [ extrapolate(interpolate((E_col*1000,), A_data[:,i],Gridded(Linear())),0) for i in 1:size(A_data, 2) ]
         # Define differential cross section anonymous function
         lmax = size(A, 1) - 1  # Assuming df.shape[1] - 2 is equivalent to number of columns in `A` matrix
