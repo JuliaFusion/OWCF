@@ -1,18 +1,21 @@
 ########################################## forward.jl ##################################################
 # This code is a Julia translation of forward.py and spec.py, with the key difference that the calculations
 # do not account for the thermal reactant dynamics. This is in favor of faster computations with no Monte 
-# Carlo sampling needed. The physical and mathematical prescription for the reactions is described in 
-# https://doi.org/10.1088/1741-4326/adc1df (two-step) and https://doi.org/10.1088/1741-4326/ad9bc8 (one-step).
+# Carlo sampling needed. Physical and mathematical descriptions of the reactions is described in 
+# https://doi.org/10.1088/1741-4326/adc1df (two-step fusion reactions) and 
+# https://doi.org/10.1088/1741-4326/ad9bc8 (one-step fusion reactions).
 #
 # Miscellaneous comments:
 #  - the a+b->1+2 notation from DRESS [J. Eriksson et al, Comp. Phys. Comm., 2016] is swapped here with 
 #    b+t->d+r, meaning that a beam particle 'b' reacts with a target particle 't' and generates a detected 
 #    particle 'd' and a residual particle 'r'.
 #
-# TO DO:
-#  - check the jacobian for the gamma-ray in spec.py as well. It might not be there
+# Future work:
+#  - In forward.py (spec.py) (the Monte-Carlo equivalent to this script), the gamma-ray Jacobian should be 
+#    implemented to have achieve full equivalence. In most cases, it is negligible, since it leads to 
+#    minimal modification of the spectral shape.
 #
-# Written by Andrea Valentini, with smaller changes by Henrik Järleblad. Last maintained 2025-03-19
+# Written by Andrea Valentini, with smaller changes by Henrik Järleblad. Last maintained 2025-03-24
 ######################################################################################################
 
 using NaNMath # To avoid errors when NaN values are encountered in arrays
@@ -45,16 +48,16 @@ function get_lims(E_b, l_b, m_b, m_t, m_d, m_r)
     cosLAB = 1.0 # grid limit in energy is found at maximum value for the cosine of the emission angle
 
     # Solving the relativistic 4-momentum conservation equations 
-    A = (E_b .+ m_b .+ m_t).^2 .- E_b .* (E_b .+ 2 .* m_b) .+ m_d^2 .- m_r^2
-    B = E_b .+ m_b .+ m_t
-    D = B .* m_d .- A ./ 2
-    a = B.^2 .- E_b .* (E_b .+ 2 .* m_b) .* cosLAB.^2
-    bi_half = B .* D .- E_b .* (E_b .+ 2 .* m_b) .* m_d .* cosLAB.^2
-    ci = D.^2
-    delta_fourth = bi_half.^2 .- a .* ci
+    A = @. (E_b + m_b + m_t)^2 - E_b * (E_b + 2 * m_b) + m_d^2 - m_r^2
+    B = @. E_b + m_b + m_t
+    D = @. B * m_d - A / 2
+    a = @. B^2 - E_b * (E_b + 2 * m_b) * cosLAB^2
+    bi_half = @. B * D - E_b * (E_b + 2 * m_b) * m_d * cosLAB^2
+    ci = @. D^2
+    delta_fourth = @. bi_half^2 - a * ci
 
     # If the radicand is negative, then no minimum emission angle is defined. We throw zeros here for simplicity, but some tweaks in the future might be needed
-    cosLABmin = real.(sqrt.(Complex.((B.^2 .* m_d.^2 .- A.^2 ./ 4) ./ (E_b .* (E_b .+ 2 .* m_b) .* m_d.^2))))
+    cosLABmin = @. real(sqrt(Complex((B^2 * m_d^2 - A^2 / 4) / (E_b * (E_b + 2 * m_b) * m_d^2))))
 
     # Return the lower and upper limits for E_d, l_d and γ_b; the factors are intended to avoid singularities at the domain edges (by some fairly arbitrary 'safe margin')
     return hcat(max.((-bi_half .- 1.1 .* sqrt.(delta_fourth)) ./ a, 0.001), # minimum E_d
@@ -125,13 +128,13 @@ function relativistic_inverse_jacobian(γ_b, cosLAB, E_b, m_b, m_t, m_d, m_r, A,
     # We have to account for the sign in the quadratic solution, before differentiating
     s = -sign.(cos.(γ_b))
 
-    jac = s .* ( (E_b .* (E_b .+ 2 * m_b) .* cosLAB .* 
-            (-2 .* B.^3 .* D .* m_d .+ D.^2 .* E_b .* (E_b .+ 2 * m_b) .* cosLAB.^2 
-            .- s .* 2 .* B .* D .* (s .* E_b.^2 .* m_d .* cosLAB.^2 .+ s .* 2 .* E_b .* m_b .* m_d .* cosLAB.^2 
-            .+ NaNMath.sqrt.(E_b .* (E_b .+ 2 * m_b) .* cosLAB.^2 .* (D.^2 .- 2 .* B .* D .* m_d .+ E_b .* (E_b .+ 2 * m_b) .* m_d.^2 .* cosLAB.^2)))
-            .+ B.^2 .* (D.^2 .+ 2 .* m_d .* (E_b.^2 .* m_d .* cosLAB.^2 .+ 2 .* E_b .* m_b .* m_d .* cosLAB.^2 
-            .+ s .* NaNMath.sqrt.(E_b .* (E_b .+ 2 * m_b) .* cosLAB.^2 .* (D.^2 .- 2 .* B .* D .* m_d .+ E_b .* (E_b .+ 2 * m_b) .* m_d.^2 .* cosLAB.^2)))))) 
-        ) ./ ((B.^2 .- E_b .* (E_b .+ 2 * m_b) .* cosLAB.^2).^2 .* NaNMath.sqrt.(E_b .* (E_b .+ 2 * m_b) .* cosLAB.^2 .* (D.^2 .- 2 .* B .* D .* m_d .+ E_b .* (E_b .+ 2 * m_b) .* m_d.^2 .* cosLAB.^2)))
+    jac = @. s * ( (E_b * (E_b + 2 * m_b) * cosLAB * 
+            ((-2) * B^3 * D * m_d + D^2 * E_b * (E_b + 2 * m_b) * cosLAB^2 
+            - s * 2 * B * D * (s * E_b^2 * m_d * cosLAB^2 + s * 2 * E_b * m_b * m_d * cosLAB^2 
+            + NaNMath.sqrt(E_b * (E_b + 2 * m_b) * cosLAB^2 * (D^2 - 2 * B * D * m_d + E_b * (E_b + 2 * m_b) * m_d^2 * cosLAB^2)))
+            + B^2 * (D^2 + 2 * m_d * (E_b^2 * m_d * cosLAB^2 + 2 * E_b * m_b * m_d * cosLAB^2 
+            + s * NaNMath.sqrt(E_b * (E_b + 2 * m_b) * cosLAB^2 * (D^2 - 2 * B * D * m_d + E_b * (E_b + 2 * m_b) * m_d^2 * cosLAB^2)))))) 
+        ) / ((B^2 - E_b * (E_b + 2 * m_b) * cosLAB^2)^2 * NaNMath.sqrt(E_b * (E_b + 2 * m_b) * cosLAB^2 * (D^2 - 2 * B * D * m_d + E_b * (E_b + 2 * m_b) * m_d^2 * cosLAB^2)))
 
     return jac
 end
@@ -152,34 +155,34 @@ The inputs are as follows
 """
 function dn_dtdγ(γ_b, l_d, m_d, n_b, E_b, l_b, m_b, n_t, m_t, m_r, dSigma_dcosCM)
     # Defining particle-dependent coefficients
-    A = (E_b .+ m_b .+ m_t).^2 .- E_b .* (E_b .+ 2 .* m_b) .+ m_d^2 .- m_r^2
-    B = E_b .+ m_b .+ m_t
-    D = B .* m_d .- A ./ 2
+    A = @. (E_b + m_b + m_t)^2 - E_b * (E_b + 2 * m_b) + m_d^2 - m_r^2
+    B = @. E_b + m_b + m_t
+    D = @. B * m_d - A / 2
 
     # Solving the quadratic equation (see ...paperDOI...)
-    cosLAB = cos.(l_b) .* cos.(l_d) .- sin.(l_b) .* sin.(l_d) .* sin.(γ_b)
-    a = B.^2 .- E_b .* (E_b .+ 2 .* m_b) .* cosLAB.^2
-    bi_half = B .* D .- E_b .* (E_b .+ 2 .* m_b) .* m_d .* cosLAB.^2
-    ci = D.^2
-    E_d = (-1 .* bi_half .- sign.(cos.(γ_b)) .* NaNMath.sqrt.(bi_half.^2 .- a .* ci)) ./ a
+    cosLAB = @. cos(l_b) * cos(l_d) - sin(l_b) * sin(l_d) * sin(γ_b)
+    a = @. B^2 - E_b * (E_b + 2 * m_b) * cosLAB^2
+    bi_half = @. B * D - E_b * (E_b + 2 * m_b) * m_d * cosLAB^2
+    ci = @. D^2
+    E_d = @. ((-1) * bi_half - sign(cos(γ_b)) * NaNMath.sqrt(bi_half^2 - a * ci)) / a
 
     # Pre-computing velocities and Lorentz factors for the particles and center-of-mass
-    G_b = E_b ./ m_b .+ 1
-    v_b = sqrt.((G_b.^2 .- 1) ./ G_b.^2) * cnst.c
-    G_d = E_d ./ m_d .+ 1
-    v_d = sqrt.((G_d.^2 .- 1) ./ G_d.^2) * cnst.c
-    v_CM = sqrt.(E_b .* (E_b .+ 2 .* m_b)) ./ ((G_b .* m_b .+ m_t) / cnst.c)
-    G_CM = 1 ./ sqrt.(1 .- v_CM.^2 / cnst.c^2)
+    G_b = @. E_b / m_b + 1
+    v_b = @. sqrt((G_b^2 - 1) / G_b^2) * cnst.c
+    G_d = @. E_d / m_d + 1
+    v_d = @. sqrt((G_d^2 - 1) / G_d^2) * cnst.c
+    v_CM = @. sqrt(E_b * (E_b + 2 * m_b)) / ((G_b * m_b + m_t) / cnst.c)
+    G_CM = @. 1 / sqrt(1 - v_CM^2 / cnst.c^2)
 
     # Calculating emission angle wrt beam particle in the center-of-mass rest frame
-    cosCM = (G_CM .* (v_d .* cosLAB .- v_CM)) ./ sqrt.((G_CM.^2 .- 1) .* v_d.^2 .* cosLAB.^2 .- 2 .* G_CM.^2 .* v_d .* v_CM .* cosLAB .+ v_d.^2 .+ G_CM.^2 .* v_CM.^2)
+    cosCM = @. (G_CM * (v_d * cosLAB - v_CM)) / sqrt((G_CM^2 - 1) * v_d^2 * cosLAB^2 - 2 * G_CM^2 * v_d * v_CM * cosLAB + v_d^2 + G_CM^2 * v_CM^2)
 
     # Needed jacobians
     dEd_dcosLAB = relativistic_inverse_jacobian(γ_b, cosLAB, E_b, m_b, m_t, m_d, m_r, A, B, D)
-    dvd_dcosLAB = cnst.c .* (m_d .* G_d.^2 .* sqrt.(G_d.^2 .- 1)).^-1 .* dEd_dcosLAB
-    dcosCM_dcosLAB = G_CM .* v_d .* ((v_d .* (v_d .- v_CM .* cosLAB) .+ v_CM .* (1 .- cosLAB.^2) .* dvd_dcosLAB) ./ ((G_CM.^2 .- 1) .* v_d.^2 .* cosLAB.^2 .- 2 .* G_CM.^2 .* v_d .* v_CM .* cosLAB .+ v_d.^2 .+ G_CM.^2 .* v_CM.^2).^1.5)
+    dvd_dcosLAB = @. cnst.c * (m_d * G_d^2 * sqrt(G_d^2 - 1))^(-1) * dEd_dcosLAB
+    dcosCM_dcosLAB = @. G_CM * v_d * ((v_d * (v_d - v_CM * cosLAB) + v_CM * (1 - cosLAB^2) * dvd_dcosLAB) / ((G_CM^2 - 1) * v_d^2 * cosLAB^2 - 2 * G_CM^2 * v_d * v_CM * cosLAB + v_d^2 + G_CM^2 * v_CM^2)^(1.5))
 
-    costanti = n_b .* n_t .* v_b ./ π
+    costanti = @. n_b * n_t * v_b / π
 
     dSigma_dcosLAB = dSigma_dcosCM(E_b, clamp.(cosCM,-1,1)) .* abs.(dcosCM_dcosLAB)
 
@@ -202,27 +205,27 @@ The inputs are as follows
 - dSigma_dcosCM - differential cross section in m^2 for specified reaction. NB it is not per unit steradian!
 """
 function dn_dtdE(E_d::Vector{Float64}, l_d::Vector{Float64}, m_d, n_b, E_b, l_b, m_b, n_t, m_t, m_r, dSigma_dcosCM::Function)
-    A = (E_b .+ m_b .+ m_t).^2 .- E_b .* (E_b .+ 2 .* m_b) .+ m_d^2 .- m_r^2
-    B = E_b .+ m_b .+ m_t
+    A = @. (E_b + m_b + m_t)^2 - E_b * (E_b + 2 * m_b) + m_d^2 - m_r^2
+    B = @. E_b + m_b + m_t
 
-    cosLAB = (B .* E_d .+ B .* m_d .- A / 2) ./ sqrt.(E_b .* (E_b .+ 2 .* m_b) .* E_d .* (E_d .+ 2 .* m_d))
-    cosX = (-cos.(l_b) .* cos.(l_d) .+ cosLAB) ./ (sin.(l_b) .* sin.(l_d))
+    cosLAB = @. (B * E_d + B * m_d - A / 2) / sqrt(E_b * (E_b + 2 * m_b) * E_d * (E_d + 2 * m_d))
+    cosX = @. (-cos(l_b) * cos(l_d) + cosLAB) / (sin(l_b) * sin(l_d))
 
-    G_b = E_b ./ m_b .+ 1
-    v_b = sqrt.((G_b.^2 .- 1) ./ G_b.^2) * cnst.c
-    G_d = E_d ./ m_d .+ 1
-    v_d = sqrt.((G_d.^2 .- 1) ./ G_d.^2) * cnst.c
-    v_CM = sqrt.(E_b .* (E_b .+ 2 .* m_b)) ./ ((G_b .* m_b .+ m_t) / cnst.c)
-    G_CM = 1 ./ sqrt.(1 .- v_CM.^2 / cnst.c^2)
+    G_b = @. E_b / m_b + 1
+    v_b = @. sqrt((G_b^2 - 1) / G_b^2) * cnst.c
+    G_d = @. E_d / m_d + 1
+    v_d = @. sqrt((G_d^2 - 1) / G_d^2) * cnst.c
+    v_CM = @. sqrt(E_b * (E_b + 2 * m_b)) / ((G_b * m_b + m_t) / cnst.c)
+    G_CM = @. 1 / sqrt(1 - v_CM^2 / cnst.c^2)
 
-    cosCM = (G_CM .* (v_d .* cosLAB .- v_CM)) ./ sqrt.((G_CM.^2 .- 1) .* v_d.^2 .* cosLAB.^2 .- 2 .* G_CM.^2 .* v_d .* v_CM .* cosLAB .+ v_d.^2 .+ G_CM.^2 .* v_CM.^2)
+    cosCM = @. (G_CM * (v_d * cosLAB - v_CM)) / sqrt((G_CM^2 - 1) * v_d^2 * cosLAB^2 - 2 * G_CM^2 * v_d * v_CM * cosLAB + v_d^2 + G_CM^2 * v_CM^2)
 
-    dEd_dcosLAB = (2 .* sqrt.(E_b .* (E_b .+ 2 .* m_b)) .* (E_d .* (E_d .+ 2 .* m_d)).^1.5) ./ (A .* E_d .+ (A .- 2 .* B .* m_d) .* m_d)
-    dvd_dcosLAB = cnst.c .* (m_d .* G_d.^2 .* sqrt.(G_d.^2 .- 1)).^-1 .* dEd_dcosLAB
-    dcosCM_dcosLAB = G_CM .* v_d .* ((v_d .* (v_d .- v_CM .* cosLAB) .+ v_CM .* (1 .- cosLAB.^2) .* dvd_dcosLAB) ./ ((G_CM.^2 .- 1) .* v_d.^2 .* cosLAB.^2 .- 2 .* G_CM.^2 .* v_d .* v_CM .* cosLAB .+ v_d.^2 .+ G_CM.^2 .* v_CM.^2).^1.5)
+    dEd_dcosLAB = @. (2 * sqrt(E_b * (E_b + 2 * m_b)) * (E_d * (E_d + 2 * m_d))^(1.5)) / (A * E_d + (A - 2 * B * m_d) * m_d)
+    dvd_dcosLAB = @. cnst.c * (m_d * G_d^2 * sqrt(G_d^2 - 1))^-1 * dEd_dcosLAB
+    dcosCM_dcosLAB = @. G_CM * v_d * ((v_d * (v_d - v_CM * cosLAB) + v_CM * (1 - cosLAB^2) * dvd_dcosLAB) / ((G_CM^2 - 1) * v_d^2 * cosLAB^2 - 2 * G_CM^2 * v_d * v_CM * cosLAB + v_d^2 + G_CM^2 * v_CM^2)^(1.5))
 
-    costanti = n_b .* n_t .* v_b ./ (2*π^2)
-    jacobian = abs.( real.(Complex.(1 .- cosX.^2).^-0.5) .* (sin.(l_b) .* sin.(l_d)).^-1 .* abs.(dEd_dcosLAB).^-1 )
+    costanti = @. n_b * n_t * v_b / (2*π^2)
+    jacobian = @. abs(real(Complex(1 - cosX^2)^(-0.5)) * (sin(l_b) * sin(l_d))^(-1) * abs(dEd_dcosLAB)^(-1) )
 
     dSigma_dcosLAB = dSigma_dcosCM(E_b, clamp.(cosCM,-1,1)) .* abs.(dcosCM_dcosLAB)
 
