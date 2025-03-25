@@ -87,7 +87,7 @@ end
 ## ---------------------------------------------------------------------------------------------
 
 ## ---------------------------------------------------------------------------------------------
-# Load orbit grid vectors and quantities to be mapped from (E,pm,Rm) to (E,mu,Pphi;sigma) filepath_Q
+# Load orbit grid vectors and quantities to be mapped from (E,pm,Rm) to (E,Λ,Pϕ_n;σ) filepath_Q
 projVel = false # Assume by default that, if orbit weight functions, the orbit weight functions are not analytical
 Q_dict = Dict() # A dictionary containing all the quantities to be mapped
 Q_message = "" # A message that will be printed informing the user of the quantitie(s) to be mapped
