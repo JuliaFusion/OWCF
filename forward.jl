@@ -310,7 +310,7 @@ end
 
 """
 forward_calc(viewing_cone::ViewingCone, o_E::Vector{Float64}, o_p::Vector{Float64}, o_R::Vector{Float64}, o_z::Vector{Float64}, o_w::Vector{Float64}, Ed_bin_centers::Vector{Float64}, o_B::Matrix{Float64}; 
-            reaction::String="T(D,n)4He-GS", bulk_dens::Union{Nothing,Vector{Float64}}=1.0e19)
+            reaction::String="T(D,n)4He-GS", bulk_dens::Vector{Float64}=1.0e19)
 
 For the input (E,p,R,z) points and weights (please see inputs explanation below), calculate expected diagnostic spectrum for 1- and 2-step fusion reactions using the analytic equations obtained when making the 
 beam-target approximation. Please see [https://doi.org/10.1088/1741-4326/adc1df] and [https://doi.org/10.1088/1741-4326/ad9bc8]. Since the approach is straight forward (no Monte Carlo computations needed), a 
