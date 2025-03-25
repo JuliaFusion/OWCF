@@ -62,14 +62,14 @@ if ((split(filepath_equil,"."))[end] == "eqdsk") || ((split(filepath_equil,"."))
     eqdsk_array = split(filepath_equil,".")
     XX = (split(eqdsk_array[end-2],"-"))[end] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
     YYYY = eqdsk_array[end-1] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
-    timepoint = (timepoint == nothing ? XX*","*YYYY : timepoint) # Format XX,YYYY to avoid "." when including in filename of saved output
+    timepoint = (isnothing(timepoint) ? XX*","*YYYY : timepoint) # Format XX,YYYY to avoid "." when including in filename of saved output
 else # Otherwise, assume magnetic equilibrium is a saved .jld2 file
     myfile = jldopen(filepath_equil,false,false,false,IOStream)
     M = myfile["S"]
     wall = myfile["wall"]
     close(myfile)
     jdotb = (M.sigma_B0)*(M.sigma_Ip)
-    timepoint = (timepoint == nothing ? "00,0000" : timepoint)
+    timepoint = (isnothing(timepoint) ? "00,0000" : timepoint)
 end
 
 filepath_W_array = split(filepath_W,"_")
@@ -78,7 +78,7 @@ if (time_string[1]=='a') && (time_string[2]=='t') && (time_string[end]=='s')
     # Correct format identified. Superseeds user input and/or timepoint found via equilibrium file
     timepoint = time_string[3:end-1] # First to elements are "at" and last element is "s"
 else
-    timepoint = (timepoint == nothing ? "00,0000" : timepoint)
+    timepoint = (isnothing(timepoint) ? "00,0000" : timepoint)
 end
 
 ## ------
@@ -104,6 +104,9 @@ elseif haskey(myfile,"Ed_array")
 else
     error("orbWeights_2Dto4D did not recognize known diagnostic data array type in provide 'filepath_W'. Please re-try another file.")
 end
+if haskey(myfile,"Ed_array_units")
+    Ed_array_units = myfile["Ed_array_units"]
+end
 if haskey(myfile,"reaction")
     reaction_full = myfile["reaction"]
 end
@@ -113,6 +116,9 @@ end
 projVel = false
 if haskey(myfile,"projVel")
     projVel = true
+end
+if haskey(myfile,"filepath_thermal_distr")
+    filepath_thermal_distr = myfile["filepath_thermal_distr"]
 end
 close(myfile)
 
@@ -255,19 +261,25 @@ while isfile(filepath_output*".jld2") # To take care of not overwriting files. A
 end
 global filepath_output = filepath_output*".jld2"
 myfile = jldopen(filepath_output,true,true,false,IOStream)
-write(myfile, "W", W4D)
-write(myfile, "E_array", E_array)
-write(myfile, "pm_array", pm_array)
-write(myfile, "Rm_array", Rm_array)
-write(myfile, "Ed_array", Ed_array[Edi_array]) # Save only diagnostic energy bins that have been used
+write(myfile,"W",W4D)
+write(myfile,"E_array",E_array)
+write(myfile,"pm_array",pm_array)
+write(myfile,"Rm_array",Rm_array)
+write(myfile,"Ed_array",Ed_array[Edi_array]) # Save only diagnostic energy bins that have been used
+if (@isdefined Ed_array_units)
+    write(myfile,"Ed_array_units",Ed_array_units)
+end
 if (@isdefined reaction)
-    write(myfile, "reaction", reaction)
+    write(myfile,"reaction",reaction)
 end
 if (@isdefined reaction_full)
-    write(myfile, "reaction_full", reaction_full)
+    write(myfile,"reaction_full",reaction_full)
 end
 if projVel
     write(myfile, "projVel", projVel)
+end
+if (@isdefined filepath_thermal_distr)
+    write(myfile,"filepath_thermal_distr",filepath_thermal_distr)
 end
 close(myfile)
 println("Done!")

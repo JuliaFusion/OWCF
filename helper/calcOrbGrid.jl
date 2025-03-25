@@ -27,7 +27,7 @@
 # Please note, in Julia, a Vector{T} type is the same type as Array{T,1}. That is, they are
 # equivalent. Vector{T} is an alias for Array{T,1}, where T can be any type.
 
-# Script written by Henrik Järleblad. Last maintained 2022-09-09.
+# Script written by Henrik Järleblad. Last maintained 2025-01-24.
 ################################################################################################
 
 ## ---------------------------------------------------------------------------------------------
@@ -42,13 +42,13 @@ verbose && println("Loading Julia packages... ")
     using JLD2 # To write/open .jld2 files (Julia files, basically)
     using FileIO # To write/open files in general
     include(folderpath_OWCF*"misc/species_func.jl") # To convert species labels to particle mass
-    include(folderpath_OWCF*"extra/dependencies.jl") # To be able to use orbit_grid() without progress bar
 end
 
 ## ---------------------------------------------------------------------------------------------
 # Loading tokamak equilibrium
 verbose && println("Loading tokamak equilibrium... ")
-if ((split(filepath_equil,"."))[end] == "eqdsk") || ((split(filepath_equil,"."))[end] == "geqdsk")
+try
+    global M; global wall; global jdotb; global timepoint
     M, wall = read_geqdsk(filepath_equil,clockwise_phi=false) # Assume counter-clockwise phi-direction
     jdotb = M.sigma # The sign of the dot product between the plasma current and the magnetic field
 
@@ -57,7 +57,8 @@ if ((split(filepath_equil,"."))[end] == "eqdsk") || ((split(filepath_equil,"."))
     XX = (split(eqdsk_array[end-2],"-"))[end] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
     YYYY = eqdsk_array[end-1] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
     timepoint = XX*","*YYYY # Format XX,YYYY to avoid "." when including in filename of saved output
-else # Otherwise, assume magnetic equilibrium is a saved .jld2 file
+catch # Otherwise, assume magnetic equilibrium is a saved .jld2 file
+    global M; global wall; global jdotb; global timepoint
     myfile = jldopen(filepath_equil,false,false,false,IOStream)
     M = myfile["S"]
     wall = myfile["wall"]
@@ -140,7 +141,7 @@ println("")
 println("Please remove previously saved files with the same file name (if any) prior to script completion. Quickly!")
 println("")
 println("If you would like to change any settings, please edit the start_calcOG_template.jl file or similar.")
-println("Written by Henrik Järleblad. Last maintained 2022-09-09.")
+println("Written by Henrik Järleblad. Last maintained 2025-01-24.")
 println("------------------------------------------------------------------------------------------------------------------")
 println("")
 
@@ -148,7 +149,7 @@ println("")
 # Calculating orbit grid
 verbose && debug && println("")
 verbose && println("Calculating the orbit grid... ")
-og_orbs, og = orbit_grid(M, visualizeProgress, E_array, pm_array, Rm_array; amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species), wall=wall, extra_kw_args...)
+og_orbs, og = OrbitTomography.orbit_grid(M, E_array, pm_array, Rm_array; amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species), wall=wall, extra_kw_args...)
 
 verbose && println("Success! Saving to file... ")
 global filepath_output_orig = folderpath_o*"orbGrid_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*FI_species*"_$(length(E_array))x$(length(pm_array))x$(length(Rm_array))"

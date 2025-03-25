@@ -14,7 +14,7 @@
 #
 # τ_ϕ and τ_θ are related to ω_ϕ and ω_θ as ω_ϕ = 2*pi/τ_ϕ and ω_θ = 2*pi/τ_θ, respectively.
 #
-# The resonance between mode and fast ion is then plotted in (E,pm,Rm) (or, via the press of a button in the app, in (E,μ,Pϕ;σ))
+# The resonance between mode and fast ion is then plotted in (E,pm,Rm) (or, via the press of a button in the app, in (E,Λ,Pϕ_n;σ))
 # and is visualized as a heatmap where the values (A) of the figure colorbar are computed according to the equation
 #
 # A = - log10(|ω - n ω_ϕ - m ω_θ - ω_rot|)
@@ -26,7 +26,7 @@
 # Such a file can be easily obtained by using the calcTopoMap.jl OWCF script.
 
 #### Inputs (units given when defined in the script):
-# enable_COM - If true, (E,pm,Rm) -> (E,mu,Pphi;sigma) can be performed via a toggle button. Set to false to minimize computation time - Bool
+# enable_COM - If true, (E,pm,Rm) -> (E,Λ,Pϕ_n;σ) can be performed via a toggle button. Set to false to minimize computation time - Bool
 # folderpath_OWCF - The path to the OWCF folder on your computer. Needed for correct loading - String
 # filepath_equil - The path to the file with the tokamak magnetic equilibrium and geometry - String
 # filepath_tm - The path to the .jld2-file containing the topological map (and toroidal and poloidal transit times) - String
@@ -78,7 +78,7 @@
 #
 # Plots.heatmap(Rm_array,pm_array,resonance,legend=false,xlabel="Rm [m]", ylabel="pm", title="E: $(round(E,digits=3)) keV", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]))
 
-# Script written by Henrik Järleblad. Last maintained 2024-06-25.
+# Script written by Henrik Järleblad. Last maintained 2025-01-23.
 ########################################################################################################
 
 #########################################################################################
@@ -99,7 +99,7 @@ using JLD2
 # Inputs
 enable_COM = false # Set to false for large grids (>10x100x100 in (E,pm,Rm)). The computation time simply becomes too large. Or...
 if enable_COM
-    filepath_tm_COM = "" # ...please specify an output of the os2com.jl script (which contains the key "topoMap")(and possibly "polTransTimes" and "torTransTimes"). Leave unspecified if orbitsWebApp.jl should compute the (E,pm,Rm) -> (E,mu,Pphi;sigma) map itself.
+    filepath_tm_COM = "" # ...please specify an output of the os2com.jl script (which contains the key "topoMap")(and possibly "polTransTimes" and "torTransTimes"). Leave unspecified if orbitsWebApp.jl should compute the (E,pm,Rm) -> (E,Λ,Pϕ_n;σ) map itself.
 end
 filepath_equil = ""  # Example JET shot 96100 at 13s (53 minus 40): g96100/g96100_0-53.0012.eqdsk" #
 filepath_tm = ""
@@ -170,44 +170,44 @@ end
 close(myfile)
 
 #########################################################################################
-# Mapping topological map to (E,μ, Pϕ; σ)
+# Mapping topological map to (E,Λ,Pϕ_n;σ)
 if enable_COM && !(isfile(filepath_tm_COM))
-    verbose && println(">>>>>> Mapping topological map from (E,pm,Rm) to (E,μ,Pϕ;σ) <<<<<<... ")
-    topoMap_COM, E_array, μ_matrix, Pϕ_matrix = os2COM(M, topoMap, vec(E_array), pm_array, Rm_array, FI_species; nμ=2*length(pm_array), nPϕ=2*length(Rm_array), isTopoMap=true, verbose=verbose)
+    verbose && println(">>>>>> Mapping topological map from (E,pm,Rm) to (E,Λ,Pϕ_n;σ) <<<<<<... ")
+    topoMap_COM, E_array, Λ_array, Pϕ_n_array = os2COM(M, topoMap, Vector(E_array), pm_array, Rm_array, FI_species; nl=2*length(pm_array), npp=2*length(Rm_array), isTopoMap=true, verbose=verbose)
 elseif enable_COM && isfile(filepath_tm_COM)
-    verbose && println("Loading topological map in (E,mu,Pphi;sigma) coordinates from filepath_tm_COM... ")
+    verbose && println("Loading topological map in (E,Λ,Pϕ_n;σ) coordinates from filepath_tm_COM... ")
     myfile = jldopen(filepath_tm_COM,false,false,false,IOStream)
     topoMap_COM = myfile["topoMap"]
     E_array_COM = myfile["E_array"]
-    μ_matrix = myfile["mu_matrix_topoMap"]
-    Pϕ_matrix = myfile["Pphi_matrix_topoMap"]
+    Λ_array = myfile["Lambda_array_topoMap"]
+    Pϕ_n_array = myfile["Pphi_n_array_topoMap"]
     close(myfile)
     if !(E_array==E_array_COM)
-        error("Energy grid points in (E,pm,Rm) do not match energy grid points in (E,mu,Pphi;sigma). Please correct and re-try.")
+        error("Energy grid points in (E,pm,Rm) do not match energy grid points in (E,Λ,Pϕ_n;σ). Please correct and re-try.")
     end
 else
-    verbose && println("Switching (E,pm,Rm) -> (E,mu,Pphi;sigma) will not be possible.")
+    verbose && println("Switching (E,pm,Rm) -> (E,Λ,Pϕ_n;σ) will not be possible.")
 end
 
 #########################################################################################
-# Mapping maps of the poloidal and toroidal transit times to (E,μ, Pϕ; σ), if available
+# Mapping maps of the poloidal and toroidal transit times to (E,Λ,Pϕ_n;σ), if available
 if enable_COM && !(isfile(filepath_tm_COM))
-    verbose && println(">>>>>> Mapping poloidal transit times from (E,pm,Rm) to (E,μ,Pϕ;σ) <<<<<<... ")
+    verbose && println(">>>>>> Mapping poloidal transit times from (E,pm,Rm) to (E,Λ,Pϕ_n;σ) <<<<<<... ")
     valid_orbit_indices = findall(x-> (x!=9.0) && (x!=7.0), topoMap) # 9 and 7 are the integers representing invalid and lost orbits in the calcTopoMap.jl script, respectively. We don't want them.
-    polTransTimes_COM, E_array_pol, μ_matrix_pol, Pϕ_matrix_pol = os2COM(M, valid_orbit_indices, polTransTimes, E_array, pm_array, Rm_array, FI_species; nμ=2*length(pm_array), nPϕ=2*length(Rm_array), verbose=verbose)
-    verbose && println(">>>>>> Mapping toroidal transit times from (E,pm,Rm) to (E,μ,Pϕ;σ) <<<<<<... ")
-    torTransTimes_COM, E_array_tor, μ_matrix_tor, Pϕ_matrix_tor = os2COM(M, valid_orbit_indices, torTransTimes, E_array, pm_array, Rm_array, FI_species; nμ=2*length(pm_array), nPϕ=2*length(Rm_array), verbose=verbose)
+    polTransTimes_COM, E_array_pol, Λ_array_pol, Pϕ_n_array_pol = os2COM(M, valid_orbit_indices, polTransTimes, E_array, pm_array, Rm_array, FI_species; nl=2*length(pm_array), npp=2*length(Rm_array), verbose=verbose)
+    verbose && println(">>>>>> Mapping toroidal transit times from (E,pm,Rm) to (E,Λ,Pϕ_n;σ) <<<<<<... ")
+    torTransTimes_COM, E_array_tor, Λ_array_tor, Pϕ_n_array_tor = os2COM(M, valid_orbit_indices, torTransTimes, E_array, pm_array, Rm_array, FI_species; nl=2*length(pm_array), npp=2*length(Rm_array), verbose=verbose)
 elseif enable_COM && isfile(filepath_tm_COM)
-    verbose && println("Loading maps of poloidal and toroidal transit times in (E,mu,Pphi;sigma) coordinates from filepath_tm_COM... ")
+    verbose && println("Loading maps of poloidal and toroidal transit times in (E,Λ,Pϕ_n;σ) coordinates from filepath_tm_COM... ")
     myfile = jldopen(filepath_tm_COM,false,false,false,IOStream)
     polTransTimes_COM = myfile["polTransTimes"]
     E_array_pol = myfile["E_array"] # Very silly
-    μ_matrix_pol = myfile["mu_matrix_polTransTimes"]
-    Pϕ_matrix_pol = myfile["Pphi_matrix_polTransTimes"]
+    Λ_array_pol = myfile["Lambda_array_polTransTimes"]
+    Pϕ_n_array_pol = myfile["Pphi_n_array_polTransTimes"]
     torTransTimes_COM = myfile["torTransTimes"]
     E_array_tor = myfile["E_array"] # Even more silly
-    μ_matrix_tor = myfile["mu_matrix_torTransTimes"]
-    Pϕ_matrix_tor = myfile["Pphi_matrix_torTransTimes"]
+    Λ_array_tor = myfile["Lambda_array_torTransTimes"]
+    Pϕ_n_array_tor = myfile["Pphi_n_array_torTransTimes"]
     close(myfile)
 else
 end
@@ -215,7 +215,7 @@ end
 #########################################################################################
 # Safety-checking
 if enable_COM
-    verbose && println("Checking that the (E,pm,Rm) -> (E,μ,Pϕ;σ) mapping yielded roughly the same μ- and Pϕ-grid points for topoMap, polTransTimes and torTransTimes... ")
+    verbose && println("Checking that the (E,pm,Rm) -> (E,Λ,Pϕ_n;σ) mapping yielded roughly the same E-, Λ- and Pϕ_n-grid points for topoMap, polTransTimes and torTransTimes... ")
     if !isapprox(E_array, E_array_pol)
         error("Energy grid points of topological map were not (roughly) equal to those of the poloidal transit time map. This should be impossible. orbitsWebApp.jl needs to be corrected manually.")
     end
@@ -224,12 +224,12 @@ if enable_COM
     end
 end
 if enable_COM
-    verbose && println("Checking that (E,μ,Pϕ;σ) grid points coincide for τ_ϕ and τ_θ... ")
-    if !isapprox(μ_matrix_pol,μ_matrix_tor)
-        error("μ grid points did not approximately coincide for τ_ϕ and τ_θ. Something has gone terribly wrong. Please contact henrikj@dtu.dk.")
+    verbose && println("Checking that (E,Λ,Pϕ_n;σ) grid points coincide for τ_ϕ and τ_θ... ")
+    if !isapprox(Λ_array_pol,Λ_array_tor)
+        error("Λ grid points did not approximately coincide for τ_ϕ and τ_θ. Something has gone terribly wrong. Please contact henrikj@dtu.dk or anvalen@dtu.dk.")
     end
-    if !isapprox(Pϕ_matrix_pol,Pϕ_matrix_tor)
-        error("μ grid points did not approximately coincide for τ_ϕ and τ_θ. Something has gone terribly wrong. Please contact henrikj@dtu.dk.")
+    if !isapprox(Pϕ_n_array_pol,Pϕ_n_array_tor)
+        error("Pϕ_n grid points did not approximately coincide for τ_ϕ and τ_θ. Something has gone terribly wrong. Please contact henrikj@dtu.dk or anvalen@dtu.dk.")
     end
 end
 
@@ -242,7 +242,7 @@ end
 if enable_COM
     if !(sum(isnan.(topoMap_COM))==0)
         topoMap_COM = map(x-> isnan(x) ? 6.0 : x, topoMap_COM)
-        @warn "Topological map in (E,μ,Pϕ;σ) had NaNs in it! orbitsWebApp.jl automatically set them to 6.0 (incomplete)."
+        @warn "Topological map in (E,Λ,Pϕ_n;σ) had NaNs in it! orbitsWebApp.jl automatically set them to 6.0 (incomplete)."
     end
 end
 #if !(sum(isnan.(polTransTimes))==0)
@@ -256,11 +256,11 @@ end
 #if enable_COM
 #    if !(sum(isnan.(polTransTimes_COM))==0)
 #        polTransTimes_COM = map(x-> isnan(x) ? 0.0 : x, polTransTimes_COM)
-#        @warn "Map of poloidal transit times in (E,μ,Pϕ;σ) had NaNs in it! orbitsWebApp.jl automatically set them to 0.0."
+#        @warn "Map of poloidal transit times in (E,Λ,Pϕ_n;σ) had NaNs in it! orbitsWebApp.jl automatically set them to 0.0."
 #    end
 #    if !(sum(isnan.(torTransTimes_COM))==0)
 #        torTransTimes_COM = map(x-> isnan(x) ? 0.0 : x, torTransTimes_COM)
-#        @warn "Map of toroidal transit times in (E,μ,Pϕ;σ) had NaNs in it! orbitsWebApp.jl automatically set them to 0.0."
+#        @warn "Map of toroidal transit times in (E,Λ,Pϕ_n;σ) had NaNs in it! orbitsWebApp.jl automatically set them to 0.0."
 #    end
 #end
 
@@ -272,10 +272,11 @@ verbose && println("Inverting poloidal and toroidal transit time data, to comput
 bad_coords = findall(x-> (x==9.0 || x==6.0 || x==7.0), topoMap) # Invalid, incomplete or lost orbits
 enable_COM && (bad_coords_COM = findall(x-> (x==9.0 || x==6.0 || x==7.0), topoMap_COM))
 
-polTransTimes[bad_coords] = NaN
-torTransTimes[bad_coords] = NaN
-enable_COM && (polTransTimes_COM[bad_coords_COM] = NaN)
-enable_COM && (torTransTimes_COM[bad_coords_COM] = NaN)
+# Taking care of bad coordinates for the poloidal and toroidal transit times. NaNs will lead to those pixels not being plotted
+polTransTimes[bad_coords] .= NaN
+torTransTimes[bad_coords] .= NaN
+enable_COM && (polTransTimes_COM[bad_coords_COM] .= NaN)
+enable_COM && (torTransTimes_COM[bad_coords_COM] .= NaN)
 
 ω_θ = map(x-> !isnan(x) ? 2*pi/x : x, polTransTimes)
 ω_ϕ = map(x-> !isnan(x) ? 2*pi/x : x, torTransTimes)
@@ -290,6 +291,18 @@ inds = CartesianIndices((length(flux_r),length(flux_z)))
 psi_rz = [M(flux_r[ind[1]], flux_z[ind[2]]) for ind in inds]
 psi_mag, psi_bdry = psi_limits(M)
 
+# Compute necessary quantities for COM tool
+if enable_COM
+    verbose && println("Computing necessary quantities for constants-of-motion option... ")
+    B0 = norm(Equilibrium.Bfield(M,magnetic_axis(M)...)) # Tesla
+    q = getSpeciesCharge(FI_species) # Coulomb
+    if psi_bdry==0
+        @warn "The magnetic flux at the last closed flux surface (LCFS) is found to be 0 for the magnetic equilibrium in $(filepath_equil). Pϕ_n=Pϕ/(q*|Ψ_w|) where Ψ_w=Ψ(mag. axis) is assumed instead of Ψ_w=Ψ(LCFS)."
+        Ψ_w_norm = abs(psi_axis)
+    else
+        Ψ_w_norm = abs(psi_bdry)
+    end
+end
 #########################################################################################
 ## --------------------------------------------------------------------------
 # The web application
@@ -309,14 +322,14 @@ verbose && println("--- You can access the modeAnalysisWebApp via an internet we
 verbose && println("--- When 'Task (runnable)...' has appeared, please visit the website localhost:$(port) ---")
 verbose && println("--- Remember: It might take a minute or two to load the webpage. Please be patient. ---")
 function app(req) # Start the Interact.jl app
-    @manipulate for E=E_array, pm=pm_array, Rm=Rm_array, ω=ω_init, ω_rot=ω_rot_init, n=n_init, m=m_init, phase_space = Dict("(E,μ,Pϕ;σ)" => :COM, "(E,pm,Rm)" => :OS), tokamak_wall = Dict("on" => true, "off" => false), show_coordinate = Dict("on" => true, "off" => false), save_plots = Dict("on" => true, "off" => false)
+    @manipulate for E=E_array, pm=pm_array, Rm=Rm_array, ω=ω_init, ω_rot=ω_rot_init, n=n_init, m=m_init, phase_space = Dict("(E,Λ,Pϕ_n;σ)" => :COM, "(E,pm,Rm)" => :OS), tokamak_wall = Dict("on" => true, "off" => false), show_coordinate = Dict("on" => true, "off" => false), save_plots = Dict("on" => true, "off" => false)
 
         EPRc = EPRCoordinate(M, E, pm, Rm; amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species))
         o = get_orbit(M,EPRc; wall=wall, extra_kw_args...)
         if (phase_space==:COM) && enable_COM
             myHc = HamiltonianCoordinate(M, EPRc)
-            μ = myHc.mu
-            Pϕ = myHc.p_phi
+            μ = myHc.mu; Λ = μ*B0/E_joule
+            Pϕ = myHc.p_phi; Pϕ_n = Pϕ/(q*Ψ_w_norm)
         end
         
         topview_o_x = cos.(o.path.phi).*(o.path.r)
@@ -329,7 +342,7 @@ function app(req) # Start the Interact.jl app
             orb_linestyle = :dash
         elseif o.class == :lost
             orb_color = :brown
-        elseif o.class == :incomplete # If this happens, you are scr*w*ed. Because it will likely take forever to calculate.
+        elseif o.class == :incomplete # If this happens, you are scr*w*d. Because it will likely take forever to calculate.
             orb_color = :yellow
         elseif o.class == :trapped
             orb_color = :blue
@@ -355,7 +368,7 @@ function app(req) # Start the Interact.jl app
             if (phase_space==:OS) || !enable_COM
                 png(plt_top, "plt_top_$(round(E, digits=2))_$(round(o.coordinate.pitch, digits=2))_$(round(o.coordinate.r,digits=2))")
             else
-                png(plt_top, "plt_top_$(round(E, digits=2))_$(round(μ, sigdigits=2))_$(round(Pϕ,sigdigits=2))")
+                png(plt_top, "plt_top_$(round(E, digits=2))_$(round(Λ, sigdigits=2))_$(round(Pϕ_n,sigdigits=2))")
             end
         end
 
@@ -370,7 +383,7 @@ function app(req) # Start the Interact.jl app
         if (phase_space==:OS) || !enable_COM
             plt_crs = Plots.plot!(title="E: $(round(E,digits=2)) keV  pm: $(round(o.coordinate.pitch, digits=2))  Rm: $(round(o.coordinate.r,digits=2))")
         else # phase_space==:COM (OS = orbit space, COM = constants-of-motion)
-            plt_crs = Plots.plot!(title="E: $(round(E,digits=2)) keV  μ: $(round(μ, sigdigits=2))  Pϕ: $(round(Pϕ,sigdigits=2))")
+            plt_crs = Plots.plot!(title="E: $(round(E,digits=2)) keV  Λ: $(round(Λ, sigdigits=2))  Pϕ_n: $(round(Pϕ_n,sigdigits=2))")
         end
         plt_crs = Plots.scatter!([magnetic_axis(M)[1]],[magnetic_axis(M)[2]],label="Magnetic axis", mc=:gray, aspect_ratio=:equal, xlabel="R [m]", ylabel=" z [m]")
         plt_crs = Plots.scatter!([o.coordinate.r],[o.coordinate.z], mc=orb_color, label="(Rm,zm)")
@@ -378,7 +391,7 @@ function app(req) # Start the Interact.jl app
             if (phase_space==:OS) || !enable_COM
                 png(plt_crs, "plt_crs_$(round(E, digits=2))_$(round(o.coordinate.pitch, digits=2))_$(round(o.coordinate.r,digits=2))")
             else
-                png(plt_crs, "plt_crs_$(round(E, digits=2))_$(round(μ, sigdigits=2))_$(round(Pϕ,sigdigits=2))")
+                png(plt_crs, "plt_crs_$(round(E, digits=2))_$(round(Λ, sigdigits=2))_$(round(Pϕ_n,sigdigits=2))")
             end
         end
 
@@ -392,20 +405,20 @@ function app(req) # Start the Interact.jl app
                 plt_topo = Plots.plot!(maximum(wall.r).*ones(length(pm_array)), pm_array, color=:black, linewidth=2)
             end
         else
-            μ_matrix_ext = vcat(μ_matrix[Int64(Eci),1]-(diff(μ_matrix[Int64(Eci),:]))[1],μ_matrix[Int64(Eci),:]) # Extend μ_matrix one row below
+            Λ_array_ext = vcat(Λ_array[1]-(diff(Λ_array))[1],Λ_array) # Extend Λ_array one row below
             if pm<0.0
-                topoMap_COM_ext = vcat(vcat([1,2,3,4,5,6,7,8,9],ones(length(Pϕ_matrix[Int64(Eci),:])-9))', topoMap_COM[Int64(Eci),:,:,1]) # Extend topoMap_COM one row below, to ensure correct colormapping for orbit types (please see calcTopoMap.jl for more info). The y-limits (ylims) will make sure the extra row is not visible in the plot
-                plt_topo = Plots.heatmap(Pϕ_matrix[Int64(Eci),:],μ_matrix_ext,topoMap_COM_ext,color=:Set1_9,legend=false,xlabel="Pϕ", ylabel="μ", title="E: $(round(E_array[Int64(Eci)],digits=3)) keV", ylims=extrema(μ_matrix[Int64(Eci),:]), xlims=extrema(Pϕ_matrix[Int64(Eci),:]))
+                topoMap_COM_ext = vcat(vcat([1,2,3,4,5,6,7,8,9],ones(length(Pϕ_n_array)-9))', topoMap_COM[Int64(Eci),:,:,1]) # Extend topoMap_COM one row below, to ensure correct colormapping for orbit types (please see calcTopoMap.jl for more info). The y-limits (ylims) will make sure the extra row is not visible in the plot
+                plt_topo = Plots.heatmap(Pϕ_n_array,Λ_array_ext,topoMap_COM_ext,color=:Set1_9,legend=false,xlabel="Pϕ_n", ylabel="Λ", title="E: $(round(E_array[Int64(Eci)],digits=3)) keV", ylims=extrema(Λ_array), xlims=extrema(Pϕ_n_array))
             else
-                topoMap_COM_ext = vcat(vcat([1,2,3,4,5,6,7,8,9],ones(length(Pϕ_matrix[Int64(Eci),:])-9))', topoMap_COM[Int64(Eci),:,:,2]) # Extend topoMap_COM one row below, to ensure correct colormapping for orbit types (please see calcTopoMap.jl for more info). The y-limits (ylims) will make sure the extra row is not visible in the plot
-                plt_topo = Plots.heatmap(Pϕ_matrix[Int64(Eci),:],μ_matrix_ext,topoMap_COM_ext,color=:Set1_9,legend=false,xlabel="Pϕ", ylabel="μ", title="E: $(round(E_array[Int64(Eci)],digits=3)) keV", ylims=extrema(μ_matrix[Int64(Eci),:]), xlims=extrema(Pϕ_matrix[Int64(Eci),:]))
+                topoMap_COM_ext = vcat(vcat([1,2,3,4,5,6,7,8,9],ones(length(Pϕ_n_array)-9))', topoMap_COM[Int64(Eci),:,:,2]) # Extend topoMap_COM one row below, to ensure correct colormapping for orbit types (please see calcTopoMap.jl for more info). The y-limits (ylims) will make sure the extra row is not visible in the plot
+                plt_topo = Plots.heatmap(Pϕ_n_array,Λ_array_ext,topoMap_COM_ext,color=:Set1_9,legend=false,xlabel="Pϕ_n", ylabel="Λ", title="E: $(round(E_array[Int64(Eci)],digits=3)) keV", ylims=extrema(Λ_array), xlims=extrema(Pϕ_n_array))
             end
         end
         if show_coordinate
             if (phase_space==:OS) || !enable_COM
                 plt_topo = Plots.scatter!([Rm],[pm],markershape=:circle,mc=orb_color,legend=false,markersize=6)
             else
-                plt_topo = Plots.scatter!([Pϕ],[μ],markershape=:circle,mc=orb_color,legend=false,markersize=6)
+                plt_topo = Plots.scatter!([Pϕ_n],[Λ],markershape=:circle,mc=orb_color,legend=false,markersize=6)
             end
         end
         if save_plots
@@ -413,7 +426,7 @@ function app(req) # Start the Interact.jl app
             if (phase_space==:OS) || !enable_COM
                 png(plt_topo, "plt_topo_$(round(E, digits=2))_$(round(o.coordinate.pitch, digits=2))_$(round(o.coordinate.r,digits=2))")
             else
-                png(plt_topo, "plt_topo_$(round(E, digits=2))_$(round(μ, sigdigits=2))_$(round(Pϕ,sigdigits=2))")
+                png(plt_topo, "plt_topo_$(round(E, digits=2))_$(round(Λ, sigdigits=2))_$(round(Pϕ_n,sigdigits=2))")
             end
         end
 
@@ -424,21 +437,21 @@ function app(req) # Start the Interact.jl app
             resonance = -log10.(abs.((ω*1000) .*ones(npm,nRm) - n .*ω_ϕ[Eci,:,:] - m .*ω_θ[Eci,:,:] - (ω_rot*1000) .*ones(npm,nRm)))
             plt_res = Plots.heatmap(Rm_array,pm_array,resonance,xlabel="Rm [m]", ylabel="pm", title="E: $(round(E,digits=3)) keV", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), ylims=extrema(pm_array), xlims=extrema(Rm_array))
         else
-            nμ = size(μ_matrix_tor,2) # tor or pol should not matter
-            nPϕ = size(Pϕ_matrix_pol,2) # tor or pol should not matter
+            nl = length(Λ_array_tor) # tor or pol should not matter
+            npp = length(Pϕ_n_array_pol) # tor or pol should not matter
             if pm<0.0
-                resonance = -log10.(abs.((ω*1000) .*ones(nμ,nPϕ) - n .*ω_ϕ_COM[Int64(Eci),:,:,1] - m .*ω_θ_COM[Int64(Eci),:,:,1] - (ω_rot*1000) .*ones(nμ,nPϕ)))
+                resonance = -log10.(abs.((ω*1000) .*ones(nl,npp) - n .*ω_ϕ_COM[Int64(Eci),:,:,1] - m .*ω_θ_COM[Int64(Eci),:,:,1] - (ω_rot*1000) .*ones(nl,npp)))
             else
-                resonance = -log10.(abs.((ω*1000) .*ones(nμ,nPϕ) - n .*ω_ϕ_COM[Int64(Eci),:,:,2] - m .*ω_θ_COM[Int64(Eci),:,:,2] - (ω_rot*1000) .*ones(nμ,nPϕ)))
+                resonance = -log10.(abs.((ω*1000) .*ones(nl,npp) - n .*ω_ϕ_COM[Int64(Eci),:,:,2] - m .*ω_θ_COM[Int64(Eci),:,:,2] - (ω_rot*1000) .*ones(nl,npp)))
             end
 
-            plt_res = Plots.heatmap(Pϕ_matrix_tor[Int64(Eci),:],μ_matrix_tor[Int64(Eci),:],resonance,legend=false,xlabel="Pϕ", ylabel="μ", title="E: $(round(E,digits=3)) keV", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), ylims=extrema(μ_matrix_tor[Int64(Eci),:]), xlims=extrema(Pϕ_matrix_tor[Int64(Eci),:]))
+            plt_res = Plots.heatmap(Pϕ_n_array_tor[Int64(Eci),:],Λ_array_tor[Int64(Eci),:],resonance,legend=false,xlabel="Pϕ_n", ylabel="Λ", title="E: $(round(E,digits=3)) keV", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), ylims=extrema(Λ_array_tor), xlims=extrema(Pϕ_n_array_tor))
         end
         if show_coordinate
             if (phase_space==:OS) || !enable_COM
                 plt_res = Plots.scatter!([Rm],[pm],markershape=:circle,mc=orb_color,legend=false,markersize=6)
             else
-                plt_res = Plots.scatter!([Pϕ],[μ],markershape=:circle,mc=orb_color,legend=false,markersize=6)
+                plt_res = Plots.scatter!([Pϕ_n],[Λ],markershape=:circle,mc=orb_color,legend=false,markersize=6)
             end
         end
         if save_plots
@@ -446,7 +459,7 @@ function app(req) # Start the Interact.jl app
             if (phase_space==:OS) || !enable_COM
                 png(plt_res, "plt_res_$(round(E, digits=2))_$(round(o.coordinate.pitch, digits=2))_$(round(o.coordinate.r,digits=2))")
             else
-                png(plt_res, "plt_res_$(round(E, digits=2))_$(round(μ, sigdigits=2))_$(round(Pϕ,sigdigits=2))")
+                png(plt_res, "plt_res_$(round(E, digits=2))_$(round(Λ, sigdigits=2))_$(round(Pϕ_n,sigdigits=2))")
             end
         end
 

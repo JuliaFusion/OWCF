@@ -22,18 +22,20 @@
 #                                the instrumental response of the diagnostic. If paths to three .txt-files are specified, they should 
 #                                be specified together in a vector of three strings. That is,
 #                                
-#                                instrumental_response_filepath = ["/path/to/reponse/matrix.txt","/path/to/particle/inputs.txt","/path/to/diagnostic/outputs.txt"]
+#                                instrumental_response_filepath = ["/path/to/response/matrix.txt","/path/to/particle/inputs.txt","/path/to/diagnostic/outputs.txt"]
 #
-#                                The first string is the filepath to the response matrix. The size of the matrix is ni x no, where ni is the number of diagnostic input 
-#                                grid points and no is the number of output (actually being measured) grid points. The second string is the filepath to the input grid 
+#                                The first string is the filepath to the response matrix. The size of the matrix is 'ni x no', where 'ni' is the number of diagnostic input 
+#                                grid points and 'no' is the number of output (actually being measured) grid points. The second string is the filepath to the input grid 
 #                                points (vector). The third string is the filepath to the output grid points (vector). So, for example, for a proton recoil diagnostic, 
-#                                the input could be incoming neutron energies and the output could be proton impact positions. If, instead, the path to one .jld2 file 
-#                                is specified, it should be specified as 
+#                                the input should be incoming neutron energies (keV) and the output could be proton impact positions (e.g. cm). If, instead, the path to one 
+#                                .jld2 file is specified, it should be specified as 
 #
 #                                instrumental_response_filepath = "/path/to/diagnostic/response/data.jld2"
 #
-#                                The keys of the .jld2-file should then be "response_matrix", "input" and "output". Input data should be a vector of length ni, output 
-#                                data should be a vector of length no and response_matrix should be a matrix of size ni x no.
+#                                The keys of the .jld2-file should then be "response_matrix", "input" and "output". Input data should be a vector of length 'ni', output 
+#                                data should be a vector of length 'no' and response_matrix should be a matrix of size 'ni x no'.
+# instrumental_response_output_units - The units of measurement of the output grid points specified via the output in the 'instrumental_response_filepath' input variable.
+#                                      Please see the OWCF/misc/convert_units.jl script for a list of all acceptable units in the OWCF - String
 # Ed_min - The lower boundary for the diagnostic energy grid (measurement grid) - Float64
 # Ed_max - The upper boundary for the diagnostic energy grid (measurement grid) - Float64
 # Ed_diff - The width of the diagnostic energy bins (PLEASE NOTE! THIS WILL INDIRECTLY DEFINE THE NUMBER OF DIAGNOSTIC ENERGY GRID POINTS.) - Float64
@@ -44,9 +46,11 @@
 # filepath_FI_cdf - Can be specified, if filepath_thermal_distr is a TRANSP .cdf shot file. See below for specifications - String
 # filepath_thermal_distr - The path to the thermal distribution file to extract thermal species data from. Must be TRANSP .cdf, .jld2 file format or "" - String
 # folderpath_o - The path to the folder where the results will be saved - String
+# flr_effects - If set to true, finite Larmor radius effects will be included in the weight function computations - Bool
 # iiimax - If specified to be greater than 1, several copies of weight functions will be calculated. For comparison. - Int64
 # inclPrideRockOrbs - If true, then counter-stagnation (pride-rock) orbits will be included. Otherwise, minimum(Rm) = magnetic axis by default - Bool
 # include2Dto4D - If true, then (in addition) the 2D orbit weight functions will be enflated to their 4D form (channels,nE,npm,nRm) and saved in the folderpath_o folder as well - Bool
+# n_gyro - The number of points by which to (randomly, uniform sampling) discretize the gyro-motion of the guiding-centre into - Int64
 # nE - The number of fast-ion energy grid points in orbit space - Int64
 # npm - The number of fast-ion pm grid points in orbit space - Int64
 # nRm - The number of fast-ion Rm grid points in orbit space - Int64
@@ -60,7 +64,14 @@
 # Rm_max - The upper boundary for the orbit-grid Rm values - Float64
 # timepoint - The timepoint of the tokamak shot for the magnetic equilibrium. Format XX,YYYY where XX are seconds and YYYY are decimals - String
 # thermal_dens_axis - The density of the thermal species distribution on axis, if filepath_thermal_distr is not specified - Float64
-# thermal_temp_axis - The temperature of the thermal species distribution on axis, if filepath_thermal_distr is not specified - Float64
+# thermal_profiles_type - If 'filepath_thermal_distr' has not been specified (""), choose between options for thermal temperature and density profiles. 
+#                         The options are: 
+#                           - :FLAT - The 'thermal_temp_axis' and 'thermal_dens_axis' will be the (constant) values for the thermal temperature and thermal 
+#                                     density across the entire plasma, respectively.
+#                           - :DEFAULT - The 'thermal_temp_axis' and 'thermal_dens_axis' will be the values for the thermal temperature and thermal density
+#                                        at the magnetic axis, and the OWCF default temperature and density profiles will be used. Please see the 
+#                                        OWCF/misc/temp_n_dens.jl function collection, as well as the OWCF/misc/default_temp_n_dens.png plot.
+#                         typeof(thermal_profiles_type) is a 'Symbol'.
 # verbose - If true, lots of information will be printed during execution - Bool
 # visualizeProgress - If false, progress bar will not be displayed during computations - Bool
 #
@@ -76,7 +87,7 @@
 #
 # PLEASE NOTE! The 'analytic' input variable cannot be set to true, if the 'reaction' input variable is specified on form (3).
 
-# Script written by Henrik Järleblad. Last maintained 2025-03-05.
+# Script written by Henrik Järleblad. Last maintained 2025-03-25.
 #################################################################################################################################################################
 
 ## First you have to set the system specifications
@@ -120,20 +131,23 @@ end
     diagnostic_filepath = "" # The filepath to the LINE21 (or OWCF/extra/createCustomLOS.jl output) file containing viewing cone data. Or, automatic sightlines include "TOFOR", "AB" and "".
     diagnostic_name = "" # For aesthetic purposes
     instrumental_response_filepath = "" # Should be the filepaths to three .txt-files or one .jld2-file. Otherwise, leave as ""
-    Ed_min = 0000.0 # keV (or m/s if 'reaction' input variable is specified on form (3))
-    Ed_max = 0000.0 # keV (or m/s if 'reaction' input variable is specified on form (3))
-    Ed_diff = 00.0 # keV (or m/s if 'reaction' input variable is specified on form (3))
+    instrumental_response_output_units = "" # Should be specified as described in OWCF/misc/convert_units.jl. If instrumental_response_filepath=="", leave as ""
+    Ed_min = 0000.0 # keV (or m/s if 'reaction' input variable is specified on form (3) (please see OWCF/misc/availReacts.jl for further explanation))
+    Ed_max = 0000.0 # keV (or m/s if 'reaction' input variable is specified on form (3) (please see OWCF/misc/availReacts.jl for further explanation))
+    Ed_diff = 000.0 # keV (or m/s if 'reaction' input variable is specified on form (3) (please see OWCF/misc/availReacts.jl for further explanation))
     E_array = nothing # keV. Array can be specified manually. Otherwise, leave as 'nothing'
     Emin = 0.0 # keV
     Emax = 000.0 # keV
     filepath_equil = "" # for example "equilibrium/JET/g96100/g96100_0-53.0012.eqdsk" or "myOwnSolovev.jld2"
     filepath_FI_cdf = "" # If filepath_thermal_distr=="96100J01.cdf", then filepath_FI_cdf could be "96100J01_fi_1.cdf" for example. To auto-extract timepoint
     filepath_thermal_distr = "" # for example "96100J01.cdf", "myOwnThermalDistr.jld2" or ""
+    flr_effects = false
     folderpath_o = "../OWCF_results/template/" # Output folder path. Finish with '/'
     folderpath_OWCF = $folderpath_OWCF # Set path to OWCF folder to same as main process (hence the '$')
     iiimax = 1 # The script will calculate iiimax number of weight functions. They can then be examined in terms of similarity (to determine MC noise influence etc).
     inclPrideRockOrbs = true # If true, then pride rock orbits will be included. Otherwise, minimum(Rm) = magnetic axis.
     include2Dto4D = true # If true, then the 2D orbit weight functions will be enflated to their 4D form
+    n_gyro = 50 # 50 is default and enough for most common applications of orbit weight functions
     nE = 0
     npm = 0
     nRm = 0
@@ -161,6 +175,7 @@ end
     timepoint = nothing # String. If unknown, just leave as nothing. The algorithm will try to figure it out automatically. Should be the absolute time. I.e. in JET, the 40 second start-up time should be included.
     thermal_dens_axis = 0.0e20 # m^-3. Please specify this if filepath_thermal_distr and filepath_FI_cdf are not specified
     thermal_temp_axis = 0.0 # keV. Please specify this if filepath_thermal_distr and filepath_FI_cdf are not specified
+    thermal_profiles_type = :DEFAULT # Currently available options are :DEFAULT and :FLAT
     verbose = true # If true, then the program will be very talkative!
     visualizeProgress = false # If false, progress bar will not be displayed for computations
 

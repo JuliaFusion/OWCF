@@ -299,6 +299,11 @@ else
     end
 end
 
+# Convert grid vector elements to Float64, just in case of any user-defined Int64 elements
+E_array = Float64.(E_array)
+pm_array = Float64.(pm_array)
+Rm_array = Float64.(Rm_array)
+
 ## ---------------------------------------------------------------------------------------------
 # If available, load instrumental response and process it accordingly
 global instrumental_response # Declare global scope
@@ -375,6 +380,15 @@ println("Fast-ion species specified: "*FI_species)
 if emittedParticleHasCharge && !projVel
     println("The emitted "*getEmittedParticle(reaction)*" particle of the "*reaction*" reaction has non-zero charge!")
     println("The resulting energy distribution for "*getEmittedParticle(reaction)*" from the plasma as a whole will be computed.")
+end
+println("")
+print("To compute up-/down-shift of the nominal birth energy of the emitted particle ('c' in a(b,c)d fusion reaction), the gyro-motion of the guiding-centre of the (drift) orbits will be discretized into this many points: $(n_gyro).")
+println("")
+print("---> Finite Larmor radius (FLR) (spatial) effects included? ")
+if flr_effects
+    println("Yes!")
+else
+    println("No.")
 end
 println("")
 if distributed
@@ -541,10 +555,27 @@ if fileext_thermal=="jld2"
     thermal_dens = thermal_dens_etp
 end
 
-# If a thermal species distribution has not been specified, we simply need the thermal species temperature and density on axis
+# If a thermal species distribution has not been specified, we simply need single values for the thermal species temperature and density
 if !isfile(filepath_thermal_distr)
-    thermal_temp = thermal_temp_axis
-    thermal_dens = thermal_dens_axis
+    verbose && println("The 'filepath_thermal_distr' was not specified. Checking the 'thermal_profiles_type' input variable... ")
+    if thermal_profiles_type==:FLAT
+        verbose && println("Found :FLAT! Thermal profiles will be constant throughout the plasma.")
+        thermal_temp = thermal_temp_axis
+        thermal_dens = thermal_dens_axis
+    elseif thermal_profiles_type==:DEFAULT
+        verbose && println("Found :DEFAULT! Thermal profiles will be as returned by getAnalyticalTemp() and getAnalyticalDens() functions in OWCF/misc/temp_n_dens.jl.")
+        rho_array = collect(0.0,stop=1.0,length=100)
+        thermal_temp_array = [getAnalyticalTemp(thermal_temp_axis, rho) for rho in rho_array]
+        thermal_dens_array = [getAnalyticalDens(thermal_dens_axis, rho) for rho in rho_array]
+        thermal_temp_itp = Interpolations.interpolate((rho_array,), thermal_temp_array, Gridded(Linear()))
+        thermal_dens_itp = Interpolations.interpolate((rho_array,), thermal_dens_array, Gridded(Linear()))
+        thermal_temp_etp = Interpolations.extrapolate(thermal_temp_itp,0) # Add what happens in extrapolation scenario. 0 means we assume vacuum scrape-off layer (SOL)
+        thermal_dens_etp = Interpolations.extrapolate(thermal_dens_itp,0) # Add what happens in extrapolation scenario. 0 means we assume vacuum scrape-off layer (SOL)
+        thermal_temp = thermal_temp_etp
+        thermal_dens = thermal_dens_etp
+    else
+        error("The 'thermal_profiles_type' input variable was not specified correctly. Currently available options are :FLAT and :DEFAULT. Please correct and re-try.")
+    end
 end
 
 # If a TRANSP .cdf file and a TRANSP FI .cdf file have been specified for the thermal species distribution, we have everything we need in the Python thermal_dist variable
@@ -557,7 +588,7 @@ end
 # and if a TRANSP .cdf file has been specified, but NOT a TRANSP FI .cdf file, 
 # and we are NOT computing analytic orbit weight functions...
 if typeof(timepoint)==String && length(split(timepoint,","))==2 && lowercase(fileext_thermal)=="cdf" && !isfile(filepath_FI_cdf) && !projVel
-    thermal_temp = getTempProfileFromTRANSP(timepoint, filepath_thermal_distr; verbose=verbose) # Get the temperature from TRANSP as an interpolation object
+    thermal_temp = getTempProfileFromTRANSP(timepoint, filepath_thermal_distr, thermal_species; verbose=verbose) # Get the temperature from TRANSP as an interpolation object
     thermal_dens = getDensProfileFromTRANSP(timepoint, filepath_thermal_distr, thermal_species; verbose=verbose) # Get the density from TRANSP as an interpolation object
 end
 
@@ -583,7 +614,7 @@ for iii=1:iiimax
                 end
                 @async begin
                     W = @distributed (+) for i=1:norbs
-                        spec = calcOrbSpec(M, og_orbs[i], F_os[i], py"forwardmodel", py"thermal_dist", py"Ed_bin_edges", reaction; thermal_temp=thermal_temp, thermal_dens=thermal_dens, analytic=analytic) # Calculate the diagnostic energy spectrum for the orbit
+                        spec = calcOrbSpec(M, og_orbs[i], F_os[i], py"forwardmodel", py"thermal_dist", py"Ed_bin_edges", reaction; thermal_temp=thermal_temp, thermal_dens=thermal_dens, analytic=analytic, flr=flr_effects, n_gyro=n_gyro) # Calculate the diagnostic energy spectrum for the orbit
                         rows = append!(collect(1:length(spec)),length(spec)) # To be able to tell the sparse framework about the real size of the weight matrix
                         cols = append!(i .*ones(Int64, length(spec)), norbs) # To be able to tell the sparse framework about the real size of the weight matrix
 
@@ -600,7 +631,7 @@ for iii=1:iiimax
             end)
         else
             Wtot = @distributed (+) for i=1:norbs
-                spec = calcOrbSpec(M, og_orbs[i], F_os[i], py"forwardmodel", py"thermal_dist", py"Ed_bin_edges", reaction; thermal_temp=thermal_temp, thermal_dens=thermal_dens, analytic=analytic) # Calculate the diagnostic energy spectrum for the orbit
+                spec = calcOrbSpec(M, og_orbs[i], F_os[i], py"forwardmodel", py"thermal_dist", py"Ed_bin_edges", reaction; thermal_temp=thermal_temp, thermal_dens=thermal_dens, analytic=analytic, flr=flr_effects, n_gyro=n_gyro) # Calculate the diagnostic energy spectrum for the orbit
                 rows = append!(collect(1:length(spec)),length(spec)) # Please see similar line earlier in the script
                 cols = append!(i .*ones(Int64, length(spec)), norbs) # Please see similar line earlier in the script
 
@@ -616,7 +647,7 @@ for iii=1:iiimax
             # WRITE CODE TO DEBUG QUANTITIES OF INTEREST
 
         else
-            spec = calcOrbSpec(M, og_orbs[1], F_os[1], py"forwardmodel", py"thermal_dist", py"Ed_bin_edges", reaction; thermal_temp=thermal_temp, thermal_dens=thermal_dens, analytic=analytic) # Calculate the diagnostic energy spectrum for the orbit
+            spec = calcOrbSpec(M, og_orbs[1], F_os[1], py"forwardmodel", py"thermal_dist", py"Ed_bin_edges", reaction; thermal_temp=thermal_temp, thermal_dens=thermal_dens, analytic=analytic, flr=flr_effects, n_gyro=n_gyro) # Calculate the diagnostic energy spectrum for the orbit
             rows = append!(collect(1:length(spec)),length(spec)) # # Please see similar line earlier in the script
             cols = append!(1 .*ones(Int64, length(spec)), norbs) # # Please see similar line earlier in the script
 
@@ -632,7 +663,7 @@ for iii=1:iiimax
 
             else
                 verbose && println("Calculating spectra for orbit $(i) of $(norbs)... ")
-                local spec = calcOrbSpec(M, og_orbs[i], F_os[i], py"forwardmodel", py"thermal_dist", py"Ed_bin_edges", reaction; thermal_temp=thermal_temp, thermal_dens=thermal_dens, analytic=analytic) # Calculate the diagnostic energy spectrum for the orbit
+                local spec = calcOrbSpec(M, og_orbs[i], F_os[i], py"forwardmodel", py"thermal_dist", py"Ed_bin_edges", reaction; thermal_temp=thermal_temp, thermal_dens=thermal_dens, analytic=analytic, flr=flr_effects, n_gyro=n_gyro) # Calculate the diagnostic energy spectrum for the orbit
                 local rows = append!(collect(1:length(spec)),length(spec)) # Please see similar line earlier in the script
                 local cols = append!(i .*ones(Int64, length(spec)), norbs) # Please see similar line earlier in the script
 
@@ -657,16 +688,16 @@ for iii=1:iiimax
             if hi==length(instrumental_response_input)
                 @warn "Upper bound of instrumental response matrix input might not be high enough to cover weight function measurement bin range. Diagnostic response representation might be inaccurate."
             end
-            Wtot_withDiagResp = zeros(length(instrumental_response_output),size(Wtot,2))
+            Wtot_withInstrResp = zeros(length(instrumental_response_output),size(Wtot,2))
             instrumental_response_matrix = (instrumental_response_matrix[lo:hi,:])'
             for io=1:size(Wtot,2)
                 W = Wtot[:,io]
                 itp = LinearInterpolation(Ed_array,W)
                 W_itp = itp.(instrumental_response_input[lo:hi])
                 W_out = instrumental_response_matrix * W_itp # The diagnostic response
-                Wtot_withDiagResp[:,io] = W_out
+                Wtot_withInstrResp[:,io] = W_out
             end
-            Wtot = Wtot_withDiagResp # Update the outputs of calcOrbWeights.jl with the diagnostic response
+            Wtot = Wtot_withInstrResp # Update the outputs of calcOrbWeights.jl with the diagnostic response
             Ed_array = instrumental_response_output # Update the outputs of calcOrbWeights.jl with the diagnostic response
         end
     end
@@ -686,24 +717,27 @@ for iii=1:iiimax
         end
         global filepath_output = filepath_output*".jld2"
         myfile_s = jldopen(filepath_output,true,true,false,IOStream)
-        write(myfile_s, "W2D", Wtot)
-        write(myfile_s, "E_array", vec(E_array))
-        write(myfile_s, "pm_array", vec(pm_array))
-        write(myfile_s, "Rm_array", vec(Rm_array))
-        write(myfile_s, "Ed_array", Ed_array)
+        write(myfile_s,"W2D",Wtot)
+        write(myfile_s,"E_array",vec(E_array))
+        write(myfile_s,"pm_array",vec(pm_array))
+        write(myfile_s,"Rm_array",vec(Rm_array))
+        write(myfile_s,"Ed_array",Ed_array)
         if instrumental_response
-            write(myfile_s, "instrumental_response_input", instrumental_response_input)
-            write(myfile_s, "instrumental_response_output", instrumental_response_output)
-            write(myfile_s, "instrumental_response_matrix", instrumental_response_matrix)
+            write(myfile_s,"Ed_array_units",instrumental_response_output_units)
+            write(myfile_s,"instrumental_response_input",instrumental_response_input)
+            write(myfile_s,"instrumental_response_output",instrumental_response_output)
+            write(myfile_s,"instrumental_response_matrix",instrumental_response_matrix)
+        else
+            write(myfile_s,"Ed_array_units",analyticalOWs ? "m_s^-1" : "keV") # Otherwise, the output abscissa of calcSpec.jl is always in m/s or keV
         end
         write(myfile_s, "reaction", reaction)
         if projVel
             write(myfile_s, "projVel", projVel)
         end
-        write(myfile_s, "filepath_thermal_distr", filepath_thermal_distr)
-        write(myfile_s, "extra_kw_args", extra_kw_args)
+        write(myfile_s,"filepath_thermal_distr",filepath_thermal_distr)
+        write(myfile_s,"extra_kw_args",extra_kw_args)
         if !(og_filepath===nothing)
-            write(myfile_s, "og_filepath", og_filepath)
+            write(myfile_s,"og_filepath",og_filepath)
         end
         close(myfile_s)
         if include2Dto4D
