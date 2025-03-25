@@ -136,25 +136,15 @@ function calcOrbSpec(M::AbstractEquilibrium, o::Orbit{Float64, EPRCoordinate{Flo
             error("Analytical model with spherical 4*pi emission is NOT supported! Please correct and re-try.")
         end
         spec = forward_calc(viewing_cone, o_energy, clamp.(o_pitch,-1,1), o_R, o_z, o_w, Ed_bin_edges, o_B; reaction=reaction, bulk_dens=thermal_dens_interp)
-        return spec
     else 
-        spec = zeros(length(Ed_bin_edges)-1)
-        stats = 1
-        energy_state = occursin("-",reaction) ? getEmittedParticleEnergyLevel(reaction) : "GS"
-        
-        if !(energy_state=="GS")
-            stats = 100 # Need a lot more statistics for two-step gamma-ray reactions
-        end
-        for i=1:stats
-            py"""
-            forward = $forward # Convert the Forward Python object from Julia to Python.
-            # Please note, the '$' symbol is used below to convert objects from Julia to Python. Even Julia PyObjects
-            spectrum = forward.calc($o_energy, $o_pitch, $o_R, $o_z, $o_w, $thermal_dist, $Ed_bin_edges, $o_B, n_repeat=$n_gyro, reaction=$reaction, bulk_temp=$thermal_temp_interp, bulk_dens=$thermal_dens_interp, flr=$flr) # Please see the forward.py script, for further specifications
-            """
-            spec += vec(py"spectrum")
-        end
-        return spec ./ stats
+        py"""
+        forward = $forward # Convert the Forward Python object from Julia to Python.
+        # Please note, the '$' symbol is used below to convert objects from Julia to Python. Even Julia PyObjects
+        spec = forward.calc($o_energy, $o_pitch, $o_R, $o_z, $o_w, $thermal_dist, $Ed_bin_edges, $o_B, n_repeat=$n_gyro, reaction=$reaction, bulk_temp=$thermal_temp_interp, bulk_dens=$thermal_dens_interp, flr=$flr) # Please see the forward.py script, for further specifications
+        """
+        spec = Vector(py"spec")
     end
+    return spec
 end
 
 """
@@ -177,7 +167,9 @@ Keyword arguments include
 - visualizeProgress - If true, a progress bar will be displayed when computing orbit spectra
 - verbose - If true, the function execution will be very talkative
 """
-function calcOrbSpecs(M::AbstractEquilibrium, og_orbs::Vector{Orbit{Float64, EPRCoordinate{Float64}}}, F_os::Union{Array{Int64,1},Array{Float64,1}}, forward::PyObject, thermal_dist::Union{PyObject,Nothing}, Ed_bin_edges::AbstractArray, reaction::AbstractString; distributed::Bool=false, visualizeProgress::Bool=false, verbose::Bool=false, kwargs...)
+function calcOrbSpecs(M::AbstractEquilibrium, og_orbs::Vector{Orbit{Float64, EPRCoordinate{Float64}}}, F_os::Union{Array{Int64,1},Array{Float64,1}}, 
+                      forward::PyObject, thermal_dist::Union{PyObject,Nothing}, Ed_bin_edges::AbstractArray, reaction::AbstractString; 
+                      distributed::Bool=false, visualizeProgress::Bool=false, verbose::Bool=false, kwargs...)
 
     norbs = length(og_orbs)
     if distributed # If parallel computating is desired...
