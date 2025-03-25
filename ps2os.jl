@@ -176,10 +176,10 @@ end
 ## ---------------------------------------------------------------------------------------------
 # Determine fast-ion species from reaction
 if (@isdefined reaction_full)
-    thermal_species, FI_species = checkReaction(reaction_full)
+    thermal_species, FI_species = getFusionReactants(reaction_full)
     @everywhere FI_species = $FI_species # Transfer variable to all external processes
 elseif (@isdefined reaction)
-    FI_species = (split(reaction,"-"))[2] # Assume first species specified in reaction to be the fast-ion species. For example, in 'p-t' the 'p' will be assumed the thermal species.
+    FI_species = getFusionReactants(reaction)[2] # Second species returned is the fast-ion species.
     @everywhere FI_species = $FI_species # Transfer variable to all external processes
 else
     FI_species = FI_species # Already defined
@@ -312,7 +312,10 @@ end
 ## --------------------------------------------------------------------------------------
 if trans_distr
     verbose && println("Going into ps2os_streamlined (performance=true manually set)... ")
-    F_os_raw, class_distr, nfast = ps2os_streamlined(F_EpRz, E_array_ps, p_array, R_array, z_array, filepath_equil, og; numOsamples=numOsamples, verbose=verbose, distr_dim=distr_dim, visualizeProgress=visualizeProgress, nbatch=nbatch, distributed=distributed, sign_o_pitch_wrt_B=sign_o_pitch_wrt_B, performance=true, GCP=getGCP(FI_species), extra_kw_args... )
+    F_os_raw, class_distr, nfast = ps2os_streamlined(F_EpRz, E_array_ps, p_array, R_array, z_array, filepath_equil, og; numOsamples=numOsamples, 
+                                                     verbose=verbose, distr_dim=distr_dim, visualizeProgress=visualizeProgress, nbatch=nbatch, 
+                                                     distributed=distributed, sign_o_pitch_wrt_B=sign_o_pitch_wrt_B, performance=true, FI_species=FI_species, 
+                                                     extra_kw_args... )
 else
     if (@isdefined jacobian)
         verbose && println("Transforming a non-distribution quantity from (E,p,R,z) to (E,pm,Rm)... ")

@@ -88,7 +88,7 @@ end
 
 ## ---------------------------------------------------------------------------------------------
 # Load orbit grid vectors and quantities to be mapped from (E,pm,Rm) to (E,Λ,Pϕ_n;σ) filepath_Q
-analyticalOWs = false # Assume by default that, if orbit weight functions, the orbit weight functions are not analytical
+projVel = false # Assume by default that, if orbit weight functions, the orbit weight functions are not analytical
 Q_dict = Dict() # A dictionary containing all the quantities to be mapped
 Q_message = "" # A message that will be printed informing the user of the quantitie(s) to be mapped
 if isfile(filepath_Q)
@@ -127,7 +127,7 @@ if isfile(filepath_Q)
         error("filepath_Q did not contain weights functions, topological map, topological boundaries or indices for null orbits (via include2Dto4D when executing extractNullOrbits.jl). Please correct and re-try.")
     end
     if haskey(myfile,"reaction")
-        reaction = myfile["reaction"]
+        reaction_full = myfile["reaction"]
     end
     if haskey(myfile,"reaction_full")
         reaction_full = myfile["reaction_full"]
@@ -138,8 +138,8 @@ if isfile(filepath_Q)
     if haskey(myfile,"extra_kw_args")
         extra_kw_args = myfile["extra_kw_args"]
     end
-    if haskey(myfile,"analyticalOWs")
-        analyticalOWs = true
+    if haskey(myfile,"projVel")
+        projVel = true
     end
     close(myfile)
 else
@@ -151,7 +151,7 @@ end
 # Determine fast-ion species from reaction
 verbose && println("Identifying fast-ion species... ")
 if (@isdefined reaction_full)
-    thermal_species, FI_species = checkReaction(reaction_full; verbose=verbose, projVelocity=analyticalOWs)
+    thermal_species, FI_species = getFusionReactants(reaction_full)
     @everywhere FI_species = $FI_species # Transfer variable to all external processes
 elseif (@isdefined reaction)
     FI_species = (split(reaction,"-"))[1] # Assume first species specified in reaction to be the fast-ion species. For example, in 'p-t' the 'p' will be assumed the thermal species.
@@ -254,6 +254,9 @@ write(myfile,"pm_array",pm_array)
 write(myfile,"Rm_array",Rm_array)
 if @isdefined FI_species
     write(myfile,"FI_species",FI_species)
+end
+if @isdefined projVel
+    write(myfile,"projVel",projVel)
 end
 write(myfile,"filepath_equil",filepath_equil)
 write(myfile,"tokamak",tokamak)
