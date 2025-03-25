@@ -36,10 +36,10 @@ OWCF_AVAILABLE_FUSION_REACTIONS = ["D(D,n)3He-GS","T(h,g)4He-GS","h(T,g)4He-GS",
 OWCF_AVAILABLE_FUSION_REACTIONS_FOR_ANALYTIC_COMPUTATION = ["D(T,n)4He-GS","T(D,n)4He-GS","9Be(4He,12C)n-1L","4He(9Be,12C)n-1L","9Be(4He,12C)n-2L","4He(9Be,12C)n-2L"]
 
 function getReactionForm(fusion_reaction::String)
-    if occursin(fusion_reaction,"-")
+    if occursin("-",fusion_reaction)
         return 2
     end
-    if occursin(fusion_reaction,"(")
+    if occursin("(",fusion_reaction)
         return 1
     end
     return 3
@@ -126,7 +126,7 @@ function getFusionProducts(fusion_reaction::String)
     if getReactionForm(fusion_reaction)==2
         fusion_reaction = split(fusion_reaction,"-")[1]
     end
-    products = split(split(fusion_reaction,",")[1],")")
+    products = split(split(fusion_reaction,",")[2],")")
     product_of_interest = products[1]; product_of_disinterest = products[2]
     return product_of_interest, product_of_disinterest
 end

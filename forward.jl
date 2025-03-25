@@ -15,13 +15,12 @@
 #    implemented to have achieve full equivalence. In most cases, it is negligible, since it leads to 
 #    minimal modification of the spectral shape.
 #
-# Written by Andrea Valentini, with smaller changes by Henrik Järleblad. Last maintained 2025-03-24
+# Written by Andrea Valentini, with smaller changes by Henrik Järleblad. Last maintained 2025-03-25
 ######################################################################################################
 
 using NaNMath # To avoid errors when NaN values are encountered in arrays
 using LoopVectorization # To enhance computational speed
 using DelimitedFiles # For I/O of text files
-using DataFrames # -||- 
 using LegendrePolynomials # Self-explanatory
 using LinearAlgebra # Math
 using PyCall # To use Python function and variables in Julia
@@ -202,7 +201,7 @@ The inputs are as follows
 - n_b, E_b, l_b, m_b - density in m^-3, energy in keV, pitch-angle in rad and mass in keV of the inputted beam particle cold rings
 - n_t, m_t - density in m^-3 and mass in keV of the target particles
 - m_r - mass in keV of the residual particle
-- dSigma_dcosCM - differential cross section in m^2 for specified reaction. NB it is not per unit steradian!
+- dSigma_dcosCM - differential cross section function in m^2 for specified reaction. NB it is not per unit steradian! Function of energy in keV and incoming angle
 """
 function dn_dtdE(E_d::Vector{Float64}, l_d::Vector{Float64}, m_d, n_b, E_b, l_b, m_b, n_t, m_t, m_r, dSigma_dcosCM::Function)
     A = @. (E_b + m_b + m_t)^2 - E_b * (E_b + 2 * m_b) + m_d^2 - m_r^2
@@ -252,15 +251,14 @@ function SetReaction(reaction)
         # Read the data file containing the differential cross section information
         df = readdlm("fit_data/dtn4He_legendre_Drosg.txt", '\t', Float64, '\n')  
         # Convert column data for interpolation
-        E_col = Array{Float64}(df[!, 1]) # energies in MeV
-        A_data = Matrix{Float64}(df[!, 3:end])  # Legendre polynomial coefficient matrix
+        E_col = Array{Float64}(df[:, 1]) # energies in MeV
+        A_data = Matrix{Float64}(df[:, 3:end])  # Legendre polynomial coefficient matrix
         # Interpolation in 1D, multiply energies by a factor 1000, to match keV energy input in subsequent functions
         A = [ extrapolate(interpolate((E_col*1000,), A_data[:,i],Gridded(Linear())),0) for i in 1:size(A_data, 2) ]
         # Define differential cross section anonymous function
-        lmax = size(A, 1) - 1  # Assuming df.shape[1] - 2 is equivalent to number of columns in `A` matrix
         flip = (lowercase(products[1]) == "4he") ? -1 : 1 # If we look at the other reactant, the emission angle cosine needs flipping
         # Use fsrct (from DRESS) to get the total cross section and Pl (from LegendrePolynomials) to express the angular part (see fusreact.py) 
-        dSigma_dcosCM = (x, y) -> (fsrct.sigma_tot(mass_ratio .* x, "d-t") ./ (2 .* A[1].(x))) .* sum(A[l+1].(x) .* Pl.(flip .* y, l) for l in 0:lmax)
+        dSigma_dcosCM = (x, y) -> (fsrct.sigma_tot(mass_ratio .* x, "d-t") ./ (2 .* A[1].(x))) .* sum(A[l].(x) .* Pl.(flip .* y, l-1) for l in 1:length(A))
 
         masses = (lowercase.(reactants) == ["t","d"] && lowercase.(products) == ["n","4he"]) ? [cnst.md, cnst.mt, cnst.mn,   cnst.m4He] .* cnst.u_keV   :
                  (lowercase.(reactants) == ["d","t"] && lowercase.(products) == ["n","4he"]) ? [cnst.mt, cnst.md, cnst.mn,   cnst.m4He] .* cnst.u_keV   :
