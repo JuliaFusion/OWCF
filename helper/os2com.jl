@@ -2,10 +2,15 @@
 
 #### Description:
 # This script will transform a quantity from (E,pm,Rm) coordinates to 
-# (E,mu,Pphi;sigma) coordinates. If the quantity is given per phase-space volume, a Jacobian is needed when 
-# transforming. This is taken care of automatically, via automatic differentiation using dual numbers.
+# (E,Λ,Pϕ_n;σ) coordinates. If the quantity is given per phase-space volume, a Jacobian is needed when transforming. 
+# This is taken care of automatically, via automatic differentiation using dual numbers. Λ is the normalized magnetic 
+# moment given by Λ=μ*B0/E where μ is the magnetic moment, B0=B(mag. axis) and E is the energy. Pϕ_n is the normalized 
+# toroidal canonical momentum, given by Pϕ_n=Pϕ/(q*|Ψ_w|) where q is the charge of the fast ion and Ψ_w is the poloidal 
+# mangetic flux at the last closed flux surfaces (LCFS). If Ψ(LCFS)==0 for some reason (e.g. due to some convention),
+# Ψ_w=Ψ(mag. axis) is assumed instead. σ is a binary coordinate. σ=-1 (Julia index 1) corresponds to counter-current 
+# orbits. σ=+1 (Julia index 2) corresponds to co-current orbits.
 #
-# Also, please note that, if os2com.jl is used for orbit weight functions, it expects the input
+# Please note that, if os2com.jl is used for orbit weight functions, it expects the input
 # to be in the 4D inflated format. That is, an output file from orbWeights_2Dto4D.jl or similar.
 # In short, 3D and 4D formats are accepted as input. 2D formats are NOT.
 
@@ -16,16 +21,16 @@
 # -
 
 #### Saved files
-# os2com_output_[tokamak]_[FI species]_at[timepoint]s_[length(E_array)]x[length(mu_array)]x[length(Pphi_array)].jld2
+# os2com_output_[tokamak]_[FI species]_at[timepoint]s_[length(E_array)]x[length(Lambda_array)]x[length(Pphi_n_array)].jld2
 #   The saved file will have different keys depending on the mapped quantity. For example, if a topological
-#   map has been mapped from (E,pm,Rm) to (E,mu,Pphi;sigma), the key of the mapped quantity will be
-#   'topoMap'. The pertaining mu- and Pphi-matrices (one pair of grid points for every fast-ion energy grid point) will
-#   have the keys 'mu_matrix_topoMap' and 'Pphi_matrix_topoMap'. If the mapping from (E,pm,Rm) to (E,mu,Pphi;sigma) was
-#   instead done for an inflated orbit weight matrix, the keys will be 'mu_matrix_Wtot' and 'Pphi_matrix_Wtot' etc.
-#   If the mapping was instead done for a fast-ion distribution, the keys will be 'mu_matrix_F' and 'Pphi_matrix_F' etc.
-#   To see all data keys for a .jld2 file, do 'myfile = jldopen(...)' followed by 'keys(myfile)'. 
+#   map has been mapped from (E,pm,Rm) to (E,Λ,Pϕ_n;σ), the key of the mapped quantity will be
+#   'topoMap'. The pertaining Λ- and Pϕ_n-arrays will have the keys 'Lambda_array_topoMap' and 'Pphi_n_array_topoMap'. 
+#   If the mapping from (E,pm,Rm) to (E,Λ,Pϕ_n;σ) was instead done for an inflated orbit weight matrix, the keys will be 
+#   'Lambda_array_W' and 'Pphi_n_array_W' etc. If the mapping was instead done for a fast-ion distribution, the keys 
+#   will be 'Lambda_array_F' and 'Pphi_n_array_F' etc. To see all data keys for a .jld2 file, do 'myfile = jldopen(...)' 
+#   followed by 'keys(myfile)'. 
 # In addition to the COM keys, the saved file will have the keys
-#   E_array - The energy grid points of the (E,mu,Pphi;sigma) grid (and the (E,pm,Rm) grid) - Array{Float64,1}
+#   E_array - The energy grid points of the (E,Λ,Pϕ_n;σ) grid (and the (E,pm,Rm) grid) - Array{Float64,1}
 #   pm_array - The pitch maximum grid points of the (E,pm,Rm) grid - Array{Float64,1}
 #   Rm_array - The radius maximum grid points of the (E,pm,Rm) grid - Array{Float64,1}
 #   FI_species - The fast-ion species. E.g. 'D', 'T', '3he' etc - String
@@ -38,7 +43,7 @@
 ### Other
 #
 
-# Script written by Henrik Järleblad. Last maintained 2024-04-26.
+# Script written by Henrik Järleblad. Last maintained 2025-01-22.
 ######################################################################################################################
 
 ## ---------------------------------------------------------------------------------------------
@@ -53,14 +58,15 @@ verbose && println("Loading Julia packages... ")
     using FileIO # To write/open files in general
     include(folderpath_OWCF*"misc/species_func.jl") # To convert species labels to particle mass
     include(folderpath_OWCF*"misc/availReacts.jl") # To check reaction availability and extract fast-ion and thermal species
-    include(folderpath_OWCF*"extra/dependencies.jl") # To be able to use orbit_grid() without progress bar
+    include(folderpath_OWCF*"extra/dependencies.jl") # To be able to use (E,pm,Rm) -> (E,Λ,Pϕ_n;σ) functions
 end
 ## ---------------------------------------------------------------------------------------------
 
 ## ---------------------------------------------------------------------------------------------
 # Loading tokamak equilibrium
 verbose && println("Loading tokamak equilibrium... ")
-if ((split(filepath_equil,"."))[end] == "eqdsk") || ((split(filepath_equil,"."))[end] == "geqdsk")
+try
+    global M; global wall; global jdotb; global timepoint
     M, wall = read_geqdsk(filepath_equil,clockwise_phi=false) # Assume counter-clockwise phi-direction
     jdotb = M.sigma # The sign of the dot product between the plasma current and the magnetic field
 
@@ -69,7 +75,8 @@ if ((split(filepath_equil,"."))[end] == "eqdsk") || ((split(filepath_equil,"."))
     XX = (split(eqdsk_array[end-2],"-"))[end] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
     YYYY = eqdsk_array[end-1] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
     timepoint = (timepoint == nothing ? XX*","*YYYY : timepoint) # Format XX,YYYY to avoid "." when including in filename of saved output
-else # Otherwise, assume magnetic equilibrium is a saved .jld2 file
+catch # Otherwise, assume magnetic equilibrium is a saved .jld2 file
+    global M; global wall; global jdotb; global timepoint
     myfile = jldopen(filepath_equil,false,false,false,IOStream)
     M = myfile["S"]
     wall = myfile["wall"]
@@ -90,15 +97,15 @@ if isfile(filepath_Q)
     E_array = collect(myfile["E_array"])
     pm_array = collect(myfile["pm_array"])
     Rm_array = collect(myfile["Rm_array"])
-    if haskey(myfile,"Wtot")
+    if haskey(myfile,"W")
         Ed_array = myfile["Ed_array"]
-        Q_dict["Wtot"] = myfile["Wtot"]
-        Q_message *= "An (E,pm,Rm) orbit weight matrix of size $(size(Q_dict["Wtot"])) will be mapped to (E,mu,Pphi;sigma) constants-of-motion space."
-    elseif haskey(myfile,"W")
+        Q_dict["W"] = myfile["W"]
+        Q_message *= "An (E,pm,Rm) orbit weight matrix of size $(size(Q_dict["W"])) will be mapped to (E,Λ,Pϕ_n;σ) constants-of-motion space."
+    elseif haskey(myfile,"W2D")
         error("It looks like you have provided an output file from calcOrbWeights.jl as input? Please provide an output file from orbWeights_2Dto4D.jl as input instead!")
     elseif haskey(myfile,"topoMap")
         Q_dict["topoMap"] = myfile["topoMap"]
-        Q_message *= "An (E,pm,Rm) topological map of size $(size(Q_dict["topoMap"])) will be mapped to (E,mu,Pphi;sigma) constants-of-motion space."
+        Q_message *= "An (E,pm,Rm) topological map of size $(size(Q_dict["topoMap"])) will be mapped to (E,Λ,Pϕ_n;σ) constants-of-motion space."
         if haskey(myfile,"polTransTimes")
             Q_dict["polTransTimes"] = myfile["polTransTimes"]
             Q_dict["torTransTimes"] = myfile["torTransTimes"]
@@ -106,16 +113,16 @@ if isfile(filepath_Q)
         end
     elseif haskey(myfile,"topoBounds")
         Q_dict["topoBounds"] = myfile["topoBounds"]
-        Q_message *= "Topological boundaries in (E,pm,Rm) will be mapped to (E,mu,Pphi;sigma) constants-of-motion space."
+        Q_message *= "Topological boundaries in (E,pm,Rm) will be mapped to (E,Λ,Pϕ_n;σ) constants-of-motion space."
     elseif haskey(myfile,"nullOrbs_indices")
         Ed_array = myfile["Ed_array"]
         nullOrbs = zeros(length(Ed_array), length(E_array), length(pm_array), length(Rm_array))
         nullOrbs[myfile["nullOrbs_indices"]] = 1.0
         Q_dict["nullOrbs"] = nullOrbs
-        Q_message *= "Null orbits in (E,pm,Rm) will be mapped to (E,mu,Pphi;sigma) constants-of-motion space."
+        Q_message *= "Null orbits in (E,pm,Rm) will be mapped to (E,Λ,Pϕ_n;σ) constants-of-motion space."
     elseif haskey(myfile,"F_os_3D")
         Q_dict["F"] = myfile["F_os_3D"]
-        Q_message *= "An (E,pm,Rm) fast-ion distribution will be transformed to (E,mu,Pphi;sigma) constants-of-motion space."
+        Q_message *= "An (E,pm,Rm) fast-ion distribution will be transformed to (E,Λ,Pϕ_n;σ) constants-of-motion space."
     else
         error("filepath_Q did not contain weights functions, topological map, topological boundaries or indices for null orbits (via include2Dto4D when executing extractNullOrbits.jl). Please correct and re-try.")
     end
@@ -182,7 +189,7 @@ println("")
 println(Q_message)
 println("")
 println("(E,pm,Rm) grid has dimensions $(length(E_array))x$(length(pm_array))x$(length(Rm_array))")
-println("(E,mu,Pphi;α) grid will have same dimensions $(length(E_array))x$(nmu)x$(nPphi)x2.")
+println("(E,Λ,Pϕ_n;σ) grid will have same dimensions $(length(E_array))x$(nmu)x$(nPphi)x2.")
 println("")
 println("Extra orbit integration algorithm keywords specified: ")
 println(extra_kw_args)
@@ -191,7 +198,7 @@ println("Please remove previously saved files with the same file name (if any) p
 println("")
 println("If you would like to change any settings, please edit the start_os2com_template.jl file or similar.")
 println("")
-println("Written by Henrik Järleblad. Last maintained 2024-04-26.")
+println("Written by Henrik Järleblad. Last maintained 2025-01-22.")
 println("------------------------------------------------------------------------------------------------------------------")
 println("")
 ## ---------------------------------------------------------------------------------------------
@@ -203,8 +210,8 @@ for key in keys(Q_dict)
 end
 
 for key in keys(Q_dict)
-    verbose && println("Mapping "*key*" to (E,mu,Pphi;sigma)... ")
-    if key=="Wtot"
+    verbose && println("Mapping "*key*" to (E,Λ,Pϕ_n;σ)... ")
+    if key=="W"
         good_coords = nothing # We don't know anything...
     elseif key=="F"
         good_coords = nothing # We don't know anything...
@@ -221,7 +228,7 @@ for key in keys(Q_dict)
     else
         error("This should be impossible to reach, given the load check above.")
     end
-    Q_dict_COM[key], E_array[:], Q_dict_COM["mu_matrix_"*key], Q_dict_COM["Pphi_matrix_"*key] = os2COM(M, Q_dict[key], Vector(E_array), Vector(pm_array), Vector(Rm_array), FI_species; nμ=nmu, nPϕ=nPphi, isTopoMap=(key=="topoMap" ? true : false), needJac=(key=="F" ? true : false), verbose=verbose, good_coords=good_coords, wall=wall, extra_kw_args=extra_kw_args)
+    Q_dict_COM[key], E_array[:], Q_dict_COM["Lambda_array_"*key], Q_dict_COM["Pphi_n_array_"*key] = os2COM(M, Q_dict[key], Vector(E_array), Vector(pm_array), Vector(Rm_array), FI_species; nl=nmu, npp=nPphi, isTopoMap=(key=="topoMap" ? true : false), needJac=(key=="F" ? true : false), verbose=verbose, good_coords=good_coords, wall=wall, extra_kw_args=extra_kw_args)
 end
 ## ---------------------------------------------------------------------------------------------
 

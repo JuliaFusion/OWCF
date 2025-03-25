@@ -1607,9 +1607,15 @@ uuid = "92933f4c-e287-5a05-a399-4b506db050ca"
 version = "1.10.2"
 
 [[deps.PtrArrays]]
+<<<<<<< HEAD
 git-tree-sha1 = "1d36ef11a9aaf1e8b74dacc6a731dd1de8fd493d"
 uuid = "43287f4e-b6f4-7ad1-bb20-aadabca52c3d"
 version = "1.3.0"
+=======
+git-tree-sha1 = "77a42d78b6a92df47ab37e177b2deac405e1c88f"
+uuid = "43287f4e-b6f4-7ad1-bb20-aadabca52c3d"
+version = "1.2.1"
+>>>>>>> main
 
 [[deps.PyCall]]
 deps = ["Conda", "Dates", "Libdl", "LinearAlgebra", "MacroTools", "Serialization", "VersionParsing"]
@@ -1769,9 +1775,9 @@ version = "0.5.8"
 
 [[deps.SCS]]
 deps = ["MathOptInterface", "Requires", "SCS_jll", "SparseArrays"]
-git-tree-sha1 = "940b069bb150151cba9b12a1ea8678f60f324e7a"
+git-tree-sha1 = "aa3fcff53da363b4ba4b54d4ac4c9186ab00d703"
 uuid = "c946c3f1-0d1f-5ce8-9dea-7daa1f7e2d13"
-version = "2.0.0"
+version = "2.0.2"
 
     [deps.SCS.extensions]
     SCSSCS_GPU_jllExt = ["SCS_GPU_jll"]
@@ -2181,6 +2187,7 @@ version = "1.25.0+0"
 [[deps.WebIO]]
 deps = ["AssetRegistry", "Base64", "Distributed", "FunctionalCollections", "JSON", "Logging", "Observables", "Pkg", "Random", "Requires", "Sockets", "UUIDs", "WebSockets", "Widgets"]
 git-tree-sha1 = "976d0738247f155d0dcd77607edea644f069e1e9"
+pinned = true
 uuid = "0f1e0344-ec1d-5b48-a673-e5cf874b6c29"
 version = "0.8.20"
 
