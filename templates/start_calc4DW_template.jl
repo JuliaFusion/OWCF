@@ -13,7 +13,6 @@
 # folderpath_OWCF - The path to the OWCF folder - String
 # numOcores - The number of CPU cores that will be used if distributed is set to true. - Int64
 #
-# analytical4DWs - If set to true, projected velocities will be used to compute the weight functions. In that case, no thermal data is needed - Bool
 # debug - If true, then the script will run in debug-mode. Should almost always be set to false - Bool
 # diagnostic_filepath - The path to the diagnostic line-of-sight file- (either from LINE21 or extra/createCustomLOS.jl). 
 #                       Leave as "" for assumed sperical emission - String
@@ -79,7 +78,7 @@
 # and thermal_dens_axis variables will be used to scale the polynomial profiles to match the specified
 # thermal temperature and thermal density at the magnetic axis. Please see the /misc/temp_n_dens.jl script for info.
 
-# Script written by Henrik Järleblad. Last maintained 2023-12-18.
+# Script written by Henrik Järleblad. Last maintained 2025-03-12.
 ######################################################################################################
 
 ## First you have to set the system specifications
@@ -118,15 +117,14 @@ end
 
 ## -----------------------------------------------------------------------------
 @everywhere begin
-    analytical4DWs = false # If true, then no thermal species data is needed. The weight functions will be computed solely from the projected velocity of the ion onto the diagnostic line-of-sight.
     debug = false
     diagnostic_filepath = "" # Currently supported: "TOFOR", "AB" and ""
     diagnostic_name = ""
     instrumental_response_filepath = "" # Should be the filepath to three .txt-files or one .jld2-file. Otherwise, leave as ""
     instrumental_response_output_units = "" # Should be specified as described in OWCF/misc/convert_units.jl. If instrumental_response_filepath=="", leave as ""
-    Ed_min = 0000.0 # keV (or m/s if analyticalOWs===true)
-    Ed_max = 0000.0 # keV (or m/s if analyticalOWs===true)
-    Ed_diff = 00.0 # keV (or m/s if analyticalOWs===true)
+    Ed_min = 0000.0 # keV (or m/s if 'reaction' input variable is on form (3) (please see OWCF/misc/availReacts.jl for further explanation))
+    Ed_max = 0000.0 # keV (or m/s if 'reaction' input variable is on form (3) (please see OWCF/misc/availReacts.jl for further explanation))
+    Ed_diff = 000.0 # keV (or m/s if 'reaction' input variable is on form (3) (please see OWCF/misc/availReacts.jl for further explanation))
     E_array = nothing # keV. Array can be specified manually. Otherwise, leave as 'nothing'
     Emin = 0.0 # keV
     Emax = 000.0 # keV
@@ -149,7 +147,20 @@ end
     R_min = :r_mag # The major radius lower boundary, if R_array is set to nothing. Specify in meters e.g. "3.0", "3.4" etc. Can also be specified as a symbol :r_mag, then the major radius coordinate of the magnetic axis will automatically be used
     R_max = :r_mag # The major radius upper boundary, if R_array is set to nothing. Specify in meters e.g. "3.0", "3.4" etc. Can also be specified as a symbol :r_mag, then the major radius coordinate of the magnetic axis will automatically be used
     saveVparaVperpWeights = false # Set to true, and the weight functions will be saved in (vpara,vperp), in addition to (E,p)
-    reaction = "D(d,n)3He" # Specified on the form a(b,c)d where a is thermal ion, b is fast ion, c is emitted particle and d is the product nucleus. However, if analyticalOWs==true then 'reaction' should be provided in the format 'proj-X' where 'X' is the fast ion species ('D', 'T' etc)
+    ################################################################################
+    # The 'reaction' input variable below should be specified using one of the following forms:
+    # (1) "a(b,c)d" 
+    # (2) "a(b,c)d-l" 
+    # (3) "b" 
+    # where a is thermal ion, b is fast ion, c is fusion product particle of interest, d is fusion product particle of disinterest and l is the nuclear energy state of c. 
+    # l can be GS, 1L or 2L, corresponding to Ground State (GS), 1st excited energy level (1L) and 2nd excited energy level (2L).
+    # For lists of available fusion reactions and particle species, please see OWCF/misc/availReacts.jl and OWCF/misc/species_func.jl. The reaction forms imply:
+    # (1) The standard fusion reaction form. The nuclear energy level 'l' of the fusion product particle of interest 'c' is automatically assumed to be GS (if relevant).
+    # (2) The advanced fusion reaction form. The nuclear energy level 'l' of the fusion product particle of interest 'c' is taken to be 'l'.
+    # (3) The projected velocity reaction form. No fusion reaction is computed. Instead, the 4D weight functions are computed from the velocity vectors of the ion 'b', projected onto the diagnostic line-of-sight (LOS), using the (E,p,R,z) points that are inside the LOS 
+    # PLEASE NOTE! Specify alpha particles as '4he' or '4He' (NOT 'he4' or 'He4'). Same goes for helium-3 (specify as '3he', NOT 'he3'). Etc.
+    reaction = "9Be(4He,12C)n-1L"
+    ################################################################################
     # PLEASE NOTE! Specify alpha particles as '4he' or '4He' (NOT 'he4' or 'He4'). Same goes for helium-3 (specify as '3he', NOT 'he3')
     timepoint = nothing # If unknown, just leave as nothing. The algorithm will try to figure it out automatically.
     thermal_temp = nothing # The thermal species temperature for the (R,z) point of interest. If filepath_thermal_distr is provided, leave as nothing

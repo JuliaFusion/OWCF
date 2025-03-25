@@ -9,6 +9,13 @@
 # are visualized. The fast-ion energy can be changed via an interactive slider to easily 
 # scroll through different fast-ion energies.
 #
+# The weights (delta function signals) that make up the orbit weight functions can also be 
+# visualized. This is done via the 'show_delta_signal' button in the web application. To be clear,
+# in addition to having the web application help the user to visualize W[Ed,E,:,:] (where 'W' is 
+# the orbit weight function, 'Ed' is a specific diagnostic signal measurement bin center and 'E'
+# is a specific fast-ion energy), this 'show_delta_signal'button allows the user to visualize 
+# W[:,E,pm,Rm] where 'pm' is a specific pitch maximum and 'Rm' is a specific major radius maximum.
+#
 # Prior to running this script, please make sure you have run the following scripts:
 #   - calcOrbWeights.jl (or equivalent)
 #   - extractTopoBounds.jl
@@ -58,10 +65,10 @@
 # diagnostic_name - The name of the diagnostic to be visualized. For esthetic purposes. - String
 # filepath_W - The path to the .jld2/.h5 weights file, containing orbit weights (4D) to be visualized - String 
 # filepath_Fos3D - The path to the 3D orbit-space fast-ion distribution to be visualized as well. Enable with plot_Fos - String
-# filepath_spec - The path to the .hdf5/.jld2 synthetic signal spectrum for the diagnostic. Enable with plot_S - String
+# filepath_S - The path to the .hdf5/.jld2 synthetic signal spectrum for the diagnostic. Enable with plot_S - String
 # specFileJLD2 - If true, the app will assume the synthetic signal file is .jld2 format - Bool
 # filepath_no - The path to the 3D orbit-space fast-ion null-region boundaries. Enable with showNullOrbs - String
-# filepath_WF - The path to the WF-signal to be visualized as well. Enable with plot_S_WF - String
+# filepath_WF - The path to the WF-signal to be visualized as well. Enable with plot_WF - String
 # FI_species - The particle species for the orbit weight functions - String
 #                     "D" for deuterium, "T" for tritium, "p" for proton, "3he" for helium-3 etc
 # xlabel - The x-axis label for the WF and/or S signal to be visualized. Please specify as "X [units]", e.g. "Neutron energy [keV]" - String
@@ -76,7 +83,7 @@
 
 #### Other
 # Warning! Please note! For orbit-space grids containing more than approximately 150 000 valid orbits (e.g. 20x100x100),
-# you should NOT use weightsWebApp.jl (or any other interactive app). As of OWCF version 1.0, the 
+# you should NOT use weightsWebApp.jl (or any other interactive app). As of OWCF version 1.4, the 
 # web interface simply becomes too slow. Please do instead plot the energy slices manually instead (in scratch.jl for example).
 # You do this by, for example, coding
 #
@@ -117,7 +124,7 @@
 
 # Furthermore, the filepath_W_COM input variable can be either an output of this weightsWebApp.jl script, or the os2com.jl script.
 
-# Script written by Henrik Järleblad. Last maintained 2025-01-23.
+# Script written by Henrik Järleblad and Andrea Valentini. Last maintained 2025-03-25.
 ###############################################################################################
 
 ## --------------------------------------------------------------------------
@@ -146,10 +153,10 @@ diagnostic_filepath = "" # The file path to the LINE21 output file, containing v
 diagnostic_name = "" # Diagnostic sightline aestethic keyword. E.g: "TOFOR", "AB" or ""
 filepath_W = ""
 (plot_Fos = false) && (filepath_Fos3D = "") # Enable and specify an orbit-space fast-ion distribution file (3D-format)
-(plot_S = false) && (filepath_spec = "")
+(plot_S = false) && (filepath_S = "") # Enable and specify a signal file to include in the plotting
 specFileJLD2 = true # Assume .jld2 file format for signal file by default. Otherwise, assume .hdf5 file format. Only applicable if plot_S==true
 (showNullOrbs = false) && (filepath_no = "")
-(plot_S_WF = false) && (filepath_WF = "")
+(plot_WF = false) && (filepath_WF = "")
 FI_species = "" # Specify with D, T, p, 3he etc
 xlabel = "" # Example neutron energy: "Neutron energy [keV]". Example projected velocity: "Projected velocity [m/s]"
 ylabel = "" # Example neutron count: "Neutron count [(keV*s)^-1]". Example projected velocity signal: "Projected velocity signal [m^-1]"
@@ -157,7 +164,7 @@ ylabel = "" # Example neutron count: "Neutron count [(keV*s)^-1]". Example proje
 verbose = true
 
 ########################################################################################################
-# WEB APPLICATION BEGINS BELOW
+# WEB APPLICATION BEGINS BELOW. DO NOT ALTER ANY CODE BELOW THIS LINE!
 ########################################################################################################
 # Must load JLD2 package first, to be able to check filepath_tm and filepath_W for 'extra_kw_args'
 using JLD2
@@ -282,11 +289,11 @@ end
 
 ## ------
 # Read the file containing the pre-computed weight function
-analyticalOWs = false # Define this for its own sake
+projVel = false # Define this for its own sake
 verbose && println("Loading weight function ("*filepath_W*")... ")
 myfile = jldopen(filepath_W,false,false,false,IOStream)
-if haskey(myfile,"Wtot")
-    W_correct = myfile["Wtot"]
+if haskey(myfile,"W")
+    W_correct = myfile["W"]
 elseif haskey(myfile,"W_null")
     W_correct = myfile["W_null"]
 elseif haskey(myfile,"W")
@@ -310,8 +317,8 @@ end
 if haskey(myfile,"reaction_full")
     reaction_full = myfile["reaction_full"]
 end
-if haskey(myfile,"analyticalOWs")
-    analyticalOWs = true
+if haskey(myfile,"projVel")
+    projVel = true
 end
 close(myfile)
 fW_array = split(filepath_W,"_")
@@ -337,9 +344,9 @@ end
 ## ---------------------------------------------------------------------------------------------
 # Determine fast-ion species from reaction
 if (@isdefined reaction_full)
-    thermal_species, FI_species = checkReaction(reaction_full; verbose=verbose, projVelocity=analyticalOWs)
+    thermal_species, FI_species = getFusionReactants(reaction_full)
 elseif (@isdefined reaction)
-    FI_species = (split(reaction,"-"))[2] # Assume second species specified in reaction to be the fast-ion species. For example, in 'p-t' the 't' will be assumed the fast species.
+    FI_species = getFusionReactants(reaction)[2]
 else
     FI_species = FI_species # Already defined
 end
@@ -380,7 +387,10 @@ end
 
 ## ----------
 # Load the WF signal for plotting together with true S signal
-if plot_S_WF
+if plot_WF
+    if !isfile(filepath_WF)
+        error("WF signal set for plot (plot_WF=true). But filepath_WF is invalid. Please correct and re-try.")
+    end
     verbose && println("Loading WF signal ("*filepath_WF*")... ")
     myfile = jldopen(filepath_WF,false,false,false,IOStream)
     S_WF = myfile["S_WF"]
@@ -407,9 +417,12 @@ end
 ## ----------
 # Load the true signal S for plotting and following neutron energy
 if plot_S
-    verbose && println("Loading synthetic signal ("*filepath_spec*")... ")
+    if !isfile(filepath_S)
+        error("S signal set for plot (plot_S=true). But filepath_S is invalid. Please correct and re-try.")
+    end
+    verbose && println("Loading synthetic signal ("*filepath_S*")... ")
     if !specFileJLD2
-        myfile = h5open(filepath_spec)
+        myfile = h5open(filepath_S)
         if diagnostic_name=="TOFOR"
             Ed_array_S = read(myfile["En_tofor"])
             spec = read(myfile["spec_tofor"])
@@ -424,20 +437,20 @@ if plot_S
             error("Invalid diagnostic. Please change diagnostic string in wFuncNfastionDistrWebApp.jl")
         end
     else
-        myfile = jldopen(filepath_spec,false,false,false,IOStream)
+        myfile = jldopen(filepath_S,false,false,false,IOStream)
         if haskey(myfile,"S")
             spec = myfile["S"]
         elseif haskey(myfile,"spec")
             spec = myfile["spec"]
         else
-            error("weightsWebApp did not recognize diagnostic signal data array key in provide 'filepath_spec'. Please re-try another file.")
+            error("weightsWebApp did not recognize diagnostic signal data array key in provide 'filepath_S'. Please re-try another file.")
         end
         if haskey(myfile,"En_array")
             Ed_array_S = myfile["En_array"]
         elseif haskey(myfile,"Ed_array")
             Ed_array_S = myfile["Ed_array"]
         else
-            error("weightsWebApp did not recognize diagnostic energy bin data array key in provide 'filepath_spec'. Please re-try another file.")
+            error("weightsWebApp did not recognize diagnostic energy bin data array key in provide 'filepath_S'. Please re-try another file.")
         end
     end
     close(myfile)
@@ -662,7 +675,11 @@ verbose && println("--- You can access the weightsWebApp via an internet web bro
 verbose && println("--- When 'Task (runnable)...' has appeared, please visit the website localhost:$(port) ---")
 verbose && println("--- Remember: It might take 1-2 minutes to load the webpage. Please be patient. ---")
 function app(req)
+<<<<<<< HEAD
+    @manipulate for tokamak_wall = Dict("on" => true, "off" => false), include_Fos = Dict("on" => true, "off" => false), colorbar_scale = Dict("0.0-1.0" => "zero2one", "0.0-0.1" => "zero2aTenth"), phase_space = Dict("(E,μ,Pϕ;σ)" => :COM, "(E,pm,Rm)" => :OS), Ed=Ed_array, E=E_array, pm=pm_array, Rm=Rm_array, irec=Rec_array, save_plots = Dict("on" => true, "off" => false), show_coordinate = Dict("on" => true, "off" => false), show_delta_signal = Dict("on" => true, "off" => false)
+=======
     @manipulate for tokamak_wall = Dict("on" => true, "off" => false), include_Fos = Dict("on" => true, "off" => false), colorbar_scale = Dict("0.0-1.0" => "zero2one", "0.0-0.1" => "zero2aTenth"), phase_space = Dict("(E,Λ,Pϕ_n;σ)" => :COM, "(E,pm,Rm)" => :OS), Ed=Ed_array, E=E_array, pm=pm_array, Rm=Rm_array, irec=Rec_array, save_plots = Dict("on" => true, "off" => false), show_coordinate = Dict("on" => true, "off" => false)
+>>>>>>> main
 
         EPRc = EPRCoordinate(M, E, pm, Rm; amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species))
         o = get_orbit(M,EPRc; wall=wall, extra_kw_args...)
@@ -893,25 +910,36 @@ function app(req)
         end
 
         # Signal plot
-        if plot_S
+        if plot_S || plot_WF || show_delta_signal
             if uppercase(diagnostic_name)=="TOFOR"
                 sig_color = :green3
             elseif uppercase(diagnostic_name)=="AB"
                 sig_color = :red1
+            elseif uppercase(diagnostic_name)=="KM6T"
+                sig_color = :blue1
             else
                 sig_color = :gray
             end
-            if plot_S_WF
-                plt_sig = Plots.plot(Ed_array_S, spec,color=:black,linewidth=2.0,xlabel=xlabel,ylabel=((ylabel=="" || ylabel==nothing) ? "[a.u.]" : ylabel),label="S")
-                plt_sig = Plots.scatter!(Ed_array_WF, S_WF[irec,:], markerstrokealpha=1.0, markerstrokecolor=sig_color, markercolor=:white, markerstrokewidth=1.5, label="WF")
-                Edi_S = (findfirst(x-> x>=Ed,Ed_array_S))[1]
+            plt_sig = Plots.plot()
+            if plot_WF
+                plt_sig = Plots.scatter!(Ed_array_WF, S_WF[irec,:] ./maximum(S_WF[irec,:]), markerstrokealpha=1.0, markerstrokecolor=sig_color, markercolor=:white, markerstrokewidth=1.5, label="WF")
                 Edi_WF = (findfirst(x-> x>=Ed,Ed_array_WF))[1] # Should be perfect match with weights
-                plt_sig = Plots.scatter!([Ed_array_WF[Edi_WF]],[(S_WF[irec,:])[Edi_WF]],markersize=5.0,markercolor=sig_color, title="Ed: $(round(Ed,digits=4)) "*Ed_units*"  S: $(round((spec)[Edi_S],sigdigits=4))  WF: $(round((S_WF)[Edi_WF],sigdigits=4))", label="", legend=true)
-                plt_sig = Plots.scatter!([Ed_array_S[Edi_S]],[spec[Edi_S]],markersize=5.0,markercolor=:black, label="")
-            else
-                plt_sig = Plots.plot(Ed_array_S, spec, color=sig_color, linewidth=2.0, xlabel=xlabel, ylabel=((ylabel=="" || ylabel==nothing) ? "[a.u.]" : ylabel), label="S")
+                plt_sig = Plots.scatter!([Ed_array_WF[Edi_WF]],[(S_WF[irec,:])[Edi_WF] ./maximum(S_WF[irec,:])],markersize=5.0,markercolor=sig_color, label="WF: $(round((S_WF)[Edi_WF],sigdigits=4))")
+                plt_sig = Plots.plot!(xlabel=xlabel,ylabel="Normalized signal [a.u.]", legend=true, title="Ed: $(round(Ed,digits=4)) "*Ed_units)
+            end
+            if plot_S
+                plt_sig = Plots.plot!(Ed_array_S, spec ./maximum(spec), color=sig_color, linewidth=2.0, label="S")
                 Edi_S = (findfirst(x-> x>=Ed,Ed_array_S))[1]
-                plt_sig = Plots.scatter!([Ed_array_S[Edi_S]],[spec[Edi_S]],markersize=5.0,markercolor=sig_color, title="Ed: $(round(Ed,digits=4)) "*Ed_units*"  S: $(round((spec)[Edi_S],sigdigits=4))", label="", legend=true)
+                plt_sig = Plots.scatter!([Ed_array_S[Edi_S]],[spec[Edi_S]],markersize=5.0,markercolor=sig_color, label="S: $(round((spec)[Edi_S],sigdigits=4))")
+                plt_sig = Plots.plot!(xlabel=xlabel,ylabel="Normalized signal [a.u.]", legend=true, title="Ed: $(round(Ed,digits=4)) "*Ed_units)
+            end
+            if show_delta_signal
+                pmci = argmin(abs.(pm_array .- pm)) # Find the closest match
+                Rmci = argmin(abs.(Rm_array .- Rm)) # Find the closest match
+                delta_signal = W_correct[:,Ei,pmci,Rmci] ./maximum(W_correct[:,Ei,pmci,Rmci])
+                plt_sig = Plots.plot!(Ed_array, delta_signal, label="Orbit-pixel signal")
+                plt_sig = Plots.scatter!([Ed_array[Edi]],[delta_signal[Edi]],markersize=5.0, markercolor=:black, label="Orbit-pixel sig.: $(delta_signal[Edi])", xlims=extrema(Ed_array), ylims=[-0.1,1.2])
+                plt_sig = Plots.plot!(xlabel=xlabel,ylabel="Normalized signal [a.u.]", legend=true, title="Ed: $(round(Ed,digits=4)) "*Ed_units)
             end
         else
             Edi = (findfirst(x-> x>=Ed,Ed_array))[1]

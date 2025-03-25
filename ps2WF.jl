@@ -464,7 +464,7 @@ if ($fileext_thermal=="cdf"):
                                         fbm_files=[$filepath_FI_TRANSP_shot]) # Load the TRANSP shot file
     thermal_dist = transp_dists.Thermal(tr_out, ion=thermal_species) # Then load the thermal ion distribution from that TRANSP object
 else:
-    thermal_dist = "" # Otherwise, just let the thermal_dist variable be the empty string
+    thermal_dist = None # Otherwise, just let the thermal_dist variable be None
     # This doesn't mean that the thermal distribution will be non-existent. It just means the Python framework won't use
     # it's internal processes to sample from the thermal distribution. That is up to Julia instead.
 """
@@ -662,7 +662,7 @@ for i = i0:size(E_chunks,2)
 
 
     verbose && println("Performing ps2os $(i) of $(size(E_chunks,2))... ")
-    F_os_raw_chunk, nfast_chunk = ps2os(M, wall, F_ps_chunk, E_chunk, pitch, R, z, og; numOsamples=Int64(12*length(og_orbs)), verbose=verbose, distributed=distributed, nbatch = 100_000, saveProgress=false, visualizeProgress=visualizeProgress, GCP=getGCP(FI_species), extra_kw_args...)
+    F_os_raw_chunk, nfast_chunk = ps2os(M, wall, F_ps_chunk, E_chunk, pitch, R, z, og; numOsamples=Int64(12*length(og_orbs)), verbose=verbose, distributed=distributed, nbatch = 100_000, saveProgress=false, visualizeProgress=visualizeProgress, FI_species=FI_species, extra_kw_args...)
 
     wasteOtime = false
     if sum(F_os_raw_chunk)==0 || nfast_chunk==0

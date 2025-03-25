@@ -45,9 +45,8 @@ using NetCDF
 using OrbitTomography
 import OrbitTomography: orbit_grid
 using ProgressMeter
-using SharedArrays
-using Statistics
 using VoronoiDelaunay
+include("../misc/species_func.jl") # Some functions in dependencies.jl need species functions
 
 ###### Constants needed for dependencies ######
 
@@ -236,50 +235,6 @@ function rz_grid(rmin::Union{Int64,Float64}, rmax::Union{Int64,Float64}, nr::Int
     z2d = repeat(z,1,nr)'
 
     return OWCF_grid(r2d,z2d,r,z,phi,nr,nz,nphi)
-end
-
-###### Particle species functions
-
-"""
-    getGCP(species_identifier::AbstractString)
-
-The same function as is provided by OWCF/misc/species_func.jl. However, since it's needed in certain functions below, which are also
-a part of extra/dependencies.jl, it needs to be defined here as well. Sometimes, it's more efficient to only load OWCF/misc/species_func.jl, 
-since one does not always want all the packages needed for dependencies.jl. Therefore, the functions below are also loadable as a separate
-script, i.e. OWCF/misc/species_func.jl.
-"""
-function getGCP(species_identifier::AbstractString)
-    if lowercase(species_identifier)=="d"
-        return GuidingCenterOrbits.GCDeuteron
-    elseif lowercase(species_identifier)=="t"
-        return GuidingCenterOrbits.GCTriton
-    elseif lowercase(species_identifier)=="3he"
-        return GuidingCenterOrbits.GCHelium3
-    elseif lowercase(species_identifier)=="p"
-        return GuidingCenterOrbits.GCProton
-    elseif lowercase(species_identifier)=="e"
-        return GuidingCenterOrbits.GCElectron
-    elseif (lowercase(species_identifier)=="alpha" || lowercase(species_identifier)=="4he")
-        return GuidingCenterOrbits.GCAlpha
-    else
-        error("getSpeciesMass got unknown species as input. Please re-try.")
-    end
-end
-
-function getSpeciesMass(species_identifier::AbstractString)
-    return (getGCP(species_identifier)(0.0,0.0,0.0,0.0)).m # 0.0, 0.0, 0.0, 0.0 is just to activate the function
-end
-
-function getSpeciesAmu(species_identifier::AbstractString)
-    return getSpeciesMass(species_identifier) / GuidingCenterOrbits.mass_u
-end
-
-function getSpeciesEcu(species_identifier::AbstractString)
-    return (getGCP(species_identifier)(0.0,0.0,0.0,0.0)).q # 0.0, 0.0, 0.0, 0.0 is just to activate the function
-end
-
-function getSpeciesCharge(species_identifier::AbstractString)
-    return getSpeciesEcu(species_identifier) * GuidingCenterOrbits.e0
 end
 
 ###### Basic physics
@@ -976,7 +931,7 @@ function read_ncdf(filepath::String; wanted_keys=nothing)
         d["err"] = 0
         NetCDF.open(filepath) do nc
             cdf_variables = nc.vars
-            if !(wanted_keys==nothing)
+            if !isnothing(wanted_keys)
                 for wanted_key in wanted_keys
                     if wanted_key in keys(cdf_variables)
                         values = NetCDF.readvar(nc,wanted_key)
@@ -1644,7 +1599,7 @@ end
 
 """
 ps2os_streamlined(F_EpRz, energy, pitch, R, z, filepath_equil, og)
-ps2os_streamlined(-||-;numOsamples, verbose=false, distr_dim = [], sign_o_pitch_wrt_B=false, GCP = GCDeuteron, distributed=true, nbatch = 1_000_000, clockwise_phi, kwargs...)
+ps2os_streamlined(-||-;numOsamples, verbose=false, distr_dim = [], sign_o_pitch_wrt_B=false, FI_species = "D", distributed=true, nbatch = 1_000_000, clockwise_phi, kwargs...)
 
 Continuation of the ps2os_streamlined function above. F_EpRz is f(E,p,R,z). Energy is a vector with the energy grid points (keV). Pitch is a vector with the pitch grid points.
 R is a vector with the major radius grid points (meters). z is a vector with the vertical coordinate grid points (meters). filepath_equil is a string pointing to the filepath 
@@ -1719,18 +1674,18 @@ end
 
 """
     ps2os(M, wall, F_EpRz, energy, pitch, R, z, og)
-    ps2os(-||-; numOsamples, verbose=false, GCP = GCDeuteron, distributed=true, nbatch=1_000_000, saveProgress=true, performance=true, kwargs...)
+    ps2os(-||-; numOsamples, verbose=false, FI_species = "D", distributed=true, nbatch=1_000_000, saveProgress=true, performance=true, kwargs...)
 
 Take the (E,p,R,z) fast-ion distribution and use Monte-Carlo sampling to transform it to (E,pm,Rm) orbit space.
 - The number of Monte-Carlo samples is defined by numOsamples
 - If verbose, the function will talk a lot!
-- GCP defines the guiding-center particle species
+- FI_species defines the guiding-center particle species (please see OWCF/misc/species_func.jl for a list of available species)
 - distributed controls whether to use multi-core processing when Monte-Carlo sampling
 - The Monte-Carlo sampling will be saved every 'nbatch' number of samples. Good to use, in case something goes wrong and terminates early
 - if saveProgress, a progress bar will be displayed when sampling
 - If performance, then performance sampling will be used. Highly recommended! Normal sampling will be deprecated in later versions of the OWCF
 """
-function ps2os(M::AbstractEquilibrium, wall::Boundary, F_EpRz::Array{Float64,4}, energy::AbstractVector, pitch::AbstractVector, R::AbstractVector, z::AbstractVector, og::OrbitGrid; numOsamples::Int64, verbose::Bool=false, GCP = GCDeuteron, distributed::Bool=true, nbatch::Int64 = 1_000_000, saveProgress::Bool=true, performance::Bool=true, kwargs...)
+function ps2os(M::AbstractEquilibrium, wall::Boundary, F_EpRz::Array{Float64,4}, energy::AbstractVector, pitch::AbstractVector, R::AbstractVector, z::AbstractVector, og::OrbitGrid; numOsamples::Int64, verbose::Bool=false, FI_species = "D", distributed::Bool=true, nbatch::Int64 = 1_000_000, saveProgress::Bool=true, performance::Bool=true, kwargs...)
 
     if verbose
         println("Acquiring fr, dvols and nfast... ")
@@ -1797,7 +1752,7 @@ function ps2os(M::AbstractEquilibrium, wall::Boundary, F_EpRz::Array{Float64,4},
         subs = CartesianIndices(dims) # 4D matrix
         fr = nothing # Memory efficiency
         dvols = nothing # Memory efficiency
-        return ps2os_performance(M, wall, frdvols_cumsum_vector, subs, nfast, energy, pitch, R, z, og; numOsamples=numOsamples, numOsamples_sofar=numOsamples_sofar, result_sofar=result_sofar, class_distr_sofar=class_distr_sofar, distributed=distributed, GCP=GCP, saveProgress=saveProgress, verbose=verbose, kwargs...)
+        return ps2os_performance(M, wall, frdvols_cumsum_vector, subs, nfast, energy, pitch, R, z, og; numOsamples=numOsamples, numOsamples_sofar=numOsamples_sofar, result_sofar=result_sofar, class_distr_sofar=class_distr_sofar, distributed=distributed, FI_species=FI_species, saveProgress=saveProgress, verbose=verbose, kwargs...)
     end
     verbose && println("Computing samples the old way... ")
     #################################################################################
@@ -1817,7 +1772,7 @@ function ps2os(M::AbstractEquilibrium, wall::Boundary, F_EpRz::Array{Float64,4},
                 println("Samples left: $(numOsamples)")
             end
 
-            result_p, class_distr_p = sample_helper(M, nbatch, fr, dvols, energy, pitch, R, z, og; wall=wall, GCP=GCP, kwargs...)
+            result_p, class_distr_p = sample_helper(M, nbatch, fr, dvols, energy, pitch, R, z, og; wall=wall, FI_species=FI_species, kwargs...)
             result_sofar .+= result_p
             class_distr_sofar .+= class_distr_p
             numOsamples_sofar += nbatch
@@ -1833,7 +1788,7 @@ function ps2os(M::AbstractEquilibrium, wall::Boundary, F_EpRz::Array{Float64,4},
         if verbose
             println("(Rest) Samples left: $(numOsamples)")
         end
-        result_rest, class_distr_rest = sample_helper(M, numOsamples, fr, dvols, energy, pitch, R, z, og; wall=wall, GCP=GCP, kwargs...)
+        result_rest, class_distr_rest = sample_helper(M, numOsamples, fr, dvols, energy, pitch, R, z, og; wall=wall, FI_species=FI_species, kwargs...)
         numOsamples_rest = numOsamples
 
         if subdivide
@@ -1858,8 +1813,8 @@ function ps2os(M::AbstractEquilibrium, wall::Boundary, F_EpRz::Array{Float64,4},
             # CHECK IF IT'S A GOOD SAMPLE
             good_sample = checkIfGoodSample(E_sample[1], p_sample[1], R_sample[1], z_sample[1], energy, pitch, R, z)
 
-            if good_sample
-                o = get_orbit(M,GCP(E_sample[1],p_sample[1],R_sample[1],z_sample[1]); store_path=false, wall=wall, kwargs...)
+            if good_sample # getGCP function is from OWCF/misc/species_func.jl
+                o = get_orbit(M,getGCP(FI_species; E=E_sample[1], p=p_sample[1], R=R_sample[1], z=z_sample[1]); store_path=false, wall=wall, kwargs...)
                 if (o.coordinate.energy <= (og.energy[end]+dE_os_end/2) && o.coordinate.energy >= (og.energy[1]-dE_os_1/2)) # Make sure it's within the energy bounds (+one half grid cell)
                     F_os_i = bin_orbits(og,Vector([o.coordinate]),weights=Vector([1.0]))
                     class_distr_i = zeros(9)
@@ -1899,7 +1854,7 @@ end
 
 """
     ps2os_performance(M, wall, fr, dvols, nfast, energy, pitch, R, z, og)
-    ps2os_performance(-||-; numOsamples, numOsamples_sofar=0, result_sofar=zeros(size(og.counts))), distributed=true, GCP=GCDeuteron, saveProgess=true, nbatch=1_000_000, verbose=false, kwargs...)
+    ps2os_performance(-||-; numOsamples, numOsamples_sofar=0, result_sofar=zeros(size(og.counts))), distributed=true, FI_species="D", saveProgess=true, nbatch=1_000_000, verbose=false, kwargs...)
 
 The performance version of part of ps2os(). This function will likely completely replace ps2os() in the near future. It computes necessary quantities
 once instead of for every sample (as ps2os() does). Such as the element-wise product of fr and dvols, and its cumulative sum.
@@ -1918,7 +1873,7 @@ numOsamples - The total number of Monte-Carlo samples (includes numOsamples_sofa
 numOsamples_sofar - The number of Monte-Carlo samples sampled so far
 result_sofar - The (E,pm,Rm) fast-ion distribution in 1D compressed vector format. So far, having completed numOsamples_sofar number of samples
 distributed - If true, multi-core processing will be used
-GCP - The guiding-center struct representing the fast-ion species
+FI_species - The fast-ion species. Please see OWCF/misc/species_func.jl
 saveProgress - If true, Monte-Carlo sampling process will be saved every nbatch samples
 nbatch - Compute the Monte-Carlo samples in batches, to optimize computation efficiency and enable subsequent progress saving
 verbose - If true, the function will talk a lot
@@ -1939,7 +1894,7 @@ function ps2os_performance(M::AbstractEquilibrium,
                             result_sofar=zeros(size(og.counts)),
                             class_distr_sofar=zeros(9),
                             distributed::Bool=true,
-                            GCP=GCDeuteron,
+                            FI_species="D",
                             saveProgress::Bool=true,
                             nbatch::Int64 = 1_000_000,
                             verbose::Bool=false,
@@ -1958,7 +1913,7 @@ function ps2os_performance(M::AbstractEquilibrium,
             subdivide = true
             verbose && println("Samples left: $(numOsamples)")
             numOsamples = numOsamples - nbatch
-            result_p, class_distr_p = performance_helper(M, nbatch, frdvols_cumsum_vector, subs, dE_vector, dp_vector, dR_vector, dz_vector, energy, pitch, R, z, og; wall=wall, GCP=GCP, kwargs...)
+            result_p, class_distr_p = performance_helper(M, nbatch, frdvols_cumsum_vector, subs, dE_vector, dp_vector, dR_vector, dz_vector, energy, pitch, R, z, og; wall=wall, FI_species=FI_species, kwargs...)
             result_sofar .+= result_p
             class_distr_sofar .+= class_distr_p
             numOsamples_sofar += nbatch
@@ -1972,7 +1927,7 @@ function ps2os_performance(M::AbstractEquilibrium,
             end
         end
         verbose && println("(Rest) Samples left: $(numOsamples)")
-        result_rest, class_distr_rest = performance_helper(M, numOsamples, frdvols_cumsum_vector, subs, dE_vector, dp_vector, dR_vector, dz_vector, energy, pitch, R, z, og; wall=wall, GCP=GCP, kwargs...)
+        result_rest, class_distr_rest = performance_helper(M, numOsamples, frdvols_cumsum_vector, subs, dE_vector, dp_vector, dR_vector, dz_vector, energy, pitch, R, z, og; wall=wall, FI_species=FI_species, kwargs...)
         numOsamples_rest = numOsamples
 
         if subdivide
@@ -2006,7 +1961,7 @@ function ps2os_performance(M::AbstractEquilibrium,
             good_sample = checkIfGoodSample(E_sample, p_sample, R_sample, z_sample, energy, pitch, R, z)
             visualizeProgress && print("   $(good_sample)")
             if good_sample
-                o = get_orbit(M,GCP(E_sample,p_sample,R_sample,z_sample); store_path=false, wall=wall, kwargs...)
+                o = get_orbit(M,getGCP(FI_species; E=E_sample,p=p_sample,R=R_sample,z=z_sample); store_path=false, wall=wall, kwargs...)
                 visualizeProgress && print("   $(o.class)")
                 visualizeProgress && print("   $(o.coordinate.energy)")
                 if (o.coordinate.energy <= (maximum(og.energy)+dE_os_end/2) && o.coordinate.energy >= (minimum(og.energy)-dE_os_1/2)) # Make sure it's within the energy bounds (+one half grid cell)
@@ -2057,7 +2012,7 @@ This is to enable the sampling process to be saved regularly when calculating a 
 If the sampling process is not saved, then progress will be lost when the super-user of the HPC terminates
 the sampling process early, due to misinterpretation of Julia's way of distributed computing.
 """
-function sample_helper(M::AbstractEquilibrium, numOsamples::Int64, fr::AbstractArray, dvols::AbstractArray, energy::AbstractVector, pitch::AbstractVector, R::AbstractVector, z::AbstractVector, og::OrbitGrid; wall::Union{Nothing,Boundary}, GCP=GCDeutron, visualizeProgress::Bool=false, kwargs...)
+function sample_helper(M::AbstractEquilibrium, numOsamples::Int64, fr::AbstractArray, dvols::AbstractArray, energy::AbstractVector, pitch::AbstractVector, R::AbstractVector, z::AbstractVector, og::OrbitGrid; wall::Union{Nothing,Boundary}, FI_species="D", visualizeProgress::Bool=false, kwargs...)
 
     dE_os_end = abs((og.energy)[end]-(og.energy)[end-1])
     dE_os_1 = abs((og.energy)[2]-(og.energy)[1])
@@ -2078,8 +2033,8 @@ function sample_helper(M::AbstractEquilibrium, numOsamples::Int64, fr::AbstractA
                         E_sample, p_sample, R_sample, z_sample = sample_f_OWCF(fr, dvols, energy, pitch, R, z, n=1) # Returns 4 1-element arrays
                         # CHECK IF IT'S A GOOD SAMPLE
                         good_sample = checkIfGoodSample(E_sample[1], p_sample[1], R_sample[1], z_sample[1], energy, pitch, R, z)
-                        if good_sample
-                            o = get_orbit(M,GCP(E_sample[1],p_sample[1],R_sample[1],z_sample[1]); store_path=false, wall=wall, kwargs...) # Calculate the orbit
+                        if good_sample # getGCP function is from OWCF/misc/species_func.jl
+                            o = get_orbit(M,getGCP(FI_species; E=E_sample[1], p=p_sample[1], R=R_sample[1], z=z_sample[1]); store_path=false, wall=wall, kwargs...) # Calculate the orbit
                             if (o.coordinate.energy <= (maximum(og.energy)+dE_os_end/2) && o.coordinate.energy >= (minimum(og.energy)-dE_os_1/2)) # Make sure it's within the energy bounds (+one half grid cell)
                                 F_os_i = bin_orbits(og,Vector([o.coordinate]),weights=Vector([1.0])) # Bin to the orbit grid
                                 class_distr_i = zeros(9)
@@ -2104,8 +2059,8 @@ function sample_helper(M::AbstractEquilibrium, numOsamples::Int64, fr::AbstractA
             result = @distributed (+) for i=1:numOsamples
                 E_sample, p_sample, R_sample, z_sample = sample_f_OWCF(fr, dvols, energy, pitch, R, z, n=1) # Returns 4 1-element arrays
                 good_sample = checkIfGoodSample(E_sample[1], p_sample[1], R_sample[1], z_sample[1], energy, pitch, R, z)
-                if good_sample
-                    o = get_orbit(M,GCP(E_sample[1],p_sample[1],R_sample[1],z_sample[1]); store_path=false, wall=wall, kwargs...) # Calculate the orbit
+                if good_sample # getGCP function is from OWCF/misc/species_func.jl
+                    o = get_orbit(M,getGCP(FI_species; E=E_sample[1],p=p_sample[1],R=R_sample[1],z=z_sample[1]); store_path=false, wall=wall, kwargs...) # Calculate the orbit
                     if (o.coordinate.energy <= (maximum(og.energy)+dE_os_end/2) && o.coordinate.energy >= (minimum(og.energy)-dE_os_1/2)) # Make sure it's within the energy bounds (+one half grid cell)
                         F_os_i = bin_orbits(og,Vector([o.coordinate]),weights=Vector([1.0])) # Bin to the orbit grid
                         class_distr_i = zeros(9)
@@ -2132,14 +2087,14 @@ function sample_helper(M::AbstractEquilibrium, numOsamples::Int64, fr::AbstractA
 end
 
 """
-    performance_helper(M, nbatch, frdvols_cumsum_vector, subs, dE_vector, dp_vector, dR_vector, dz_vector, energy, pitch, R, z, og; wall=wall, GCP=GCP, kwargs...)
+    performance_helper(M, nbatch, frdvols_cumsum_vector, subs, dE_vector, dp_vector, dR_vector, dz_vector, energy, pitch, R, z, og; wall=wall, FI_species="D", kwargs...)
 
 Help the function ps2os_performance() with acquiring orbit samples when parallel computations are desired.
 This is to enable the sampling process to be saved regularly when calculating a large number of samples.
 If the sampling process is not saved, then progress will be lost when the super-user of the HPC terminates
 the sampling process early, due to misinterpretation of Julia's way of distributed computing.
 """
-function performance_helper(M::AbstractEquilibrium, numOsamples::Int64, frdvols_cumsum_vector::AbstractVector, subs::CartesianIndices{4,NTuple{4,Base.OneTo{Int64}}}, dE_vector::AbstractVector, dp_vector::AbstractVector, dR_vector::AbstractVector, dz_vector::AbstractVector, energy::AbstractVector, pitch::AbstractVector, R::AbstractVector, z::AbstractVector, og::OrbitGrid; wall::Union{Nothing,Boundary{Float64}}, GCP=GCDeuteron, visualizeProgress::Bool=false, kwargs...)
+function performance_helper(M::AbstractEquilibrium, numOsamples::Int64, frdvols_cumsum_vector::AbstractVector, subs::CartesianIndices{4,NTuple{4,Base.OneTo{Int64}}}, dE_vector::AbstractVector, dp_vector::AbstractVector, dR_vector::AbstractVector, dz_vector::AbstractVector, energy::AbstractVector, pitch::AbstractVector, R::AbstractVector, z::AbstractVector, og::OrbitGrid; wall::Union{Nothing,Boundary{Float64}}, FI_species="D", visualizeProgress::Bool=false, kwargs...)
 
     dE_os_end = abs((og.energy)[end]-(og.energy)[end-1])
     dE_os_1 = abs((og.energy)[2]-(og.energy)[1])
@@ -2168,8 +2123,8 @@ function performance_helper(M::AbstractEquilibrium, numOsamples::Int64, frdvols_
 
                         # CHECK IF IT'S A GOOD SAMPLE
                         good_sample = checkIfGoodSample(E_sample, p_sample, R_sample, z_sample, energy, pitch, R, z)
-                        if good_sample
-                            o = get_orbit(M,GCP(E_sample,p_sample,R_sample,z_sample); store_path=false, wall=wall, kwargs...) # Calculate the orbit
+                        if good_sample # getGCP function is from OWCF/misc/species_func.jl
+                            o = get_orbit(M,getGCP(FI_species; E=E_sample,p=p_sample,R=R_sample,z=z_sample); store_path=false, wall=wall, kwargs...) # Calculate the orbit
                             if (o.coordinate.energy <= (maximum(og.energy)+dE_os_end/2) && o.coordinate.energy >= (minimum(og.energy)-dE_os_1/2)) # Make sure it's within the energy bounds (+one half grid cell)
                                 F_os_i = bin_orbits(og,Vector([o.coordinate]),weights=Vector([1.0])) # Bin to the orbit grid
                                 class_distr_i = zeros(9)
@@ -2204,8 +2159,8 @@ function performance_helper(M::AbstractEquilibrium, numOsamples::Int64, frdvols_
 
                 # CHECK IF IT'S A GOOD SAMPLE
                 good_sample = checkIfGoodSample(E_sample, p_sample, R_sample, z_sample, energy, pitch, R, z)
-                if good_sample
-                    o = get_orbit(M,GCP(E_sample,p_sample,R_sample,z_sample); store_path=false, wall=wall, kwargs...) # Calculate the orbit
+                if good_sample # getGCP function is from OWCF/misc/species_func.jl
+                    o = get_orbit(M,getGCP(FI_species; E=E_sample, p=p_sample, R=R_sample, z=z_sample); store_path=false, wall=wall, kwargs...) # Calculate the orbit
                     if (o.coordinate.energy <= (maximum(og.energy)+dE_os_end/2) && o.coordinate.energy >= (minimum(og.energy)-dE_os_1/2)) # Make sure it's within the energy bounds (+/- one half grid cell)
                         F_os_i = bin_orbits(og,Vector([o.coordinate]),weights=Vector([1.0])) # Bin to the orbit grid
                         class_distr_i = zeros(9)
@@ -2309,7 +2264,7 @@ function os2ps(M::AbstractEquilibrium, Σ_ff_inv::AbstractArray, F_os::Vector, o
     distributed=false, atol=1e-3, domain_check= (xx,yy) -> true,
     covariance=:local, norms=OrbitTomography.S3(1.0,1.0,1.0),
     checkpoint=true, warmstart=false,file="eprz_progress.jld2",
-    GCP=GCDeuteron, wall, verbose=false, kwargs...)
+    FI_species="D", wall, verbose=false, kwargs...)
 
     nenergy = length(energy)
     npitch = length(pitch)
@@ -2345,7 +2300,7 @@ function os2ps(M::AbstractEquilibrium, Σ_ff_inv::AbstractArray, F_os::Vector, o
 
         #### Get all the orbits for this specific (R,z) point ####
         verbose && println("Getting orbits for loop $(iI) of $(length(inds))... ")
-        lorbs = reshape([get_orbit(M, GCP(energy[k],pitch[l],rr,zz); wall=wall, kwargs...) for k=1:nenergy,l=1:npitch],nenergy*npitch)
+        lorbs = reshape([get_orbit(M, getGCP(FI_species; E=energy[k], p=pitch[l], R=rr, z=zz); wall=wall, kwargs...) for k=1:nenergy,l=1:npitch],nenergy*npitch)
 
         #### Calculate the Jacobian for those orbits ####
         verbose && println("Calculating Jacobian for loop $(iI) of $(length(inds))... ")
@@ -3263,13 +3218,13 @@ end
 
 Transform a 2D (E,p) quantity Q into (v_para,v_perp) space. If needJac, assume a jacobian is needed (e.g distribution).
 If isTopoMap, assume Q is a topological map, implying special care is needed for successful transform.
-If returnAbscissas, then the vpara, vperp grid points will be returned as separate output variables. That is
+If returnAbscissas, then the vpara, vperp grid points will be returned as separate output variables. That is:
 
-Q_vel, vpara_vector, vperp_vector = Ep2VparaVperp(E_array, p_array, Q; returnAbscissas=true)
+    Q_vel, vpara_vector, vperp_vector = Ep2VparaVperp(E_array, p_array, Q; returnAbscissas=true)
 
-Otherwise, please use as
+Otherwise, please use as:
 
-Q_vel = Ep2VparaVperp(E_array, p_array, Q)
+    Q_vel = Ep2VparaVperp(E_array, p_array, Q)
 
 PLEASE NOTE! E_array MUST be given in keV.
 """
