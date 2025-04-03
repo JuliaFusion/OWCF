@@ -14,10 +14,11 @@
 
 ### Other
 # For angles, please use radians (rad) and NOT degrees (deg).
-# PLEASE ALSO NOTE! The OWCF units are CASE SENSITIVE. Otherwise, for example, mJ (millijoule) and 
+#
+# PLEASE ALSO NOTE!! The OWCF units are CASE SENSITIVE!! Otherwise, for example, mJ (millijoule) and 
 # MJ (megajoule) cannot be told apart (mj and mj, if both lowercase).
 
-# Written by Henrik Järleblad. Last maintained 2025-01-07
+# Written by Henrik Järleblad. Last maintained 2025-03-31
 ###################################################################################################
 
 TIME_UNITS = Dict("ns"=>1.0e-9,"microsec"=>1.0e-6,"ms"=>1.0e-3,"s"=>1.0e0,"min"=>60e0,"h"=>3.6e3)
@@ -64,7 +65,7 @@ PRESSURE_UNITS = Dict("Pa"=>1.0,"hPa"=>1.0e2,"mmHg"=>133.322387415,"kPa"=>1.0e3,
 PRESSURE_UNITS_LONG = Dict("pascal"=>1.0,"hectopascal"=>1.0e2,"millimetermercury"=>133.322387415,"kilopascal"=>1.0e3,"bar"=>1.0e5,"atmosphere"=>101325.0)
 
 # Converts to kg_m^2_s^-2
-e0_OWCF = 1.60217733e-19 # Coulombs / Joules
+const e0_OWCF = 1.60217733e-19 # Coulombs / Joules
 ENERGY_UNITS = Dict("eV"=>e0_OWCF,"keV"=>1.0e3*e0_OWCF,"MeV"=>1.0e6*e0_OWCF,"GeV"=>1.0e9*e0_OWCF,"mJ"=>1.0e-3,"J"=>1.0e0,"cal"=>4.184,"kJ"=>1.0e3,"MJ"=>1.0e6)
 ENERGY_UNITS_LONG = Dict("electronvolt"=>e0_OWCF,"kiloelectronvolt"=>1.0e3*e0_OWCF,"megaelectronvolt"=>1.0e6*e0_OWCF,"gigaelectronvolt"=>1.0e9*e0_OWCF,"millijoule"=>1.0e-3,"joule"=>1.0e0,"calorie"=>4.184,"kilojoule"=>1.0e3,"megajoule"=>1.0e6)
 
@@ -80,8 +81,12 @@ CHARGE_UNITS_LONG = Dict("elementarycharge"=>1.602176634e-19,"coulomb"=>1.0,"far
 VOLTAGE_UNITS = Dict("V"=>1.0,"kV"=>1.0e3)
 VOLTAGE_UNITS_LONG = Dict("volt"=>1.0,"kilovolt"=>1.0e3)
 
-OWCF_UNITS = merge(OWCF_BASE_UNITS, ACCELERATION_UNITS, FORCE_UNITS, PRESSURE_UNITS, ENERGY_UNITS, POWER_UNITS, CHARGE_UNITS, VOLTAGE_UNITS)
-OWCF_UNITS_LONG = merge(OWCF_BASE_UNITS_LONG, ACCELERATION_UNITS_LONG, FORCE_UNITS_LONG, PRESSURE_UNITS_LONG, ENERGY_UNITS_LONG, POWER_UNITS_LONG, CHARGE_UNITS_LONG, VOLTAGE_UNITS_LONG)
+# Converts to kg_s^-2_A^-1
+MAGNETICFIELD_UNITS = Dict("mG"=>1.0e-7,"G"=>1.0e-4,"mT"=>1.0e-3,"kG"=>1.0e-1,"T"=>1.0,"kT"=>1.0e3)
+MAGNETICFIELD_UNITS_LONG = Dict("milligauss"=>1.0e-7,"gauss"=>1.0e-4,"millitesla"=>1.0e-3,"kilogauss"=>1.0e-1,"tesla"=>1.0,"kilotesla"=>1.0e3)
+
+OWCF_UNITS = merge(OWCF_BASE_UNITS, ACCELERATION_UNITS, FORCE_UNITS, PRESSURE_UNITS, ENERGY_UNITS, POWER_UNITS, CHARGE_UNITS, VOLTAGE_UNITS,MAGNETICFIELD_UNITS)
+OWCF_UNITS_LONG = merge(OWCF_BASE_UNITS_LONG, ACCELERATION_UNITS_LONG, FORCE_UNITS_LONG, PRESSURE_UNITS_LONG, ENERGY_UNITS_LONG, POWER_UNITS_LONG, CHARGE_UNITS_LONG, VOLTAGE_UNITS_LONG,MAGNETICFIELD_UNITS_LONG)
 
 
 """
@@ -166,6 +171,9 @@ function units_to_base_units(units_in::String; verbose=false)
         elseif unit in keys(VOLTAGE_UNITS)
             units_out *= power != 1 ? "kg^$(Int64(power))_m^$(Int64(2*power))_s^$(Int64(-3*power))_A^$(Int64(-power))_" : "kg_m^2_s^-3_A^-1_"
             cf_out *= VOLTAGE_UNITS[unit]^power
+        elseif unit in keys(MAGNETICFIELD_UNITS)
+            units_out *= power != 1 ? "kg^$(Int64(power))_s^$(Int64(-2*power))_A^$(Int64(-power))_" : "kg_s^-2_A^-1_"
+            cf_out *= MAGNETICFIELD_UNITS[unit]^power
         else
             verbose && println("unit component '"*unit*"' not found in accepted OWCF units. Trying LONG format... ")
             unit_lc = lowercase(unit) # For long format, lowercase is required
@@ -193,6 +201,9 @@ function units_to_base_units(units_in::String; verbose=false)
             elseif unit_lc in keys(VOLTAGE_UNITS_LONG)
                 units_out *= power != 1 ? "kg^$(Int64(power))_m^$(Int64(2*power))_s^$(Int64(-3*power))_A^$(Int64(-power))_" : "kg_m^2_s^-3_A^-1_"
                 cf_out *= VOLTAGE_UNITS_LONG[unit_lc]^power
+            elseif unit in keys(MAGNETICFIELD_UNITS_LONG)
+                units_out *= power != 1 ? "kg^$(Int64(power))_s^$(Int64(-2*power))_A^$(Int64(-power))_" : "kg_s^-2_A^-1_"
+                cf_out *= MAGNETICFIELD_UNITS_LONG[unit]^power
             else
                 error("unit componenent '"*unit*"' not found in accepted OWCF units. Please see OWCF/misc/convert_units.jl for lists of accepted units. Please correct and re-try.")
             end
@@ -579,4 +590,37 @@ function units_are_speed(units_in::String; verbose=false)
             return true
         end
     end
+end
+
+"""
+    units_are_equal(units_1, units_2)
+
+Deduce if units_1 is a set of units that is actually equal to units_2.
+For example, units_1="keV_s^-1_m^-3_keV^-1" and units_2="m^-3_s^-1" are actually equal.
+If so, return true. If not, return false.
+"""
+function units_are_equal(units_1::String, units_2::String)
+    units_1_dict = units_to_dict(units_1)
+    units_2_dict = units_to_dict(units_2)
+    if !(keys(units_1_dict)==keys(units_2_dict)) # Trivial case. Non-equal units components
+        return false
+    end
+    for key in keys(units_1_dict)
+        if !(units_1_dict[key]==units_2_dict[key])
+            return false
+        end
+    end
+    return true
+end
+
+"""
+    units_are_equal_base(units_1, units_2)
+
+Deduce if units_1 is a set of units that is actually equal to units_2, after 
+both have been converted to base units. For example, units_1="kg_m^2_s^-2" and units_2="keV"
+are actually equal (in base) since units_to_base_units(units_2)[1] will return "m^2_s^-2_kg".
+If so, return true. If not, return false.
+"""
+function units_are_equal_base(units_1::String, units_2::String)
+    return units_are_equal(units_to_base_units(units_1)[1],units_to_base_units(units_1)[1])
 end

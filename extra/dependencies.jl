@@ -45,8 +45,10 @@ using NetCDF
 using OrbitTomography
 import OrbitTomography: orbit_grid
 using ProgressMeter
+using SparseArrays
 using VoronoiDelaunay
 include("../misc/species_func.jl") # Some functions in dependencies.jl need species functions
+include("../misc/convert_units.jl") # Some functions in dependencies.jl need units functions
 
 ###### Constants needed for dependencies ######
 
@@ -195,6 +197,41 @@ function closest_index(x::AbstractArray, val::Number)
         end
     end
     ibest
+end
+
+"""
+    forward_difference_matrix(space_size::Tuple, dim::Int64)
+    forward_difference_matrix(-||-; verbose=false)
+
+Compute the forward difference matrix for a coordinate space of size 'space_size' along dimension 'dim'. 
+For example, if space_size=(10,30) and dim=2, then 'finite_difference_matrix(space_size,dim)' will output 
+a 300x300 matrix Δ with value '-1' for all on-diagonal elements and '+1' for specific off-diagonal elements.
+All other elements in Δ will be '0'. For a specific row of the Δ matrix, the element with '+1' value 
+correspond to the grid point of the (10,30) grid that have ONE INDEX GREATER (forward difference) in the 
+2nd dimension (since dim=2) of the (10,30) grid compared to the grid point to which the on-diagonal element 
+correpond. The element order of the 300 rows and columns correspond to the order output of the function 
+'CartesianIndices(space_size)'. 1<=dim<=length(space_size) must hold. Output matrix will be in sparse 
+matrix format, i.e. SparseMatrixCSC (see SparseArrays.jl package).
+"""
+function forward_difference_matrix(space_size::Tuple, dim::Int64)
+    if !(dim<=length(space_size)) || dim<1
+        error("Invalid input. 1<=dim<=length(space_size) must hold. Got length(space_size)=$(length(space_size)) and dim=$(dim).")
+    end
+
+    space_coords = CartesianIndices(space_size)
+
+    l1 = spzeros(length(space_coords),length(space_coords)) # The finite difference matrix for a specific dimension (dim)
+    for (i,space_coord_i) in enumerate(space_coords) # For every space point (every row in the finite difference matrix)
+        for (j,space_coord_j) in enumerate(space_coords) # -||- (for every column in the finite difference matrix)
+            if sum(Tuple(space_coord_j) .- Tuple(space_coord_i))==1 && (space_coord_j[dim]-space_coord_i[dim])==1 # If the coordinates differ by one (neighbours with j coordinate larger than i coordinate) and the difference is in the right dimension (dim)
+                l1[i,i] = -1 # Set value '-1' for the on-diagonal element
+                l1[i,j] = 1 # Set value '+1' for the j off-diagonal element
+                break # Only one such nearest neighbour for every row, so move on to the next row
+            end
+        end
+    end
+
+    return l1
 end
 
 ###### Geometry
@@ -623,6 +660,49 @@ function get_orbel_volume(og::OrbitGrid, os_equidistant::Bool)
         return dO
     end
 end
+
+###### Inverse problem (fast-ion tomography) solving related functions
+"""
+    is_energy_pitch(abscissas,abscissas_units)
+    is_energy_pitch(-||-; verbose=false, returnExtra=false)
+
+Check if the reconstruction space discretized via the grid points in the abscissas in the Vector{Vector}
+input variable 'abscissas' is the (E,p) space, where E is the energy and p=v_||/v is the pitch of the 
+fast ion. The units of the abscissas are provided as elements in a Vector input via the 'abscissas_units' 
+input variable. See OWCF/misc/convert_units.jl for how to specify units. If the reconstruction space is 
+found to be (E,p), return true. If not, return false.
+
+The keyword arguments are:
+- verbose - If set to true, the function will talk a lot!
+- returnExtra - If set to true, instead of a Bool, a Tuple will be returned, with the form (b,iE,ip).
+                'b' is the Bool returned when returnExtra=false. 'iE' gives access to the E grid points 
+                as 'abscissas[iE]'. 'ip' gives access to the p grid points as 'abscissas[ip]'.
+"""
+function is_energy_pitch(abscissas::Vector{Vector{T}} where {T<:Real}, abscissas_units::Vector{String}; verbose=false, returnExtra=false)
+    if length(abscissas_units)!=2
+        verbose && println("is_energy_pitch(): Number of reconstruction space abscissas is not equal to 2. Returning false... ")
+        return (returnExtra ? (false, 0, 0) : false)
+    end
+
+    units_1 = abscissas_units[1]
+    units_2 = abscissas_units[1]
+    units_tot = vcat(units_1, units_2)
+    
+    energy_ind = findall(x-> x in keys(ENERGY_UNITS) || x in keys(ENERGY_UNITS_LONG), units_tot)
+    pitch_ind = findall(x-> x in keys(DIMENSIONLESS_UNITS) || x in keys(DIMENSIONLESS_UNITS_LONG), units_tot)
+
+    if !(length(energy_ind)==1 && length(pitch_ind)==1)
+        verbose && println("is_energy_pitch(): (E,p) coordinates not found. Returning false... ")
+        return (returnExtra ? (false, 0, 0) : false)
+    end
+
+    verbose && println("is_energy_pitch(): (E,p) coordinates confirmed! Returning true... ")
+    return (returnExtra ? (true, energy_ind[1], pitch_ind[1]) : true) # [1] because we know there should be only 1 element returned by findall()
+end
+
+### CONTINUE CODING HERE!!!
+# MOVE FUNCTIONS FROM solveInverseProblem.jl TO HERE!!!
+### CONTINUE CODING HERE!!!
 
 ###### UNLABELLED FUNCTIONS BELOW
 

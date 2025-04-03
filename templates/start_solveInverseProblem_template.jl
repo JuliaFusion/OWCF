@@ -117,10 +117,14 @@
 #                      - :COLLISIONS - If included, the fast-ion distribution will be assumed to be spanned by a set of slowing-down functions,
 #                                      incorporating collision-physics into the reconstruction. Currently, this is only available for velocity-space (2D)
 #                                      reconstructions in (E,p) and (vpara,vperp).
+#                      - :ICRF - If included, electromagnetic wave heating in the ion cyclotron resonance range of frequencies (ICRF) will be included 
+#                                as prior information when solving the inverse problem. Currently, this is only available for velocity-space (2D) reconstructions 
+#                                in (E,p) and (vpara,vperp) and orbit-space (3D) reconstructions in (E,Lambda,Pphi_n).
 #                  One or several of the above options should be specified as elements in a Vector. Otherwise, empty Vector - Vector{Symbol}
-# regularization_equil_filepath - If :COLLISIONS is included in the 'regularization' Vector, the filepath to a magnetic equilibrium file 
-#                                 (either in .eqdsk file format or an extra/createSolovev.jl output file) must be specified. This is to compute 
-#                                 necessary quantities for the creation of the slowing-down basis functions, e.g. the Spitzer slowing-down time - String
+# regularization_equil_filepath - If :COLLISIONS and/or :ICRF is included in the 'regularization' Vector, the filepath to a magnetic equilibrium file 
+#                                 (either in .eqdsk file format or an OWCF/extra/createSolovev.jl output file) must be specified. For :COLLISIONS, this is to 
+#                                 compute necessary quantities for the creation of the slowing-down basis functions, e.g. the Spitzer slowing-down time.
+#                                 FOR :ICRF, this is to compute valid orbits, if an orbit-space (3D) reconstruction is to be performed - String
 # regularization_thermal_ion_temp - If :COLLISIONS is included in the 'regularization' Vector, data on the thermal ion temperatures must be specified. 
 #                                   This should be in the form of a Vector of equal length to the regularization_thermal_ion_species input variable (see below).
 #                                   For the elements of the Vector, the following options are currently available:
@@ -183,7 +187,7 @@
 # rescale_W_F_gaus_N_FI_tot - If rescale_W is set to true and rescale_W_F_ref_source is set to :GAUSSIAN, then rescale_W_F_gaus_N_FI_tot needs to be 
 #                            specified as an estimate of the total number of fast ions in the plasma - Float64
 # R_of_interest - If the reconstruction is in velocity-space (2D), an (R,z) point of interest might need to be specified, to 
-#                 e.g. include collision physics as prior information, or to rescale the weight functions using a reference fast-ion distribution.
+#                 e.g. include collision physics or ICRF as prior information, or to rescale the weight functions using a reference fast-ion distribution.
 #                 Otherwise, please leave unspecified - Float64
 # R_of_interest_units - The units of R_of_interest. Please see OWCF/misc/convert_units.jl for lists of all accepted units of measurement in the OWCF. - String 
 # saveInHDF5format - If set to true, the output of the solveInverseProblem.jl script will be saved in .hdf5 file format, instead of .jld2 file format. - Bool 
@@ -196,12 +200,12 @@
 # tokamak - The tokamak for which the inverse problem is solved. E.g. JET, ITER etc. Will be used purelely for esthetic purposes. - String
 # verbose - If set to true, the script will talk a lot! - Bool
 # z_of_interest - If the reconstruction is in velocity-space (2D), an (R,z) point of interest might need to be specified, to 
-#                 e.g. include collision physics as prior information, or to rescale the weight functions using a reference fast-ion distribution.
+#                 e.g. include collision physics or ICRF as prior information, or to rescale the weight functions using a reference fast-ion distribution.
 #                 Otherwise, please leave unspecified - Float64
 # z_of_interest_units - The units of z_of_interest. Please see OWCF/misc/convert_units.jl for lists of all accepted units of measurement in the OWCF. - String  
 #
 # btipsign - The sign of the dot product between the magnetic field and the plasma current. Can be 1 or -1. - Int64
-# FI_species - If the reconstruction space is (vpara,vperp) or :COLLISIONS is included in regularization, the fast-ion species need to be specified. "D", "T", "alpha" etc - String
+# FI_species - If the reconstruction space is (vpara,vperp) or :COLLISIONS/:ICRF is included in regularization, the fast-ion species need to be specified. "D", "T", "alpha" etc - String
 # h5file_of_nonJulia_origin - If .h5 or .hdf5 files are specified as input, and they were not created with the Julia programming language, the 
 #                             h5file_of_nonJulia_origin input variable might need to be set to true. This is because some languages reverse the array 
 #                             dimension order when saved as a .h5 or .hdf5 file. E.g. (E,p,R,z) sometimes become (z,R,p,E) - Bool
@@ -252,7 +256,7 @@ Pkg.activate(".")
 ## -----------------------------------------------------------------------------
 @everywhere begin
     constraints = [:NONNEG]
-    coordinate_system = "" # As of the current OWCF version, specify as "(E,p)" or "(vpara,vperp)" if any of the elements in scriptSources_W are specified as "calc2DWeights"
+    coordinate_system = "" # Specify as e.g. "(E,p)", "(vpara,vperp)", "(E,pm,Rm)" or "(E,Lambda,Pphi_n)"
     excluded_measurement_intervals = [[(,),...],[(,),...]]
     excluded_measurement_units = ["",""]
     exclude_zero_measurements = true
@@ -270,14 +274,21 @@ Pkg.activate(".")
     plot_solutions = false
     nr_array = [20] # Should be equal in length to 'regularization'
     regularization = [:ZEROTIKHONOV] # Should be equal in length to 'nr_array'
+    if (:COLLISIONS in regularization) || (:ICRF in regularization) # :COLLISIONS and/or :ICRF included in regularization...
+        regularization_equil_filepath = "" # Please specify the file path to a magnetic equilibrium file (see template description above)
+    end
     if :COLLISIONS in regularization
-        regularization_equil_filepath = ""
         regularization_thermal_ion_temp = [] # (please read start file template description above)
         regularization_thermal_ion_dens = [] # (please read start file template description above)
         regularization_thermal_ion_species = ["",""] # Or [""], ["","",""] etc 
         regularization_thermal_electron_temp = 0.0 # or "" (please read start file template description above)
         regularization_thermal_electron_dens = 0.0 # or "" (please read start file template description above)
         regularization_timepoint = 00.0000 # or "" (please read start file template description above)
+    end
+    if :ICRF in regularization
+        regularization_wave_frequency = 0.0 # The ICRF wave frequency (Hz)
+        regularization_cyclotron_harmonic = 0 # The ICRF wave cyclotron harmonic (preferably an integer)
+        regularization_toroidal_mode_number = 0 # The ICRF wave toroidal mode number
     end
     rescale_W = true
     if rescale_W
@@ -301,7 +312,7 @@ Pkg.activate(".")
 
     ### Extra input arguments
     btipsign = 1 # The sign of the dot product between the magnetic field and the plasma current. Most likely not needed. But please specify, if known.
-    FI_species = "" # If reconstruction is in (vpara,vperp) or :COLLISIONS in the 'regularization' input variable, the fast-ion species might need to be specified. Please see OWCF/misc/species_func.jl for more info on species options.
+    FI_species = "" # If reconstruction is in (vpara,vperp) or the 'regularization' input variable contains :COLLISIONS or :ICRF, the fast-ion species might need to be specified. Please see OWCF/misc/species_func.jl for more info on species options.
     h5file_of_nonJulia_origin = false # If rescale_W_F_file_path is an .h5 or .hdf5 file, and it was not created with the Julia programming language, this input variable should probably be set to true
 end
 
