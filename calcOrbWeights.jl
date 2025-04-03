@@ -450,6 +450,7 @@ verbose && println("Loading Python modules... ")
     from netCDF4 import Dataset
 
     import forward
+    import spec
     import transp_dists
     import transp_output
     import vcone
@@ -502,7 +503,7 @@ verbose && println("Setting all Python variables and structures on all distribut
         py"""
         # The '$' in front of many Python variables means that the variable is defined in Julia, not in Python.
         reaction = $reaction
-        test_thermal_particle = Particle($thermal_species) # Check so that thermal species is available in DRESS code
+        test_thermal_particle = spec.Particle($thermal_species) # Check so that thermal species is available in DRESS code
         thermal_species = $thermal_species
         projVel = $projVel
         if $verbose:
