@@ -23,7 +23,7 @@
 #
 # Finally, please note that some functions in dependencies.jl might be under construction. Hence, the bad code.
 #
-# Written by H. Järleblad. Last updated 2024-08-22.
+# Written by H. Järleblad. Last updated 2025-04-11.
 ###################################################################################################
 
 println("Loading the Julia packages for the OWCF dependencies... ")
@@ -54,6 +54,7 @@ include("../misc/convert_units.jl") # Some functions in dependencies.jl need uni
 
 const kB = 1.380649e-23 # Boltzmann constant, J/K
 const ϵ0 = 8.8541878128e-12 # Permittivity of free space
+const ICRF_STREAMLINES_SUPPORTED_COORD_SYSTEMS = "(E,p), (vpara,vperp), (E,mu,Pphi), (E,mu,Pphi,sigma), (E,Lambda,Pphi_n) and (E,Lambda,Pphi_n,sigma)"
 
 ###### Structures needed for dependencies ######
 
@@ -203,7 +204,7 @@ end
     forward_difference_matrix(space_size::Tuple, dim::Int64)
     forward_difference_matrix(-||-; verbose=false)
 
-Compute the forward difference matrix for a coordinate space of size 'space_size' along dimension 'dim'. 
+Compute the forward difference matrix (l1) for a coordinate space of size 'space_size' along dimension 'dim'. 
 For example, if space_size=(10,30) and dim=2, then 'finite_difference_matrix(space_size,dim)' will output 
 a 300x300 matrix Δ with value '-1' for all on-diagonal elements and '+1' for specific off-diagonal elements.
 All other elements in Δ will be '0'. For a specific row of the Δ matrix, the element with '+1' value 
@@ -218,11 +219,11 @@ function forward_difference_matrix(space_size::Tuple, dim::Int64)
         error("Invalid input. 1<=dim<=length(space_size) must hold. Got length(space_size)=$(length(space_size)) and dim=$(dim).")
     end
 
-    space_coords = CartesianIndices(space_size)
+    space_indices = CartesianIndices(space_size)
 
-    l1 = spzeros(length(space_coords),length(space_coords)) # The finite difference matrix for a specific dimension (dim)
-    for (i,space_coord_i) in enumerate(space_coords) # For every space point (every row in the finite difference matrix)
-        for (j,space_coord_j) in enumerate(space_coords) # -||- (for every column in the finite difference matrix)
+    l1 = spzeros(length(space_indices),length(space_indices)) # The finite difference matrix for a specific dimension (dim)
+    for (i,space_coord_i) in enumerate(space_indices) # For every space point (every row in the finite difference matrix)
+        for (j,space_coord_j) in enumerate(space_indices) # -||- (for every column in the finite difference matrix)
             if sum(Tuple(space_coord_j) .- Tuple(space_coord_i))==1 && (space_coord_j[dim]-space_coord_i[dim])==1 # If the coordinates differ by one (neighbours with j coordinate larger than i coordinate) and the difference is in the right dimension (dim)
                 l1[i,i] = -1 # Set value '-1' for the on-diagonal element
                 l1[i,j] = 1 # Set value '+1' for the j off-diagonal element
@@ -232,6 +233,28 @@ function forward_difference_matrix(space_size::Tuple, dim::Int64)
     end
 
     return l1
+end
+
+"""
+    forward_difference_matrix(space_size::Tuple)
+    forward_difference_matrix(-||-; verbose=false)
+
+Compute the forward difference matrix (L1) for a coordinate space of size 'space_size'. The size of
+the L1 matrix will be (length(space_size) * reduce(*,space_size), reduce(*,space_size)). The element 
+order of the columns corresponds to the order output of the function 'CartesianIndices(space_size)'.
+Output matrix will be in sparse matrix format, i.e. SparseMatrixCSC (see SparseArrays.jl package).
+Please see function 'forward_difference_matrix(space_size,dim)' above for detailed info.
+The keyword arguments are:
+    - verbose - If set to true, the function will be talkative! - Bool
+"""
+function forward_difference_matrix(space_size::Tuple; verbose=false)
+    L1 = Vector{SparseMatrixCSC{Float64,Int64}}(undef,length(space_size)) # All finite difference matrices (one for each dimension) (A Vector of sparce matrices (SparseMatrixCSC) CSC means 'compressed sparse column')
+    for idim=1:length(space_size) # For each dimension
+        verbose && println("Computing forward difference matrix for dimension $(idim) of $(length(space_size))... ")
+        L1[idim] = forward_difference_matrix(space_size, idim) # The forward difference matrix for this particular dimension
+    end
+    
+    return sparse_vcat(L1...) # Concatenate vertically and return
 end
 
 ###### Geometry
@@ -274,7 +297,7 @@ function rz_grid(rmin::Union{Int64,Float64}, rmax::Union{Int64,Float64}, nr::Int
     return OWCF_grid(r2d,z2d,r,z,phi,nr,nz,nphi)
 end
 
-###### Basic physics
+###### Physics
 
 """
     debye_length(n_e::Real, T_e::Real, species_th_vec::Vector{String}, n_th:vec::Vector{T}, T_th_vec::Vector{T}) where T<:Real
@@ -367,6 +390,192 @@ function spitzer_slowdown_time(n_e::Real, T_e::Real, species_f::String, species_
         return τ_s, coulomb_log, λ_D 
     end
     return τ_s
+end
+
+"""
+    icrf_streamlines(M, abscissas, FI_species, wave_frequency, cyclotron_harmonic)
+    icrf_streamlines(-||-; toroidal_mode_number=1, coord_system="(E,p)", coord_system_order=Tuple(1:length(abscissas)), R_of_interest=R_axis, 
+                           z_of_interest=z_axis, verbose=false)
+
+Compute the phase-space streamlines that indicate the direction of (fast-ion) particle transport during electromagnetic wave heating in the ion cyclotron range 
+of frequencies (ICRF). Currently, the available phase-space options include: 
+    - (E,p), or (p,E), where E is the fast-ion energy in keV, and p is the pitch (vpara/v with v and vpara being the total speed and the speed component 
+      parallel to the magnetic field, respectively)
+    - (vpara,vperp), or (vperp,vpara), where vpara and vperp are the speed components parallel and perpendicular to the magnetic field, respectively
+    - (E,mu,Pphi), or any permutations thereof, where E is the fast-ion energy in keV, mu is the magnetic moment in A*m^2 and Pphi is the toroidal canonical 
+      angular momentum in kg*m^2*s^-1
+    - (E,mu,Pphi,sigma), or any permutations thereof, where -||- and sigma is a binary coordinate (-1,+1)
+    - (E,Lambda,Pphi_n), or any permutations thereof, where -||-, Lambda is the normalized magnetic moment (Lambda=mu*B0/E with B0 the magnetic field on-axis 
+      in Teslas and E is the fast-ion energy in Joules) and Pphi_n is the normalized toroidal canonical angular momentum (Pphi_n=Pphi/(q*Ψ_w) with q being the 
+      particle charge in Coulomb and Ψ_w the magnetic flux at the separatrix)
+    - (E,Lambda,Pphi_n,sigma), or any permutations thereof, where -||- and -||-
+
+The information regarding which one of these phase-space coordinate spaces is discretized via grid points, included as the 'abscissas' input, must be specified 
+using the 'coord_system' keyword argument. An explanation of the input variables are as follows:
+    - M - The magnetic equilibrium object, as given by the Equilibrium.jl package - AbstractEquilibrium
+    - abscissas - The grid points of the abscissas of the phase space of interest - Vector{Vector}
+    - FI_species - The (fast-ion) particle of interest. Please see OWCF/misc/species_func.jl for a list of available particle species - String
+    - wave_frequency - The wave frequency of the ICRF wave. In Hz - Float64
+    - cyclotron_harmonic - The cyclotron harmonic integer of the ICRF heating scheme, for the 'FI_species' particle species and a cyclotron frequency on-axis - Int64
+The keyword arguments are as follows:
+    - toroidal_mode_number - The toroidal mode number of the ICRF wave. Defaults to 1 - Int64
+    - coord_system - The coordinate system of the phase space of interest (please see explanation above) - String
+    - coord_system_order - If phase-space abscissas in 'abscissas' input are not given in the common order, e.g. (E,Pphi,mu) instead of (E,mu,Pphi), this need to be 
+                           specified via the 'coord_system_order' keyword argument as (1,3,2) instead of the common (1,2,3) order etc. Defaults to (1:length(abscissas)) - Tuple
+    - R_of_interest - If "(E,p)" or "(vpara,vperp)" are given as input to the 'coord_system' keyword argument, an (R,z) point of interest needs to be specified. In meters. - Float64
+    - z_of_interest - If "(E,p)" or "(vpara,vperp)" are given as input to -||-
+    - verbose - If set to true, the function will talk a lot! - Bool
+
+The streamlines will be returned as an Array with dimensionality equal to length(abscissas). Each element of this Array will be a length(abscissas)-dimensional 
+unit vector, corresponding to the tangent of the icrf streamlines for that grid point.
+
+PLEASE NOTE! Energy grid points are assumed to be given in keV for all coordinate systems!!!
+Velocity grid points are assumed to be given in m/s for all coordinate systems!!!
+
+The icrf_streamlines() function is based on the content in M. Rud et al 2025 Nucl. Fusion 65 056008.
+"""
+function icrf_streamlines(M::AbstractEquilibrium, abscissas::Vector{Vector{T}} where {T<:Real}, FI_species::String, wave_frequency::Float64, cyclotron_harmonic::Int64;
+                          toroidal_mode_number::Int64=1, coord_system::String="(E,p)", coord_system_order=Tuple(1:length(abscissas)), 
+                          R_of_interest=magnetic_axis(M)[1], z_of_interest=magnetic_axis(M)[2], verbose::Bool=false)
+    coord_system_lc = lowercase(coord_system)
+    coordinates = split(coord_system_lc,",")
+    coordinates[1] = coordinates[1][2:end] # Remove "("
+    coordinates[end] = coordinates[end][1:end-1] # Remove ")"
+    
+    # Necessary space quantities
+    space_dimensionality = length(abscissas) # The dimensionality of the space e.g. 3
+    space_size = Tuple(length.(abscissas)) # The size of the space, e.g. (33,52,12). 
+    space_indices = CartesianIndices(space_size) # All space indices. E.g. [(1,1,1), (1,1,2), ..., (N1,N2,N3)] where Ni is the number of grid points in the i:th space dimension
+
+    # ICRF wave characteristics independent of phase space and dimensionality
+    B_vec_on_axis = Equilibrium.Bfield(M,magnetic_axis(M)...)
+    ω     = 2*pi*wave_frequency # The angular frequency of the wave
+    ω_0   = (GuidingCenterOrbits.e0)*norm(B_vec_on_axis)/getSpeciesMass(FI_species) # The gyro-motion angular frequency on-axis
+    Λ_∞ = cyclotron_harmonic*ω_0/ω # The Λ_∞ parameter (see e.g. M. Rud et al, Nucl. Fusion 2025)
+
+    verbose && println("icrf_streamlines(): Λ_∞: $(Λ_∞)     ω_0: $(ω_0)")
+
+    if length(coordinates)==2 && ("e" in coordinates) && ("p" in coordinates)
+        iE = coord_system_order[1]; ip = coord_system_order[2]
+        E_array = abscissas[iE]; p_array = abscissas[ip]
+        p_res = (1-Λ_∞)*norm(Equilibrium.Bfield(M,R_of_interest,z_of_interest))/norm(B_vec_on_axis)
+
+        verbose && println("icrf_streamlines(): p_res: $(p_res)")
+
+        dE = diff(E_array)[1] # Assume equidistant grid points
+        dp = diff(p_array)[1] # Back-up dp, in case of NaN or Inf
+        # For an m x n grid, epsilon will be an m x n array, where each element is a streamlines tangent (unit) 2-element vector
+        epsilon = Array{Vector{Float64},space_dimensionality}(undef,space_size...)
+        for c in space_indices
+            E = E_array[c[iE]]; p = p_array[c[ip]]
+            dp_c = -dE*(p^2)*E/(2*(E^2)*p)+(p_res^2)*dE*E/(E^2)/(2*p)
+            if dp==Inf || isnan(dp)
+                dE_c = 0.0
+                dp_c = dp 
+            else
+                dE_c = dE
+                dp_c = dp_c
+            end
+
+            tangent_vector = Vector{Float64}(undef,space_dimensionality)
+            tangent_vector[iE] = dE_c
+            tangent_vector[ip] = dp_c
+            tangent_vector /= norm(tangent_vector)
+            epsilon[c] = tangent_vector
+        end
+    elseif length(coordinates)==2 && ("vpara" in coordinates) && ("vperp" in coordinates)
+        ivpa = coord_system_order[1]; ivpe = coord_system_order[2]
+        vpa_array = abscissas[ivpa]; vpe_array = abscissas[ivpe]
+        dvpa = diff(vpa_array)[1] # Assume equidistant grid points
+        p_res = (1-Λ_∞)*norm(Equilibrium.Bfield(M,R_of_interest,z_of_interest))/norm(B_vec_on_axis)
+
+        verbose && println("icrf_streamlines(): p_res: $(p_res)")
+
+        # For an m x n grid, epsilon will be an m x n array, where each element is a streamlines tangent (unit) 2-element vector
+        epsilon = Array{Vector{Float64},space_dimensionality}(undef,space_size...)
+        for c in space_indices
+            vpa = vpa_array[c[ivpa]]; vpe = vpe_array[c[ivpe]]
+            if vpe==0.0
+                dvpa_c = 0.0
+                if vpa==0.0
+                    dvpe_c = -dvpa
+                else
+                    dvpe_c = dvpa*sign(vpa)
+                end
+            else
+                dvpa_c = dvpa
+                dvpe_c = dvpa*(1-p_res^2)*vpa/(p_res*p_res*vpe)
+            end
+
+            tangent_vector = Vector{Float64}(undef,space_dimensionality)
+            tangent_vector[ivpa] = dvpa_c
+            tangent_vector[ivpe] = dvpe_c
+            tangent_vector /= norm(tangent_vector)
+            epsilon[c] = tangent_vector
+        end
+    elseif (length(coordinates)==3 || length(coordinates)==4) && ("e" in coordinates) && ("mu" in coordinates) && ("pphi" in coordinates)
+        iE = coord_system_order[1]; imu = coord_system_order[2]; ipphi = coord_system_order[3]
+        if ("sigma" in coordinates)
+            isigma = coord_system_order[4]
+        end
+
+        E_array = abscissas[iE]; mu_array = abscissas[imu]; Pphi_array = abscissas[ipphi] # From keV to Joule
+
+        dE = diff(E_array)[1] # Assume equidistant grid points
+        dmu = dE*cyclotron_harmonic*getSpeciesCharge(FI_species)/(getSpeciesMass(FI_species)*ω)
+        dPphi = dE*toroidal_mode_number/ω
+
+        tangent_vector = Vector{Float64}(undef,space_dimensionality)
+        tangent_vector[iE] = dE
+        tangent_vector[imu] = dmu
+        tangent_vector[ipphi] = dPphi
+        if ("sigma" in coordinates)
+            tangent_vector[isigma] = 0.0
+        end
+        tangent_vector /= norm(tangent_vector)
+
+        # For an m x n x l grid, epsilon will be an m x n x l array, where each element is an ICRF streamlines tangent (unit) 3-element vector
+        # For an m x n x l x 2 grid, epsilon will be an m x n x l x 2 array, where each element is a streamlines tangent (unit) 4-element vector, with the sigma directional element equal to 0
+        epsilon = [tangent_vector for c in space_indices]
+    elseif (length(coordinates)==3 || length(coordinates)==4) && ("e" in coordinates) && ("lambda" in coordinates) && ("pphi_n" in coordinates)
+        iE = coord_system_order[1]; il = coord_system_order[2]; ippn = coord_system_order[3]
+        if ("sigma" in coordinates)
+            isigma = coord_system_order[4]
+        end
+
+        E_array = abscissas[iE]; Lambda_array = abscissas[il]; Pphi_n_array = abscissas[ippn]
+
+        FI_species_q = getSpeciesCharge(FI_species)
+        psi_axis, psi_bdry = psi_limits(M)
+        if psi_bdry==0
+            @warn "The magnetic flux at the last closed flux surface (LCFS) is found to be 0 for the 'M' input to os2COM(). Pϕ_n=Pϕ/(q*|Ψ_w|) where Ψ_w=Ψ(mag. axis) is assumed instead of Ψ_w=Ψ(LCFS)."
+            Ψ_w_norm = abs(psi_axis)
+        else
+            Ψ_w_norm = abs(psi_bdry)
+        end
+
+        dE = diff(E_array)[1] # Assume equidistant grid points
+        dPphi_n = inv(FI_species_q*Ψ_w_norm) *toroidal_mode_number*(1000*GuidingCenterOrbits.e0*dE)/ω
+
+        # For an m x n x l grid, epsilon will be an m x n x l array, where each element is a streamlines tangent (unit) 3-element vector
+        # For an m x n x l x 2 grid, epsilon will be an m x n x l x 2 array, where each element is a streamlines tangent (unit) 4-element vector, with the sigma directional element equal to 0
+        epsilon = Array{Vector{Float64},space_dimensionality}(undef,space_size...)
+        for c in space_indices
+            tangent_vector = Vector{Float64}(undef,space_dimensionality)
+            tangent_vector[iE] = dE
+            tangent_vector[il] = (Λ_∞ - Lambda_array[c[il]])*dE/E_array[c[iE]]
+            tangent_vector[ippn] = dPphi_n
+            if ("sigma" in coordinates)
+                tangent_vector[isigma] = 0.0
+            end
+            tangent_vector /= norm(tangent_vector)
+            epsilon[c] = tangent_vector
+        end
+    else
+        error("Coordinate space $(coord_system) is not supported. Currently supported options include $(ICRF_STREAMLINES_SUPPORTED_COORD_SYSTEMS) or any internal permutations thereof. Please correct and re-try.")
+    end
+
+    return epsilon
 end
 
 ###### Data manipulation
@@ -662,6 +871,7 @@ function get_orbel_volume(og::OrbitGrid, os_equidistant::Bool)
 end
 
 ###### Inverse problem (fast-ion tomography) solving related functions
+
 """
     is_energy_pitch(abscissas,abscissas_units)
     is_energy_pitch(-||-; verbose=false, returnExtra=false)
@@ -700,9 +910,511 @@ function is_energy_pitch(abscissas::Vector{Vector{T}} where {T<:Real}, abscissas
     return (returnExtra ? (true, energy_ind[1], pitch_ind[1]) : true) # [1] because we know there should be only 1 element returned by findall()
 end
 
-### CONTINUE CODING HERE!!!
-# MOVE FUNCTIONS FROM solveInverseProblem.jl TO HERE!!!
-### CONTINUE CODING HERE!!!
+"""
+    is_vpara_vperp(abscissas, abscissas_units)
+    is_vpara_vperp(-||-; verbose=false, returnExtra=false)
+
+Check if the reconstruction space discretized via the grid points in the abscissas in the Vector{Vector}
+input variable 'abscissas' is the (vpara,vperp) space, where vpara and vperp are the particle velocities
+parallel and perpendicular to the magnetic field, respectively. The units of the abscissas are provided 
+as elements in a Vector input via the 'abscissas_units' input variable. See OWCF/misc/convert_units.jl 
+for how to specify units. If the reconstruction space is found to be (vpara,vperp), return true. If not, 
+return false.
+
+The keyword arguments are:
+- verbose - If set to true, the function will talk a lot!
+- returnExtra - If set to true, instead of a Bool, a Tuple will be returned, with the form (b,ivpa,ivpe).
+                'b' is the Bool returned when returnExtra=false. 'ivpa' gives access to the vpara grid points 
+                as 'abscissas[ivpa]'. 'ivpe' gives access to the vperp grid points as 'abscissas[ivpe]'.
+"""
+function is_vpara_vperp(abscissas::Vector{Vector{T}} where {T<:Real}, abscissas_units::Vector{String}; verbose=false, returnExtra=false)
+    if length(abscissas_units)!=2
+        verbose && println("is_vpara_vperp(): Number of reconstruction space abscissas is not equal to 2. Returning false... ")
+        return (returnExtra ? (false, 0, 0) : false)
+    end
+
+    units_1 = abscissas_units[1]
+    units_2 = abscissas_units[2]
+    units_tot = vcat(units_1, units_2)
+    w_speed_inds = findall(x-> units_are_speed(x), units_tot)
+
+    if !(length(w_speed_inds)==2)
+        verbose && println("is_vpara_vperp(): (vpara,vperp) coordinates not found. Returning false... ")
+        return (returnExtra ? (false, 0, 0) : false)
+    else
+        verbose && print("is_vpara_vperp(): (vpara,vperp) coordinates found! Distinguishing (vpara, vperp) arrays...")
+        w_vel_arrays = abscissas[w_speed_inds]
+        if minimum(w_vel_arrays[1])<0 && minimum(w_vel_arrays[2])>0 # vpara can be negative. vperp cannot
+            verbose && println("ok!")
+            w_vpara_ind = w_speed_inds[1] # Order of abscissas in w_vel_arrays is the same as the order in w_speed_inds
+            w_vperp_ind = w_speed_inds[2] # Order of abscissas in w_vel_arrays is the same as the order in w_speed_inds
+        elseif minimum(w_vel_arrays[2]<0 && minimum(w_vel_arrays[1]>0)) # vpara can be negative. vperp cannot
+            verbose && println("ok!")
+            w_vpara_ind = w_speed_inds[2] # Order of abscissas in w_vel_arrays is the same as the order in w_speed_inds
+            w_vperp_ind = w_speed_inds[1] # Order of abscissas in w_vel_arrays is the same as the order in w_speed_inds
+        else
+            verbose && println("")
+            @warn "Could not distinguish (vpara,vperp) arrays from weight function abscissas. Assuming abscissa with index $(w_speed_inds[1]) to be vpara and abscissa with index $(w_speed_inds[2]) to be vperp."
+            w_vpara_ind = w_speed_inds[1] # Order of abscissas in w_vel_arrays is the same as the order in w_speed_inds
+            w_vperp_ind = w_speed_inds[2] # Order of abscissas in w_vel_arrays is the same as the order in w_speed_inds
+        end
+        verbose && println("is_vpara_vperp(): Returning true... ")
+        return (returnExtra ? (true, w_vpara_ind, w_vperp_ind) : true)
+    end
+end
+
+"""
+    is_COM(abscissas, abscissas_units)
+    is_COM(-||-; verbose=false, returnExtra=false)
+
+Check if the reconstruction space discretized via the grid points in the abscissas in the Vector{Vector}
+input variable 'abscissas' is the constants-of-motion (COM) space, i.e. (E,mu,Pphi) or (E,mu,Pphi,sigma),
+where E is the particle energy, mu is the magnetic moment and Pphi is the toroidal canonical angular 
+momentum. sigma is a binary coordinate, included to distinguish between co- and counter-going orbits.
+The units of the abscissas are provided as elements in a Vector input via the 'abscissas_units' input variable. 
+See OWCF/misc/convert_units.jl for how to specify units. If the reconstruction space is found to be (E,mu,Pphi)
+or (E,mu,Pphi,sigma), return true. If not, return false.
+
+The keyword arguments are:
+- verbose - If set to true, the function will talk a lot!
+- returnExtra - If set to true, instead of a Bool, a Tuple will be returned, with the form (b,iE,imu,iPphi) or 
+                (b,iE,imu,iPphi,isigma), depending on the length of input 'abscissas'. 'b' is the Bool returned 
+                when returnExtra=false. 'iE' gives access to the E grid points as 'abscissas[iE]'. Similar for 
+                imu, iPphi and isigma.
+"""
+function is_COM(abscissas::Vector{Vector{T}} where {T<:Real}, abscissas_units::Vector{String}; verbose=false, returnExtra=false)
+    if length(abscissas_units)!=3 && length(abscissas_units)!=4
+        verbose && println("is_COM(): Number of reconstruction space abscissas is not equal to 3, nor 4. Returning false... ")
+        return (returnExtra ? (false, zeros(Int64,length(abscissas_units))...) : false)
+    end
+
+    units_1 = abscissas_units[1]
+    units_2 = abscissas_units[2]
+    units_3 = abscissas_units[3]
+    units_4 = length(abscissas_units)==4 ? abscissas_units[4] : "dimensionless"
+
+    units_tot = vcat(units_1, units_2, units_3, units_4)
+    w_energy_ind = findall(x-> x in keys(ENERGY_UNITS) || x in keys(ENERGY_UNITS_LONG), units_tot)
+    w_mu_ind = findall(x-> units_are_equal_base(x,"m^2_A"), units_tot) # SI units of magnetic moment
+    w_Pphi_ind = findall(x-> units_are_equal_base(x,"kg_m^2_s^-1"), units_tot) # SI units of toroidal angular canonical momentum
+    w_sigma_ind = findall(x-> x in keys(DIMENSIONLESS_UNITS) || x in keys(DIMENSIONLESS_UNITS_LONG), units_tot)
+
+    if !(length(w_energy_ind)==1 && length(w_mu_ind)==1 && length(w_Pphi_ind)==1 && length(w_sigma_ind)==1)
+        verbose && println("is_COM(): (E,mu,Pphi) coordinates not found. Returning false... ")
+        return (returnExtra ? (false, zeros(Int64,length(abscissas_units))...) : false)
+    end
+
+    verbose && println("is_COM(): (E,mu,Pphi) coordinates confirmed! Returning true... ")
+    if !returnExtra
+        return true
+    end
+    if length(abscissas_units)==4
+        # [1] because we know there should be only 1 element returned by findall()
+        output_tuple = (true, w_energy_ind[1], w_mu_ind[1], w_Pphi_ind[1], w_sigma_ind[1])
+    else # Must be 3 (see above)
+        # [1] because we know there should be only 1 element returned by findall()
+        output_tuple = (true, w_energy_ind[1], w_mu_ind[1], w_Pphi_ind[1])
+    end
+    return (returnExtra ? output_tuple : true)
+end
+
+"""
+    is_normalized_COM(abscissas, abscissas_units)
+    is_normalized_COM(-||-; verbose=false, returnExtra=false)
+
+Check if the reconstruction space discretized via the grid points in the abscissas in the Vector{Vector}
+input variable 'abscissas' is the normalized constants-of-motion (COM) space, i.e. (E,Lambda,Pphi_n) or 
+(E,Lambda,Pphi_n,sigma), where E is the particle energy, Lambda is the normalized magnetic moment and 
+Pphi_n is the toroidal canonical angular momentum. sigma is a binary coordinate, included to distinguish 
+between co- and counter-going orbits. The units of the abscissas are provided as elements in a Vector input 
+via the 'abscissas_units' input variable. See OWCF/misc/convert_units.jl for how to specify units. If the 
+reconstruction space is found to be (E,Lambda,Pphi_n) or (E,Lambda,Pphi_n,sigma), return true. If not, 
+return false.
+
+The keyword arguments are:
+- verbose - If set to true, the function will talk a lot!
+- returnExtra - If set to true, instead of a Bool, a Tuple will be returned, with the form (b,iE,iL,iPpn) or 
+                (b,iE,iL,iPpn,isigma), depending on the length of input 'abscissas'. 'b' is the Bool returned 
+                when returnExtra=false. 'iE' gives access to the E grid points as 'abscissas[iE]'. Similar for 
+                iL, iPpn and isigma.
+"""
+function is_normalized_COM(abscissas::Vector{Vector{T}} where {T<:Real}, abscissas_units::Vector{String}; verbose=false, returnExtra=false)
+    rec_space_DIM = length(abscissas_units) # Reconstruction space dimensionality is the number of weight function abscissas
+
+    if rec_space_DIM!=3 && rec_space_DIM!=4
+        verbose && println("is_normalized_COM(1): Number of reconstruction space abscissas is not equal to 3, nor 4. Returning false... ")
+        return (returnExtra ? (false, zeros(Int64,rec_space_DIM)...) : false)
+    end
+
+    sigma_included = false # By default, assume that the binary coordinate sigma is not included as a reconstruction space coordinate
+    if rec_space_DIM==4
+        sigma_included = true # If the dimensionality is 4, sigma is assumed to be one of the reconstruction space coordinates
+    end
+
+    units_1 = abscissas_units[1]
+    units_2 = abscissas_units[2]
+    units_3 = abscissas_units[3]
+    units_4 = sigma_included ? abscissas_units[4] : "dimensionless"
+
+    units_tot = vcat(units_1, units_2, units_3, units_4)
+    w_energy_ind = findall(x-> x in keys(ENERGY_UNITS) || x in keys(ENERGY_UNITS_LONG), units_tot)
+    w_dimensionless_inds = findall(x-> x in keys(DIMENSIONLESS_UNITS) || x in keys(DIMENSIONLESS_UNITS_LONG), units_tot)
+
+    if !(length(w_energy_ind)==1 && length(w_dimensionless_inds)==3)
+        verbose && println("is_normalized_COM(2): (E,Lambda,Pphi_n) coordinates not found. Returning false... ")
+        return (returnExtra ? (false, zeros(Int64,rec_space_DIM)...) : false)
+    end
+
+    if !sigma_included # If sigma was NOT included as a reconstruction space abscissa
+        filter!(x-> x!=4,w_dimensionless_inds) # Remove the dummy index with value 4. We know it will be present in w_dimensionless_inds, because we added it ourselves (see above)
+    end
+
+    verbose && println("is_normalized_COM(3): (E,Lambda,Pphi_n) coordinates assumed. Attempting to deduce coordinate order... ")
+    w_Lambda_ind = nothing
+    w_Pphi_n_ind = nothing
+    w_sigma_ind = sigma_included ? nothing : -1 # If reconstruction space abscissas do not include sigma, initialize to -1
+
+    for ind in w_dimensionless_inds # For each index ind corresponding to an abscissa for one of the dimensionless coordinates Lambda, Pphi_n or sigma (we don't know which one, we try to deduce it below)
+        abscissa = abscissas[ind]
+        if minimum(abscissa)<0 && maximum(abscissa)<=0 # If all grid points of the abscissa are placed at zero and more negative values
+            if isnothing(w_Pphi_n_ind) # and the Pphi_n index has not yet been set
+                w_Pphi_n_ind = ind # We know ind MUST be the Pphi_n index, since this is NOT possible for the other coordintes (mu and sigma)
+                continue # Continue to next ind in w_dimensionless_inds
+            else # If the Pphi_n index has already been set, the assumption of (E,Lambda,Pphi_n) coordinates cannot be correct
+                verbose && println("is_normalized_COM(4): The assumption of (E,Lambda,Pphi_n) coordinates is found to be incorrect. Returning false... ")
+                return (returnExtra ? (false, zeros(Int64,rec_space_DIM)...) : false)
+            end
+        end
+        if minimum(abscissa)>=0 && maximum(abscissa)>0 # If the grid points of the abscissa are placed at zero and greater positive values
+            if isnothing(w_Lambda_ind) # and the Lambda index has not yet been set
+                w_Lambda_ind = ind # Assume ind is the Lambda index
+                continue # Continue to next ind in w_dimensionless_inds
+            else # If the Lambda index has already been set, the deduction becomes practically impossible, since then the abscissas do not span the whole of COM-space
+                @warn "is_normalized_COM(5): Unable to deduce (E,Lambda_Pphi_n,sigma) coordinate order. Assuming normal order $(sigma_included ? "(i_E,i_Lambda,i_Pphi_n;i_sigma)=(1,2,3;4)" : "(i_E,i_Lambda,i_Pphi_n)=(1,2,3)")"
+                return (returnExtra ? (true, (1:rec_space_DIM)...) : true) # Start at index 2, to align with weight function abscissa indexing (index 1 is always the diagnostic measurement bin centers)
+            end
+        end
+        if iszero(abscissa) # If all grid points are 0, we can do nothing, this is some error-level sh*t!
+            @warn "is_normalized_COM(6): Unable to deduce (E,Lambda_Pphi_n,sigma) coordinate order. Assuming normal order $(sigma_included ? "(i_E,i_Lambda,i_Pphi_n;i_sigma)=(1,2,3;4)" : "(i_E,i_Lambda,i_Pphi_n)=(1,2,3)")"
+            return (returnExtra ? (true, (1:rec_space_DIM)...) : true) # Start at index 2, to align with weight function abscissa indexing (index 1 is always the diagnostic measurement bin centers)
+        end
+        if length(abscissa)==2 # If the abscissa has exactly two grid points (one positive and one negative)
+            if isnothing(w_sigma_ind) # and the sigma index has not yet been set
+                w_sigma_ind = ind # (It's extremely reasonable to) assume ind is the sigma index
+                continue
+            elseif w_sigma_ind==-1 # If the reconstruction space dimensionality is 3
+                # Don't do anything, this must be the w_Pphi_n_ind, and will be set in the if statement below
+            else # If the sigma index has ALREADY been set (and the reconstruction space dimensionality is NOT 3, but 4)
+                # Then, the Pphi_n and sigma abscissas have exactly the same characteristics (2 grid points, one negative and one positive). Distinguishing between the two is impossible
+                @warn "is_normalized_COM(7): Unable to deduce (E,Lambda_Pphi_n,sigma) coordinate order. Assuming normal order $(sigma_included ? "(i_E,i_Lambda,i_Pphi_n;i_sigma)=(1,2,3;4)" : "(i_E,i_Lambda,i_Pphi_n)=(1,2,3)")"
+                return (returnExtra ? (true, (1:rec_space_DIM)...) : true) # Start at index 2, to align with weight function abscissa indexing (index 1 is always the diagnostic measurement bin centers)
+            end
+        end
+        # If the grid points of the abscissa are placed at both negative and positive values, and there are not exactly two grid points...
+        if isnothing(w_Pphi_n_ind) # and the Pphi_n index has not yet been set
+            w_Pphi_n_ind = ind # We know ind MUST be the Pphi_n index, since this is NOT possible for the other coordintes (mu and sigma)
+            continue # Continue to next ind in w_dimensionless_inds
+        else # If the Pphi_n index has already been set, the assumption of (E,Lambda,Pphi_n) coordinates cannot be correct
+            verbose && println("is_normalized_COM(8): The assumption of (E,Lambda,Pphi_n) coordinates is found to be incorrect. Returning false... ")
+            return (returnExtra ? (false, zeros(Int64,rec_space_DIM)...) : false)
+        end
+    end
+
+    if sigma_included && sum(isnothing.([w_Lambda_ind, w_Pphi_n_ind, w_sigma_ind]))==0
+        verbose && println("is_normalized_COM(9): Coordinate order deduced. Returning true... ")
+        output_tuple = (true, w_energy_ind[1], w_Lambda_ind[1], w_Pphi_n_ind[1], w_sigma_ind[1])
+    elseif !sigma_included && sum(isnothing.([w_Lambda_ind, w_Pphi_n_ind]))==0
+        verbose && println("is_normalized_COM(10): Coordinate order deduced. Returning true... ")
+        output_tuple = (true, w_energy_ind[1], w_Lambda_ind[1], w_Pphi_n_ind[1])
+    else # There must have been some error. This should not be possible.
+        error("This error should be logically impossible to reach. Please post an issue at https://github.com/juliaFusion/owCF/issues or try to directly contact henrikj@dtu.dk or anvalen@dtu.dk.")
+    end
+    return (returnExtra ? output_tuple : true)
+end
+
+"""
+    is_EpRz(abscissas, abscissas_units)
+    is_EpRz(-||-; verbose=false, returnExtra=false)
+
+Check if the reconstruction space discretized via the grid points in the abscissas in the Vector{Vector}
+input variable 'abscissas' is the (E,p,R,z) space, where E is the particle energy, p is the particle pitch 
+(pitch=v_||/v), R is the major radius and z is the vertical coordinate. The units of the abscissas are 
+provided as elements in a Vector input via the 'abscissas_units' input variable. See OWCF/misc/convert_units.jl 
+for how to specify units. If the reconstruction space is found to be (E,p,R,z), return true. If not, return false.
+
+The keyword arguments are:
+- verbose - If set to true, the function will talk a lot!
+- returnExtra - If set to true, instead of a Bool, a Tuple will be returned, with the form (b,iE,ip,iR,iz). 
+                'b' is the Bool returned when returnExtra=false. 'iE' gives access to the E grid points as 
+                'abscissas[iE]'. Similar for ip, iR and iz.
+"""
+function is_EpRz(abscissas::Vector{Vector{T}} where {T<:Real}, abscissas_units::Vector{String}; verbose=false, returnExtra=false)
+    if length(abscissas_units)!=4
+        verbose && println("is_EpRz(): Number of reconstruction space abscissas is not equal to 4. Returning false... ")
+        return (returnExtra ? (false, 0, 0, 0, 0, [], []) : false)
+    end
+    units_1 = abscissas_units[1]
+    units_2 = abscissas_units[2]
+    units_3 = abscissas_units[3]
+    units_4 = abscissas_units[4]
+
+    units_tot = vcat(units_1, units_2, units_3, units_4)
+    w_energy_ind = findall(x-> x in keys(ENERGY_UNITS) || x in keys(ENERGY_UNITS_LONG), units_tot)
+    w_pitch_ind = findall(x-> x in keys(DIMENSIONLESS_UNITS) || x in keys(DIMENSIONLESS_UNITS_LONG), units_tot)
+    w_Rz_inds = findall(x-> x in keys(LENGTH_UNITS) || x in keys(LENGTH_UNITS_LONG), units_tot)
+
+    if !(length(w_energy_ind)==1 && length(w_pitch_ind)==1 && length(w_Rz_inds)==2)
+        verbose && println("is_EpRz(): (E,p,R,z) coordinates not found. Returning false... ")
+        return (returnExtra ? (false, 0, 0, 0, 0, [], []) : false)
+    end
+
+    verbose && print("is_EpRz(): (E,p,R,z) coordinates found! Distinguishing (R,z) arrays... ")
+    w_RnZ_arrays = abscissas[w_Rz_inds]
+    if minimum(w_RnZ_arrays[2])<0 && minimum(w_RnZ_arrays[1])>0 # If the second LENGTH_UNITS abscissa has negative elements, and the first one does not..
+        verbose && println("ok!")
+        w_R_ind = w_Rz_inds[1] # Order of abscissas in w_RnZ_arrays is the same as the order in w_Rz_inds
+        w_z_ind = w_Rz_inds[2] # Order of abscissas in w_RnZ_arrays is the same as the order in w_Rz_inds
+        R_of_interests = w_RnZ_arrays[1] # The first LENGTH_UNITS abscissa is very likely to be the R grid points...
+        z_of_interests = w_RnZ_arrays[2] # ...and the second LENGTH_UNITS abscissa is very likely to be the z grid points
+    elseif minimum(w_RnZ_arrays[1])<0 && minimum(w_RnZ_arrays[2])>0 # If it's the other way around...
+        verbose && println("ok!")
+        w_R_ind = w_Rz_inds[2] # Order of abscissas in w_RnZ_arrays is the same as the order in w_Rz_inds
+        w_z_ind = w_Rz_inds[1] # Order of abscissas in w_RnZ_arrays is the same as the order in w_Rz_inds
+        R_of_interests = w_RnZ_arrays[2] # ...it's very likely to be the other way around.
+        z_of_interests = w_RnZ_arrays[1] # ...it's very likely to be the other way around.
+    else
+        verbose && println("")
+        @warn "Could not deduce (R,z) arrays from weight function abscissas. Assuming abscissa with index $(w_Rz_inds[1]) to be R and abscissa with index $(w_Rz_inds[2]) to be z."
+        w_R_ind = w_Rz_inds[1] # Order of abscissas in w_RnZ_arrays is the same as the order in w_Rz_inds
+        w_z_ind = w_Rz_inds[2] # Order of abscissas in w_RnZ_arrays is the same as the order in w_Rz_inds
+        R_of_interests = w_RnZ_arrays[1]
+        z_of_interests = w_RnZ_arrays[2]
+    end
+    verbose && println("is_EpRz(): Returning true... ")
+    return (returnExtra ? (true, w_energy_ind[1], w_pitch_ind[1], w_R_ind, w_z_ind, R_of_interests, z_of_interests) : true)
+end
+
+"""
+    get_energy_abscissa(abscissas, abscissas_units)
+    get_energy_abscissa(-||-; verbose=false, returnExtra=false)
+
+If there is an energy abscissa in the collection of abscissas input 'abscissas', return it. Otherwise, return nothing.
+
+The keyword arguments are:
+    - verbose - If true, the function will talk a lot!
+    - returnExtra - If set to true, instead of a Bool, a Tuple will be returned, with the form (b,iE). 
+                'b' is the Bool returned when returnExtra=false. 'iE' gives access to the energy grid points as 
+                'abscissas[iE]'.
+"""
+function get_energy_abscissa(abscissas::Vector{Vector{T}} where {T<:Real}, abscissas_units::Vector{String}; verbose=false, returnExtra=false)
+    # Assume there is only one energy abscissa
+    w_energy_ind = findfirst(x-> x in keys(ENERGY_UNITS) || x in keys(ENERGY_UNITS_LONG), abscissas_units)
+    if isnothing(w_energy_ind)
+        verbose && println("No energy abscissa found in input abscissas! Returning nothing... ")
+        return returnExtra ? (nothing,nothing) : nothing
+    end
+
+    return returnExtra ? (abscissas[w_energy_ind], w_energy_ind) : abscissas[w_energy_ind]
+end
+
+"""
+    get_pitch_abscissa(abscissas, abscissas_units)
+    get_pitch_abscissa(-||-; verbose=false, returnExtra=false)
+
+If there is a pitch abscissa in the collection of abscissas input 'abscissas', return it. Otherwise, return nothing.
+
+The keyword arguments are:
+    - verbose - If true, the function will talk a lot!
+    - returnExtra - If set to true, instead of a Bool, a Tuple will be returned, with the form (b,ip). 
+                'b' is the Bool returned when returnExtra=false. 'ip' gives access to the pitch grid points as 
+                'abscissas[ip]'.
+"""
+function get_pitch_abscissa(abscissas::Vector{Vector{T}} where {T<:Real}, abscissas_units::Vector{String}; verbose=false, returnExtra=false)
+    w_dimensionless_inds = findall(x-> x in keys(DIMENSIONLESS_UNITS) || x in keys(DIMENSIONLESS_UNITS_LONG), abscissas_units)
+
+    if isempty(w_dimensionless_inds)
+        verbose && println("No dimensionless abscissa found in input abscissas! Returning nothing...")
+        return returnExtra ? (nothing,nothing) : nothing
+    end
+
+    w_pitch_ind = 0
+    for w_dimensionless_ind in w_dimensionless_inds
+        w_abscissa = abscissas[w_dimensionless_ind]
+        if maximum(w_abscissa)<=1 && minimum(w_abscissa)>=-1
+            w_pitch_ind = w_dimensionless_ind
+            break # Assume there is only one pitch-like coordinate
+        end
+    end
+
+    if w_pitch_ind==0
+        verbose && println("No pitch-like dimensionless abscissa found in input abscissas! Returning nothing...")
+        return returnExtra ? (nothing,nothing) : nothing
+    end
+
+    return returnExtra ? (abscissas[w_pitch_ind], w_pitch_ind) : abscissas[w_pitch_ind]
+end
+
+"""
+    get_vpara_abscissa(abscissas, abscissas_units)
+    get_vpara_abscissa(-||-; verbose=false, returnExtra=false)
+
+If there is a vpara abscissa in the collection of abscissas input 'abscissas', return it. Otherwise, return nothing.
+
+The keyword arguments are:
+    - verbose - If true, the function will talk a lot!
+    - returnExtra - If set to true, instead of a Bool, a Tuple will be returned, with the form (b,ivpa). 
+                'b' is the Bool returned when returnExtra=false. 'ivpa' gives access to the vpara grid points as 
+                'abscissas[ivpa]'.
+"""
+function get_vpara_abscissa(abscissas::Vector{Vector{T}} where {T<:Real}, abscissas_units::Vector{String}; verbose=false, returnExtra=false)
+    w_speed_inds = findall(x-> units_are_speed(x), abscissas_units)
+    if isempty(w_speed_inds)
+        verbose && println("No speed abscissa found in input abscissas! Returning nothing...")
+        return returnExtra ? (nothing,nothing) : nothing
+    end
+    if length(w_speed_inds)>2
+        @warn "Impossible to determine vpara since more than two abscissas with unit of measurement 'speed' was found. Returning nothing... "
+        return returnExtra ? (nothing,nothing) : nothing
+    end
+
+    if length(w_speed_inds)==1
+        verbose && println("One abscissa with unit of measurement 'speed' was found. Assuming it is vpara. Returning... ")
+        return returnExtra ? (abscissas[w_speed_inds], w_speed_inds[1]) : abscissas[w_speed_inds]
+    end
+
+    # w_speed_inds must be length 2 then
+    w_speed_abscissa_1 = abscissas[w_speed_inds[1]]
+    w_speed_abscissa_2 = abscissas[w_speed_inds[2]]
+    if minimum(w_speed_abscissa_1)<0 # Must be vpara since vperp>= always holds
+        return returnExtra ? (w_speed_abscissa_1, w_speed_inds[1]) : w_speed_abscissa_1
+    elseif minimum(w_speed_abscissa_2)<0 # -||-
+        return returnExtra ? (w_speed_abscissa_2, w_speed_inds[2]) : w_speed_abscissa_2
+    else # Ambiguous
+        @warn "Cannot deduce vpara from abscissas and abscissas_units. Returning abscissas with smallest index as vpara."
+        return returnExtra ? (w_speed_abscissa_1, w_speed_inds[1]) : w_speed_abscissa_1
+    end
+end
+
+"""
+    get_vperp_abscissa(abscissas, abscissas_units)
+    get_vperp_abscissa(-||-; verbose=false, returnExtra=false)
+
+If there is a vperp abscissa in the collection of abscissas input 'abscissas', return it. Otherwise, return nothing.
+
+The keyword arguments are:
+    - verbose - If true, the function will talk a lot!
+    - returnExtra - If set to true, instead of a Bool, a Tuple will be returned, with the form (b,ivpe). 
+                'b' is the Bool returned when returnExtra=false. 'ivpe' gives access to the vperp grid points as 
+                'abscissas[ivpe]'.
+"""
+function get_vperp_abscissa(abscissas::Vector{Vector{T}} where {T<:Real}, abscissas_units::Vector{String}; verbose=false, returnExtra=false)
+    w_speed_inds = findall(x-> units_are_speed(x), abscissas_units)
+    if isempty(w_speed_inds)
+        verbose && println("No speed abscissa found in input abscissas! Returning nothing...")
+        return returnExtra ? (nothing,nothing) : nothing
+    end
+    if length(w_speed_inds)>2
+        @warn "Impossible to determine vperp since more than two abscissas with unit of measurement 'speed' was found. Returning nothing... "
+        return returnExtra ? (nothing,nothing) : nothing
+    end
+
+    if length(w_speed_inds)==1
+        verbose && println("One abscissa with unit of measurement 'speed' was found. Assuming it is vperp. Returning... ")
+        return returnExtra ? (abscissas[w_speed_inds], w_speed_inds[1]) : abscissas[w_speed_inds]
+    end
+
+    # w_speed_inds must be length 2 then
+    w_vpara_abscissa, w_vpara_ind = get_vpara_abscissa(abscissas, abscissas_units; verbose=verbose, returnExtra=returnExtra)
+    w_vperp_ind = filter(x-> x!=w_vpara_ind,w_speed_inds)[1]
+
+    return returnExtra ? (abscissas[w_vperp_ind], w_vperp_ind) : abscissas[w_vperp_ind]
+end
+
+"""
+    icrf_regularization_matrix(M, abscissas, FI_species, wave_frequency, cyclotron_harmonic)
+    icrf_regularization_matrix(-||-; toroidal_mode_number=1, coord_system="(E,p)", coord_system_order=Tuple(1:length(abscissas)), R_of_interest=R_axis, 
+                           z_of_interest=z_axis, L1=forward_difference_matrix(Tuple(length.(abscissas))), verbose=false)
+
+Compute a regularization matrix that enables a solution to an inverse problem to be regularized with respect to the physics of electromagnetic wave heating in 
+the ion cyclotron range of frequencies (ICRF). Currently, the available phase-space options include: 
+    - (E,p), or (p,E), where E is the fast-ion energy in keV, and p is the pitch (vpara/v with v and vpara being the total speed and the speed component 
+      parallel to the magnetic field, respectively)
+    - (vpara,vperp), or (vperp,vpara), where vpara and vperp are the speed components parallel and perpendicular to the magnetic field, respectively
+    - (E,mu,Pphi), or any permutations thereof, where E is the fast-ion energy in keV, mu is the magnetic moment in A*m^2 and Pphi is the toroidal canonical 
+      angular momentum in kg*m^2*s^-1
+    - (E,mu,Pphi,sigma), or any permutations thereof, where -||- and sigma is a binary coordinate (-1,+1)
+    - (E,Lambda,Pphi_n), or any permutations thereof, where -||-, Lambda is the normalized magnetic moment (Lambda=mu*B0/E with B0 the magnetic field on-axis 
+      in Teslas and E is the fast-ion energy in Joules) and Pphi_n is the normalized toroidal canonical angular momentum (Pphi_n=Pphi/(q*Ψ_w) with q being the 
+      particle charge in Coulomb and Ψ_w the magnetic flux at the separatrix)
+    - (E,Lambda,Pphi_n,sigma), or any permutations thereof, where -||- and -||-
+
+The information regarding which one of these phase-space coordinate spaces is discretized via grid points, included as the 'abscissas' input, must be specified 
+using the 'coord_system' keyword argument. An explanation of the input variables are as follows:
+    - M - The magnetic equilibrium object, as given by the Equilibrium.jl package - AbstractEquilibrium
+    - abscissas - The grid points of the abscissas of the phase space of interest - Vector{Vector}
+    - FI_species - The (fast-ion) particle of interest. Please see OWCF/misc/species_func.jl for a list of available particle species - String
+    - wave_frequency - The wave frequency of the ICRF wave. In Hz - Float64
+    - cyclotron_harmonic - The cyclotron harmonic integer of the ICRF heating scheme, for the 'FI_species' particle species and a cyclotron frequency on-axis - Int64
+The keyword arguments are as follows:
+    - toroidal_mode_number - The toroidal mode number of the ICRF wave. Defaults to 1 - Int64
+    - coord_system - The coordinate system of the phase space of interest (please see explanation above) - String
+    - coord_system_order - If phase-space abscissas in 'abscissas' input are not given in the common order, e.g. (E,Pphi,mu) instead of (E,mu,Pphi), this needs to be 
+                           specified via the 'coord_system_order' keyword argument as e.g. (1,3,2) instead of the common (1,2,3) order etc. Defaults to (1:length(abscissas)) - Tuple
+    - R_of_interest - If "(E,p)", "(p,E)", "(vpara,vperp)" or "(vperp,vpara)" are given as input to the 'coord_system' keyword argument, an (R,z) point of 
+      interest needs to be specified. In meters. - Float64
+    - z_of_interest - If "(E,p)", "(p,E)", "(vpara,vperp)" or "(vperp,vpara)" are given as input to -||-. In meters. - Float64
+    - L1 - The finite difference matrix for the coordinate system space, as returned by e.g. the forward_difference_matrix() OWCF function (see OWCF/extra/dependencies.jl) - Matrix
+    - verbose - If set to true, the function will talk a lot! - Bool
+
+The ICRF regularization matrix will be returned as a Matrix{Float64} with nCols=reduce(*,Tuple(length.(abscissas))) number of columns and 
+length(abscissas)*nCols number of rows.
+
+PLEASE NOTE! Energy grid points are assumed to be given in keV for all coordinate systems!!!
+Velocity grid points are assumed to be given in m/s for all coordinate systems!!!
+
+The icrf_regularization_matrix() function is based on the content in M. Rud et al 2025 Nucl. Fusion 65 056008.
+"""
+function icrf_regularization_matrix(M::AbstractEquilibrium, abscissas::Vector{Vector{T}} where {T<:Real}, FI_species::String, wave_frequency::Float64, cyclotron_harmonic::Int64;
+                           toroidal_mode_number::Int64=1, coord_system::String="(E,p)", coord_system_order=Tuple(1:length(abscissas)), 
+                           R_of_interest=magnetic_axis(M)[1], z_of_interest=magnetic_axis(M)[2], L1::AbstractMatrix=forward_difference_matrix(Tuple(length.(abscissas))),
+                           verbose::Bool=false)
+    epsilon = icrf_streamlines(M, abscissas, FI_species, wave_frequency, cyclotron_harmonic; 
+                               toroidal_mode_number=toroidal_mode_number, coord_system=coord_system, coord_system_order=coord_system_order, 
+                               R_of_interest=R_of_interest, z_of_interest=z_of_interest, verbose=verbose)
+
+    # Necessary space quantities
+    space_dimensionality = length(abscissas) # The space dimensionality, e.g. 3
+    space_size = Tuple(length.(abscissas)) # The size of the space, e.g. (33,52,12). 
+    space_indices = CartesianIndices(space_size) # All space indices. E.g. [(1,1,1), (1,1,2), ..., (N1,N2,N3)] where Ni is the number of grid points in the i:th space dimension
+    numOCoords = length(space_indices) # The number of grid points
+
+    verbose && println("icrf_regularization_matrix() function input info:")
+    verbose && println("---> Coordinate system input: $(coord_system)")
+    verbose && println("---> Space dimensionality: $(space_dimensionality)")
+    verbose && println("---> Space size: $(space_size)")
+    verbose && println("---> Number of grid points: $(numOCoords)")
+    verbose && println("---> L1 (finite differences) matrix sparsity: $(round(100*(1-length(L1.nzval)/length(L1)),sigdigits=5)) %")
+
+    L1_ICRF = spzeros(size(L1))
+
+    for (i,c) in enumerate(space_indices)
+        epsilon_i = epsilon[c]
+        finite_difference = Vector{Vector{Float64}}(undef,space_dimensionality)
+        for d in coord_system_order
+            finite_difference[d] = L1[i+(d-1)*numOCoords,:]
+        end
+        # The projection equation. 'epsilon*transpose(epsilon)' will be a space_dimensionality x space_dimensionality matrix. finite_difference will be a space_dimensionality x 1 Vector.
+        icrf_difference = (epsilon_i * transpose(epsilon_i)) * finite_difference 
+        for d in coord_system_order
+            L1_ICRF[i+(d-1)*numOCoords,:] = icrf_difference[d] # Put each row (icrf_difference) where it belongs (the right coordinate 'i' and the right gradient component 'd')
+        end
+    end
+
+    verbose && println("icrf_regularization_matrix() function output info:")
+    verbose && println("---> L1_ICRF (L1 projected onto ICRF streamlines) matrix sparsity: $(round(100*(1-length(L1_ICRF.nzval)/length(L1_ICRF)),sigdigits=5)) %")
+
+    return L1_ICRF
+end
 
 ###### UNLABELLED FUNCTIONS BELOW
 
@@ -2968,7 +3680,7 @@ function os2COM(M::AbstractEquilibrium, good_coords::Vector{CartesianIndex{3}}, 
 
     if isnothing(Pphi_n_array)
         verbose && println("'Pphi_n_array' input to os2COM() not specified. Computing from Pϕ by using q=$(q) Coulomb and |Ψ_w|=$(Ψ_w_norm)... ")
-        Pϕ_n_matrix = (1/(q*Ψ_w_norm)) .*Pϕ_matrix
+        Pϕ_n_matrix = inv(q*Ψ_w_norm) .*Pϕ_matrix
         min_Pphi_n, max_Pphi_n = extrema(Pϕ_n_matrix)
         Pphi_n_array = collect(range(min_Pphi_n,stop=max_Pphi_n,length=npp))
     end
@@ -3141,7 +3853,7 @@ function com2OS(M::AbstractEquilibrium, data::Array{Float64,4}, E_array::Abstrac
         return topoMap, E_array, pm_array, Rm_array
     end
 
-    # If data is NOT a topological map, we need to extract valid (E,pm,Rm) coordinates to map to (E,mu,Pphi;sigma)
+    # If data is NOT a topological map, we need to extract valid (E,pm,Rm) coordinates to map to (E,mu,Pphi,sigma)
     ctrgo_inds = findall(x-> x<0, pm_array)
     cogo_inds = findall(x-> x>=0, pm_array)
     data_OS = zeros(length(E_array), length(pm_array), length(Rm_array))
@@ -3221,7 +3933,7 @@ function com2OS(M::AbstractEquilibrium, data::Array{Float64,4}, E_array::Abstrac
     end
 
     if numObadInds > 0
-        @warn "The interpolation algorithm failed to interpolate $(numObadInds) (E,mu,Pphi;sigma) points."
+        @warn "The interpolation algorithm failed to interpolate $(numObadInds) (E,mu,Pphi,sigma) points."
     end
 
     if debug
@@ -3235,7 +3947,7 @@ end
     com2OS(M, data, E_array, mu_matrix, Pphi_matrix, FI_species)
     com2OS(M, data, E_array, mu_matrix, Pphi_matrix, FI_species; npm=length(mu_matrix[1,:]), nRm=length(Pphi_matrix[1,:]), wall=nothing, dataIsTopoMap=false, topoMap=nothing, verbose=false, kwargs...)
 
-This function maps a constants-of-motion (E,mu,Pphi;sigma) quantity into orbit space (E,pm,Rm). The input data is given as a 5D quantity, and the function will assume it's a collection of 4D (E,mu,Pphi;sigma) quantities with
+This function maps a constants-of-motion (E,mu,Pphi,sigma) quantity into orbit space (E,pm,Rm). The input data is given as a 5D quantity, and the function will assume it's a collection of 4D (E,mu,Pphi,sigma) quantities with
 the last four dimensions corresponding to E, mu, Pphi and sigma, in that order. sigma is a binary coordinate (+1 or -1) that keeps track of co- (+1) and counter-passing (-1) orbits that has the same (E,mu,Pphi) triplet. The first Julia index (1) 
 corresponds to sigma=-1 and the second Julia index (2) corresponds to sigma=+1. Return transformed data in OS, along with E-array, pm-array and Rm-array. The output will be 4D with the last three dimensions corresponding to
 E, pm and Rm, in that order.
@@ -3253,7 +3965,7 @@ Other keyword arguments can also be passed. Please see below.
 The mu_matrix and Pphi_matrix inputs are 2D arrays where the first dimension has length equal to length(E_array).
 To explain via example, mu_matrix[3,:] and Pphi_matrix[3,:] correspond to the mu- and Pphi-grid points for the 
 energy E_array[3]. This is to keep the number of (mu,Pphi)-grid points the same for all energies, while also minimizing
-the number of invalid/impossible (E,mu,Pphi;sigma) coordinates.
+the number of invalid/impossible (E,mu,Pphi,sigma) coordinates.
 
 kwargs... => dataIsTopoMap, needJac, vverbose, debug, extra_kw_args
 
@@ -3261,7 +3973,7 @@ dataIsTopoMap - Should be set to true if 'data' is a topological map.
 needJac - Should be set to true if mapping a quantity that requires a Jacobian e.g. a fast-ion distribution.
 vverbose - Should be set to true if you want the algorithm to be VERY talkative!
 debug - If set to true, debug mode will be active.
-extra_kw_args - A dictionary with extra keyword arguments for the orbit integration algorithm found in GuidingCenterOrbits.jl/orbit.jl, used to finalize (E,mu,Phi;sigma) -> (E,pm,Rm) transform.
+extra_kw_args - A dictionary with extra keyword arguments for the orbit integration algorithm found in GuidingCenterOrbits.jl/orbit.jl, used to finalize (E,mu,Phi,sigma) -> (E,pm,Rm) transform.
 """
 function com2OS(M::AbstractEquilibrium, data::Array{Float64, 5}, E_array::AbstractVector, mu_matrix::Array{Float64, 2}, Pphi_matrix::Array{Float64, 2}, FI_species::AbstractString; npm::Int64=length(mu_matrix[1,:]), nRm::Int64=length(Pphi_matrix[1,:]), wall::Union{Nothing,Boundary{Float64}}=nothing, verbose::Bool=false, kwargs...)
 

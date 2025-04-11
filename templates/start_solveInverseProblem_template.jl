@@ -119,7 +119,7 @@
 #                                      reconstructions in (E,p) and (vpara,vperp).
 #                      - :ICRF - If included, electromagnetic wave heating in the ion cyclotron resonance range of frequencies (ICRF) will be included 
 #                                as prior information when solving the inverse problem. Currently, this is only available for velocity-space (2D) reconstructions 
-#                                in (E,p) and (vpara,vperp) and orbit-space (3D) reconstructions in (E,Lambda,Pphi_n).
+#                                in (E,p) and (vpara,vperp), orbit-space reconstructions in (3D) (E,mu,Pphi), (E,Lambda,Pphi_n) and (3+1 D) (E,mu,Pphi,sigma), (E,Lambda,Pphi_n,sigma).
 #                  One or several of the above options should be specified as elements in a Vector. Otherwise, empty Vector - Vector{Symbol}
 # regularization_equil_filepath - If :COLLISIONS and/or :ICRF is included in the 'regularization' Vector, the filepath to a magnetic equilibrium file 
 #                                 (either in .eqdsk file format or an OWCF/extra/createSolovev.jl output file) must be specified. For :COLLISIONS, this is to 
@@ -168,6 +168,10 @@
 #                               - A Float or Int. In seconds
 #                               - A String in format "XX.XXXX" or "XX,XXXX". In seconds
 #                               - A String with the filepath to a TRANSP-NUBEAM output file (in .cdf file format. The file is named e.g. 95679V28_fi_1.cdf).
+# regularization_wave_frequency - If :ICRF is included in the 'regularization' Vector, a wave frequency must be specified for the ICRF wave. As a Float64, in Hertz.
+# regularization_cyclotron_harmonic - If :ICRF is included in the 'regularization' Vector, the cyclotron harmonic of the ICRF wave must be specified. As an Int64.
+# regularization_toroidal_mode_number - If :ICRF is included in the 'regularization' Vector, and the dimensionality of the coordinate system in which the fast-ion 
+#                                       distribution is to be reconstructed is greater than 2, the toroidal mode number of the ICRF wave must be specified. Int64.
 # rescale_W - If set to true, the algorithm will rescale the weight functions so that the W*F_ref matrix-Vector product matches the 
 #             experimental data for all diagnostics. The F_ref variable is a reference fast-ion distribution (e.g. Maxwellian distribution 
 #             or a TRANSP distribution). - Bool
@@ -214,7 +218,7 @@
 # Some lines below are commented out. This is because the inverse problem solving algorithm is currently single-CPU.
 # In future version, multi-core processing might be supported, and those lines will then be uncommented.
 
-# Script written by Henrik Järleblad. Last maintained 2025-01-07.
+# Script written by Henrik Järleblad. Last maintained 2025-04-11.
 #############################################################################################################################################################
 
 ## First you have to set the system specifications
