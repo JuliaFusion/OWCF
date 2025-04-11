@@ -92,7 +92,7 @@
 ### Other
 # 
 
-# Script written by Henrik Järleblad. Last maintained 2025-03-27.
+# Script written by Henrik Järleblad. Last maintained 2025-04-11.
 ###########################################################################################################
 
 # A dictionary to keep a record of the names of all sections and their respective execution times
@@ -490,335 +490,6 @@ end
 
 append!(timestamps,time()) # The timestamp when the weight functions have been reshaped into 2D and interpolated onto the corresponding measurements grid
 dictionary_of_sections[prnt-1] = ("Constructing 2D weight matrices from weight functions, and interpolating to match diagnostics measurement bin centers",diff(timestamps)[end])
-###########################################################################################################
-# SECTION: DEFINE FUNCTIONS THAT MIGHT NEED TO BE USED SEVERAL TIMES IN LATER SECTIONS, E.G. IF
-# - WEIGHT FUNCTIONS ARE TO BE RESCALED AND THE REFERENCE FAST-ION DISTRIBUTION IS TO BE LOADED FROM FILE
-# - COLLISIONAL PHYSICS IS TO BE USED AS REGULARIZATION WHEN SOLVING THE INVERSE PROBLEM
-# IN FUTURE VERSIONS, ADD MORE FUNCTIONAL CHECKS HERE IF NECESSARY.
-println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
-
-if (rescale_W && lowercase(String(rescale_W_F_ref_source))=="file") || ("collisions" in lowercase.(String.(regularization)))
-    verbose && println("Defining necessary coordinate space deduction functions... ")
-    
-    # CONTINUE CODING HERE!!!
-    # CONTINUE CODING HERE!!!
-    # CONTINUE CODING HERE!!!
-
-    function is_vpara_vperp(w_abscissas::Vector{Vector{T}} where {T<:Real}, w_abscissas_units::Vector{String}; verbose=false, returnExtra=false)
-        if length(w_abscissas_units)!=3
-            verbose && println("is_vpara_vperp(): Number of reconstruction space abscissas is not equal to 2. Returning false... ")
-            return (returnExtra ? (false, 0, 0) : false)
-        end
-
-        units_1 = w_abscissas_units[2] # The second dimension of the weight matrix is the first dimension of the reconstruction space
-        units_2 = w_abscissas_units[3] # The third dimension of the weight matrix is the second dimension of the reconstruction space
-        units_tot = vcat(units_1, units_2)
-        w_speed_inds = findall(x-> units_are_speed(x), units_tot)
-
-        if !(length(w_speed_inds)==2)
-            verbose && println("is_vpara_vperp(): (vpara,vperp) coordinates not found. Returning false... ")
-            return (returnExtra ? (false, 0, 0) : false)
-        else
-            w_speed_inds .+= 1 # To align it with the original w_abscissas and w_abscissas_units indices
-            verbose && print("is_vpara_vperp(): (vpara,vperp) coordinates found! Distinguishing (vpara, vperp) arrays...")
-            w_vel_arrays = w_abscissas[w_speed_inds]
-            if minimum(w_vel_arrays[1])<0 && minimum(w_vel_arrays[2])>0 # vpara can be negative. vperp cannot
-                verbose && println("ok!")
-                w_vpara_ind = w_speed_inds[1] # Order of abscissas in w_vel_arrays is the same as the order in w_speed_inds
-                w_vperp_ind = w_speed_inds[2] # Order of abscissas in w_vel_arrays is the same as the order in w_speed_inds
-            elseif minimum(w_vel_arrays[2]<0 && minimum(w_vel_arrays[1]>0)) # vpara can be negative. vperp cannot
-                verbose && println("ok!")
-                w_vpara_ind = w_speed_inds[2] # Order of abscissas in w_vel_arrays is the same as the order in w_speed_inds
-                w_vperp_ind = w_speed_inds[1] # Order of abscissas in w_vel_arrays is the same as the order in w_speed_inds
-            else
-                verbose && println("")
-                @warn "Could not distinguish (vpara,vperp) arrays from weight function abscissas. Assuming abscissa with index $(w_speed_inds[1]) to be vpara and abscissa with index $(w_speed_inds[2]) to be vperp."
-                w_vpara_ind = w_speed_inds[1] # Order of abscissas in w_vel_arrays is the same as the order in w_speed_inds
-                w_vperp_ind = w_speed_inds[2] # Order of abscissas in w_vel_arrays is the same as the order in w_speed_inds
-            end
-            verbose && println("is_vpara_vperp(): Returning true... ")
-            return (returnExtra ? (true, w_vpara_ind, w_vperp_ind) : true)
-        end
-    end
-
-    function is_COM(w_abscissas::Vector{Vector{T}} where {T<:Real}, w_abscissas_units::Vector{String}; verbose=false, returnExtra=false)
-        if length(w_abscissas_units)!=4 && length(w_abscissas_units)!=5
-            verbose && println("is_COM(): Number of reconstruction space abscissas is not equal to 3, nor 4. Returning false... ")
-            return (returnExtra ? (false, zeros(Int64,length(w_abscissas_units)-1)...) : false)
-        end
-
-        units_1 = w_abscissas_units[2] # The second dimension of the weight matrix is the first dimension of the reconstruction space
-        units_2 = w_abscissas_units[3] # The third dimension of the weight matrix is the second dimension of the reconstruction space
-        units_3 = w_abscissas_units[4] # The fourth dimension of the weight matrix is the third dimension of the reconstruction space
-        units_4 = length(w_abscissas_units)==5 ? w_abscissas_units[5] : "dimensionless" # If included, the fifth dimension of the weight matrix is the fourth dimension of the reconstruction space
-
-        units_tot = vcat(units_1, units_2, units_3, units_4)
-        w_energy_ind = findall(x-> x in keys(ENERGY_UNITS) || x in keys(ENERGY_UNITS_LONG), units_tot)
-        w_mu_ind = findall(x-> units_are_equal_base(x,"m^2_A"), units_tot) # SI units of magnetic moment
-        w_Pphi_ind = findall(x-> units_are_equal_base(x,"kg_m^2_s^-1"), units_tot) # SI units of toroidal angular canonical momentum
-        w_sigma_ind = findall(x-> x in keys(DIMENSIONLESS_UNITS) || x in keys(DIMENSIONLESS_UNITS_LONG), units_tot)
-
-        if !(length(w_energy_ind)==1 && length(w_mu_ind)==1 && length(w_Pphi_ind)==1 && length(w_sigma_ind)==1)
-            verbose && println("is_COM(): (E,mu,Pphi) coordinates not found. Returning false... ")
-            return (returnExtra ? (false, zeros(Int64,length(w_abscissas_units)-1)...) : false)
-        end
-
-        verbose && println("is_COM(): (E,mu,Pphi) coordinates confirmed! Returning true... ")
-        w_energy_ind .+= 1 # To align it with the original w_abscissas and w_abscissas_units indices
-        w_mu_ind .+= 1 # To align it with the original w_abscissas and w_abscissas_units indices
-        w_Pphi_ind .+= 1 # To align it with the original w_abscissas and w_abscissas_units indices
-        w_sigma_ind .+= 1 # To align it with the original w_abscissas and w_abscissas_units indices
-        if !returnExtra
-            return true
-        end
-        if length(w_abscissas_units)==5
-            # [1] because we know there should be only 1 element returned by findall()
-            output_tuple = (true, w_energy_ind[1], w_mu_ind[1], w_Pphi_ind[1], w_sigma_ind[1])
-        else # Must be 4 (see above)
-            # [1] because we know there should be only 1 element returned by findall()
-            output_tuple = (true, w_energy_ind[1], w_mu_ind[1], w_Pphi_ind[1])
-        end
-        return (returnExtra ? output_tuple : true)
-    end
-
-    function is_normalized_COM(w_abscissas::Vector{Vector{T}} where {T<:Real}, w_abscissas_units::Vector{String}; verbose=false, returnExtra=false)
-        rec_space_DIM = length(w_abscissas_units)-1 # Reconstruction space dimensionality is one less than the number of weight function abscissas (first weight function abscissa is always the diagnostic measurement bin centers)
-    
-        if rec_space_DIM!=3 && rec_space_DIM!=4
-            verbose && println("is_normalized_COM(1): Number of reconstruction space abscissas is not equal to 3, nor 4. Returning false... ")
-            return (returnExtra ? (false, zeros(Int64,length(w_abscissas_units)-1)...) : false)
-        end
-    
-        sigma_included = false # By default, assume that the binary coordinate sigma is not included as a reconstruction space coordinate
-        if rec_space_DIM==4
-            sigma_included = true # If the dimensionality is 4, sigma is assumed to be one of the reconstruction space coordinates
-        end
-    
-        units_1 = w_abscissas_units[2] # The second dimension of the weight matrix is the first dimension of the reconstruction space
-        units_2 = w_abscissas_units[3] # The third dimension of the weight matrix is the second dimension of the reconstruction space
-        units_3 = w_abscissas_units[4] # The fourth dimension of the weight matrix is the third dimension of the reconstruction space
-        units_4 = sigma_included ? w_abscissas_units[5] : "dimensionless" # The fifth dimension of the weight matrix is the fourth dimension of the reconstruction space
-    
-        units_tot = vcat(units_1, units_2, units_3, units_4)
-        w_energy_ind = findall(x-> x in keys(ENERGY_UNITS) || x in keys(ENERGY_UNITS_LONG), units_tot)
-        w_dimensionless_inds = findall(x-> x in keys(DIMENSIONLESS_UNITS) || x in keys(DIMENSIONLESS_UNITS_LONG), units_tot)
-    
-        if !(length(w_energy_ind)==1 && length(w_dimensionless_inds)==3)
-            verbose && println("is_normalized_COM(2): (E,Lambda,Pphi_n) coordinates not found. Returning false... ")
-            return (returnExtra ? (false, zeros(Int64,length(w_abscissas_units)-1)...) : false)
-        end
-    
-        if !sigma_included # If sigma was NOT included as a reconstruction space abscissa
-            filter!(x-> x!=4,w_dimensionless_inds) # Remove the dummy index with value 4. We know it will be present in w_dimensionless_inds, because we added it ourselves (see above)
-        end
-    
-        w_energy_ind .+= 1 # To align it with the original w_abscissas and w_abscissas_units indices
-        w_dimensionless_inds .+= 1 # To align them with the original w_abscissas and w_abscissas_units indices
-    
-        verbose && println("is_normalized_COM(3): (E,Lambda,Pphi_n) coordinates assumed. Attempting to deduce coordinate order... ")
-        w_Lambda_ind = nothing
-        w_Pphi_n_ind = nothing
-        w_sigma_ind = sigma_included ? nothing : -1 # If reconstruction space abscissas do not include sigma, initialize to -1
-    
-        for ind in w_dimensionless_inds # For each index ind corresponding to an abscissa for one of the dimensionless coordinates Lambda, Pphi_n or sigma (we don't know which one, we try to deduce it below)
-            abscissa = w_abscissas[ind]
-            if minimum(abscissa)<0 && maximum(abscissa)<=0 # If all grid points of the abscissa are placed at zero and more negative values
-                if isnothing(w_Pphi_n_ind) # and the Pphi_n index has not yet been set
-                    w_Pphi_n_ind = ind # We know ind MUST be the Pphi_n index, since this is NOT possible for the other coordintes (mu and sigma)
-                    continue # Continue to next ind in w_dimensionless_inds
-                else # If the Pphi_n index has already been set, the assumption of (E,Lambda,Pphi_n) coordinates cannot be correct
-                    verbose && println("is_normalized_COM(4): The assumption of (E,Lambda,Pphi_n) coordinates is found to be incorrect. Returning false... ")
-                    return (returnExtra ? (false, zeros(Int64,rec_space_DIM)...) : false)
-                end
-            end
-            if minimum(abscissa)>=0 && maximum(abscissa)>0 # If the grid points of the abscissa are placed at zero and greater positive values
-                if isnothing(w_Lambda_ind) # and the Lambda index has not yet been set
-                    w_Lambda_ind = ind # Assume ind is the Lambda index
-                    continue # Continue to next ind in w_dimensionless_inds
-                else # If the Lambda index has already been set, the deduction becomes practically impossible, since then the abscissas do not span the whole of COM-space
-                    @warn "is_normalized_COM(5): Unable to deduce (E,Lambda_Pphi_n;sigma) coordinate order. Assuming normal order $(sigma_included ? "(i_E,i_Lambda,i_Pphi_n;i_sigma)=(1,2,3;4)" : "(i_E,i_Lambda,i_Pphi_n)=(1,2,3)")"
-                    return (returnExtra ? (true, (2:(rec_space_DIM+1))...) : true) # Start at index 2, to align with weight function abscissa indexing (index 1 is always the diagnostic measurement bin centers)
-                end
-            end
-            if iszero(abscissa) # If all grid points are 0, we can do nothing, this is some error-level sh*t!
-                @warn "is_normalized_COM(6): Unable to deduce (E,Lambda_Pphi_n;sigma) coordinate order. Assuming normal order $(sigma_included ? "(i_E,i_Lambda,i_Pphi_n;i_sigma)=(1,2,3;4)" : "(i_E,i_Lambda,i_Pphi_n)=(1,2,3)")"
-                return (returnExtra ? (true, (2:(rec_space_DIM+1))...) : true) # Start at index 2, to align with weight function abscissa indexing (index 1 is always the diagnostic measurement bin centers)
-            end
-            if length(abscissa)==2 # If the abscissa has exactly two grid points (one positive and one negative)
-                if isnothing(w_sigma_ind) # and the sigma index has not yet been set
-                    w_sigma_ind = ind # (It's extremely reasonable to) assume ind is the sigma index
-                    continue
-                elseif w_sigma_ind==-1 # If the reconstruction space dimensionality is 3
-                    # Don't do anything, this must be the w_Pphi_n_ind, and will be set in the if statement below
-                else # If the sigma index has ALREADY been set (and the reconstruction space dimensionality is NOT 3, but 4)
-                    # Then, the Pphi_n and sigma abscissas have exactly the same characteristics (2 grid points, one negative and one positive). Distinguishing between the two is impossible
-                    @warn "is_normalized_COM(7): Unable to deduce (E,Lambda_Pphi_n;sigma) coordinate order. Assuming normal order $(sigma_included ? "(i_E,i_Lambda,i_Pphi_n;i_sigma)=(1,2,3;4)" : "(i_E,i_Lambda,i_Pphi_n)=(1,2,3)")"
-                    return (returnExtra ? (true, (2:(rec_space_DIM+1))...) : true) # Start at index 2, to align with weight function abscissa indexing (index 1 is always the diagnostic measurement bin centers)
-                end
-            end
-            # If the grid points of the abscissa are placed at both negative and positive values, and there are not exactly two grid points...
-            if isnothing(w_Pphi_n_ind) # and the Pphi_n index has not yet been set
-                w_Pphi_n_ind = ind # We know ind MUST be the Pphi_n index, since this is NOT possible for the other coordintes (mu and sigma)
-                continue # Continue to next ind in w_dimensionless_inds
-            else # If the Pphi_n index has already been set, the assumption of (E,Lambda,Pphi_n) coordinates cannot be correct
-                verbose && println("is_normalized_COM(8): The assumption of (E,Lambda,Pphi_n) coordinates is found to be incorrect. Returning false... ")
-                return (returnExtra ? (false, zeros(Int64,rec_space_DIM)...) : false)
-            end
-        end
-    
-        if sigma_included && sum(isnothing.([w_Lambda_ind, w_Pphi_n_ind, w_sigma_ind]))==0
-            verbose && println("is_normalized_COM(9): Coordinate order deduced. Returning true... ")
-            output_tuple = (true, w_energy_ind[1], w_Lambda_ind[1], w_Pphi_n_ind[1], w_sigma_ind[1])
-        elseif !sigma_included && sum(isnothing.([w_Lambda_ind, w_Pphi_n_ind]))==0
-            verbose && println("is_normalized_COM(10): Coordinate order deduced. Returning true... ")
-            output_tuple = (true, w_energy_ind[1], w_Lambda_ind[1], w_Pphi_n_ind[1])
-        else # There must have been some error. This should not be possible.
-            error("This error should be logically impossible to reach. Please post an issue at https://github.com/juliaFusion/owCF/issues or try to directly contact henrikj@dtu.dk or anvalen@dtu.dk.")
-        end
-        return (returnExtra ? output_tuple : true)
-    end
-
-    function is_EpRz(w_abscissas::Vector{Vector{T}} where {T<:Real}, w_abscissas_units::Vector{String}; verbose=false, returnExtra=false)
-        if length(w_abscissas_units)!=5
-            verbose && println("is_EpRz(): Number of reconstruction space abscissas is not equal to 4. Returning false... ")
-            return (returnExtra ? (false, 0, 0, 0, 0, [], []) : false)
-        end
-        units_1 = w_abscissas_units[2] # The second dimension of the weight matrix is the first dimension of the reconstruction space
-        units_2 = w_abscissas_units[3] # The third dimension of the weight matrix is the second dimension of the reconstruction space
-        units_3 = w_abscissas_units[4] # The fourth dimension of the weight matrix is the third dimension of the reconstruction space
-        units_4 = w_abscissas_units[5] # The fifth dimension of the weight matrix is the fourth dimension of the reconstruction space
-
-        units_tot = vcat(units_1, units_2, units_3, units_4)
-        w_energy_ind = findall(x-> x in keys(ENERGY_UNITS) || x in keys(ENERGY_UNITS_LONG), units_tot)
-        w_pitch_ind = findall(x-> x in keys(DIMENSIONLESS_UNITS) || x in keys(DIMENSIONLESS_UNITS_LONG), units_tot)
-        w_Rz_inds = findall(x-> x in keys(LENGTH_UNITS) || x in keys(LENGTH_UNITS_LONG), units_tot)
-
-        if !(length(w_energy_ind)==1 && length(w_pitch_ind)==1 && length(w_Rz_inds)==2)
-            verbose && println("is_EpRz(): (E,p,R,z) coordinates not found. Returning false... ")
-            return (returnExtra ? (false, 0, 0, 0, 0, [], []) : false)
-        end
-
-        w_energy_ind .+= 1 # To align it with the original w_abscissas and w_abscissas_units indices
-        w_pitch_ind .+= 1 # To align it with the original w_abscissas and w_abscissas_units indices
-        w_Rz_inds .+= 1 # To align it with the original w_abscissas and w_abscissas_units indices
-
-        verbose && print("is_EpRz(): (E,p,R,z) coordinates found! Distinguishing (R,z) arrays... ")
-        w_RnZ_arrays = w_abscissas[w_Rz_inds]
-        if minimum(w_RnZ_arrays[2])<0 && minimum(w_RnZ_arrays[1])>0 # If the second LENGTH_UNITS abscissa has negative elements, and the first one does not..
-            verbose && println("ok!")
-            w_R_ind = w_Rz_inds[1] # Order of abscissas in w_RnZ_arrays is the same as the order in w_Rz_inds
-            w_z_ind = w_Rz_inds[2] # Order of abscissas in w_RnZ_arrays is the same as the order in w_Rz_inds
-            R_of_interests = w_RnZ_arrays[1] # The first LENGTH_UNITS abscissa is very likely to be the R grid points...
-            z_of_interests = w_RnZ_arrays[2] # ...and the second LENGTH_UNITS abscissa is very likely to be the z grid points
-        elseif minimum(w_RnZ_arrays[1])<0 && minimum(w_RnZ_arrays[2])>0 # If it's the other way around...
-            verbose && println("ok!")
-            w_R_ind = w_Rz_inds[2] # Order of abscissas in w_RnZ_arrays is the same as the order in w_Rz_inds
-            w_z_ind = w_Rz_inds[1] # Order of abscissas in w_RnZ_arrays is the same as the order in w_Rz_inds
-            R_of_interests = w_RnZ_arrays[2] # ...it's very likely to be the other way around.
-            z_of_interests = w_RnZ_arrays[1] # ...it's very likely to be the other way around.
-        else
-            verbose && println("")
-            @warn "Could not deduce (R,z) arrays from weight function abscissas. Assuming abscissa with index $(w_Rz_inds[1]) to be R and abscissa with index $(w_Rz_inds[2]) to be z."
-            w_R_ind = w_Rz_inds[1] # Order of abscissas in w_RnZ_arrays is the same as the order in w_Rz_inds
-            w_z_ind = w_Rz_inds[2] # Order of abscissas in w_RnZ_arrays is the same as the order in w_Rz_inds
-            R_of_interests = w_RnZ_arrays[1]
-            z_of_interests = w_RnZ_arrays[2]
-        end
-        verbose && println("is_EpRz(): Returning true... ")
-        return (returnExtra ? (true, w_energy_ind[1], w_pitch_ind[1], w_R_ind, w_z_ind, R_of_interests, z_of_interests) : true)
-    end
-
-    function get_energy_abscissa(w_abscissas::Vector{Vector{T}} where {T<:Real}, w_abscissas_units::Vector{String}; verbose=false, returnExtra=false)
-        # Assume there is only one energy abscissa
-        w_energy_ind = findfirst(x-> x in keys(ENERGY_UNITS) || x in keys(ENERGY_UNITS_LONG), w_abscissas_units)
-        if isnothing(w_energy_ind)
-            verbose && println("No energy abscissa found in input abscissas! Returning nothing... ")
-            return returnExtra ? (nothing,nothing) : nothing
-        end
-
-        return returnExtra ? (w_abscissas[w_energy_ind], w_energy_ind) : w_abscissas[w_energy_ind]
-    end
-
-    function get_pitch_abscissa(w_abscissas::Vector{Vector{T}} where {T<:Real}, w_abscissas_units::Vector{String}; verbose=false, returnExtra=false)
-        w_dimensionless_inds = findall(x-> x in keys(DIMENSIONLESS_UNITS) || x in keys(DIMENSIONLESS_UNITS_LONG), w_abscissas_units)
-    
-        if isempty(w_dimensionless_inds)
-            verbose && println("No dimensionless abscissa found in input abscissas! Returning nothing...")
-            return returnExtra ? (nothing,nothing) : nothing
-        end
-    
-        w_pitch_ind = 0
-        for w_dimensionless_ind in w_dimensionless_inds
-            w_abscissa = w_abscissas[w_dimensionless_ind]
-            if maximum(w_abscissa)<=1 && minimum(w_abscissa)>=-1
-                w_pitch_ind = w_dimensionless_ind
-                break # Assume there is only one pitch-like coordinate
-            end
-        end
-    
-        if w_pitch_ind==0
-            verbose && println("No pitch-like dimensionless abscissa found in input abscissas! Returning nothing...")
-            return returnExtra ? (nothing,nothing) : nothing
-        end
-    
-        return returnExtra ? (w_abscissas[w_pitch_ind], w_pitch_ind) : w_abscissas[w_pitch_ind]
-    end
-
-    function get_vpara_abscissa(w_abscissas::Vector{Vector{T}} where {T<:Real}, w_abscissas_units::Vector{String}; verbose=false, returnExtra=false)
-        w_speed_inds = findall(x-> units_are_speed(x), w_abscissas_units)
-        if isempty(w_speed_inds)
-            verbose && println("No speed abscissa found in input abscissas! Returning nothing...")
-            return returnExtra ? (nothing,nothing) : nothing
-        end
-        if length(w_speed_inds)>2
-            @warn "Impossible to determine vpara since more than two abscissas with unit of measurement 'speed' was found. Returning nothing... "
-            return returnExtra ? (nothing,nothing) : nothing
-        end
-
-        if length(w_speed_inds)==1
-            verbose && println("One abscissa with unit of measurement 'speed' was found. Assuming it is vpara. Returning... ")
-            return returnExtra ? (w_abscissas[w_speed_inds], w_speed_inds[1]) : w_abscissas[w_speed_inds]
-        end
-
-        # w_speed_inds must be length 2 then
-        w_speed_abscissa_1 = w_speed_inds[1]
-        w_speed_abscissa_2 = w_speed_inds[2]
-        if minimum(w_speed_abscissa_1)<0 # Must be vpara since vperp>= always holds
-            return returnExtra ? (w_speed_abscissa_1, w_speed_inds[1]) : w_speed_abscissa_1
-        elseif minimum(w_speed_abscissa_2)<0 # -||-
-            return returnExtra ? (w_speed_abscissa_2, w_speed_inds[2]) : w_speed_abscissa_2
-        else # Ambiguous
-            @warn "Cannot deduce vpara from w_abscissas and w_abscissas_units. Returning abscissas with smallest index as vpara."
-            return returnExtra ? (w_speed_abscissa_1, w_speed_inds[1]) : w_speed_abscissa_1
-        end
-    end
-
-    function get_vperp_abscissa(w_abscissas::Vector{Vector{T}} where {T<:Real}, w_abscissas_units::Vector{String}; verbose=false, returnExtra=false)
-        w_speed_inds = findall(x-> units_are_speed(x), w_abscissas_units)
-        if isempty(w_speed_inds)
-            verbose && println("No speed abscissa found in input abscissas! Returning nothing...")
-            return returnExtra ? (nothing,nothing) : nothing
-        end
-        if length(w_speed_inds)>2
-            @warn "Impossible to determine vperp since more than two abscissas with unit of measurement 'speed' was found. Returning nothing... "
-            return returnExtra ? (nothing,nothing) : nothing
-        end
-
-        if length(w_speed_inds)==1
-            verbose && println("One abscissa with unit of measurement 'speed' was found. Assuming it is vperp. Returning... ")
-            return returnExtra ? (w_abscissas[w_speed_inds], w_speed_inds[1]) : w_abscissas[w_speed_inds]
-        end
-
-        # w_speed_inds must be length 2 then
-        w_vpara_abscissa, w_vpara_ind = get_vpara_abscissa(w_abscissas, w_abscissas_units; verbose=verbose, returnExtra=returnExtra)
-        w_vperp_ind = filter(x-> x!=w_vpara_ind,w_speed_inds)[1]
-
-        return returnExtra ? (w_abscissas[w_vperp_ind], w_vperp_ind) : w_abscissas[w_vperp_ind]
-    end
-end
-
-append!(timestamps,time()) # The timestamp when the (possibly necessary) utility functions have been defined
-dictionary_of_sections[prnt-1] = ("Defining utility functions (if needed)",diff(timestamps)[end])
 ###########################################################################################################
 # SECTION: IF rescale_W WAS SET TO true IN THE START FILE, LOAD OR COMPUTE FAST-ION DISTRIBUTION(S).
 # USE THIS/THESE DISTRIBUTION(S) TOGETHER WITH THE WEIGHT MATRICES TO COMPUTE REFERENCE MEASUREMENTS.
@@ -1457,9 +1128,9 @@ dictionary_of_sections[prnt-1] = ("Excluding unwanted measurement bins",diff(tim
 # THIS SECTION WILL BE CHANGED IN THE FUTURE IF MORE FORMS OF REGULARIZATIONS AND PRIORS ARE TO BE INCLUDED
 println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
 
-rec_space_abscissas = W_abscissas[1][2:end]
-#rec_space_abscissas_diff = map(x-> x[1], diff.(rec_space_abscissas)) # Assume rectangular grid with equidistant grid point spacing
-rec_space_size = Tuple(length.(rec_space_abscissas)) # The size of the reconstruction space, e.g. (33,52,12). All w abscissas are the same (because of sections 4 and 5), hence [1]. First w abscissa is the diagnostic measurement bins, hence [2:end].
+rec_space_abscissas = W_abscissas[1][2:end] # The abscissas of the space of the solution to the inverse problem. All w abscissas are the same (because of sections 4 and 5), hence [1]. First w abscissa is the diagnostic measurement bins, hence [2:end].
+rec_space_abscissas_units = W_abscissas_units[1][2:end] # The units of the rec_space_abscissas
+rec_space_size = Tuple(length.(rec_space_abscissas)) # The size of the reconstruction space, e.g. (33,52,12).
 rec_space_coords = CartesianIndices(rec_space_size) # All reconstruction space coordinates. E.g. [(1,1,1), (1,1,2), ..., (N1,N2,N3)] where Ni is the number of grid points in the i:th reconstruction space dimension
 verbose && println("Creating list of reconstruction space coordinates (length=$(length(rec_space_coords))=$(reduce(*,map(x-> "x$(x)",rec_space_size))[2:end]))... ")
 
@@ -1479,11 +1150,7 @@ first_tikhonov_reg = false
 if "firsttikhonov" in lowercase.(String.(regularization))
     verbose && println(":FIRSTTIKHONOV included in 'regularization' input variable. Adding 1st order Tikhonov regularization to the inverse solving algorithm... ")
     first_tikhonov_reg = true
-    L1 = Vector{SparseMatrixCSC{Float64,Int64}}(undef,length(rec_space_size)) # All finite difference matrices (one for each dimension) (A Vector of sparce matrices (SparseMatrixCSC) CSC means 'compressed sparse column')
-    for idim=1:length(rec_space_size) # For each dimension
-        L1[idim] = forward_difference_matrix(rec_space_size, idim) # The forward difference matrix for this particular dimension
-    end
-    L1 = vcat(L1...)
+    L1 = forward_difference_matrix(rec_space_size) # The forward difference matrix of size (length(rec_space_size) * reduce(*,rec_space_size), reduce(*,rec_space_size))
     !append(L,[L1])
     !append(priors, [zeros(size(L1,1))])
     !append(priors_name, ["1st order Tikhonov"])
@@ -1492,55 +1159,79 @@ end
 icrf_physics_reg = false
 if "icrf" in lowercase.(String.(regularization))
     verbose && print(":ICRF included in 'regularization' input variable. Checking reconstruction space compatibility... ")
-    COMPATIBLE_OPTIONS = [is_energy_pitch, is_vpara_vperp, is_COM, is_normalized_COM] # ADD MORE CHECKS HERE IN FUTURE VERSIONS, IF NEEDED <---------------------------------------------------------------------
-    COMPATIBILITY_ARRAY = [f(W_abscissas[1],W_abscissas_units[1]) for f in COMPATIBLE_OPTIONS] # An array of true's and false's
+    # is_energy_pitch, is_vpara_vperp etc are functions in OWCF/extra/dependencies.jl
+    Ep_bool, Ep_E_ind, Ep_p_ind = is_energy_pitch(rec_space_abscissas, rec_space_abscissas_units; returnExtra=true)
+    VEL_bool, VEL_vpara_ind, VEL_vperp_ind = is_vpara_vperp(rec_space_abscissas, rec_space_abscissas_units; returnExtra=true)
+    if length(rec_space_abscissas)==3 # (E,mu,Pphi) or (E,Lambda,Pphi_n)
+        COM_noSigma_bool, COM_noSigma_E_ind, COM_noSigma_mu_ind, COM_noSigma_Pphi_ind = is_COM(rec_space_abscissas, rec_space_abscissas_units; returnExtra=true)
+        normalized_COM_noSigma_bool, normalized_COM_noSigma_E_ind, normalized_COM_noSigma_Lambda_ind, normalized_COM_noSigma_Pphi_n_ind = is_normalized_COM(rec_space_abscissas, rec_space_abscissas_units; returnExtra=true)
+    elseif length(rec_space_abscissas)==4 # (E,mu,Pphi,sigma) or (E,Lambda,Pphi_n,sigma)
+        COM_bool, COM_E_ind, COM_mu_ind, COM_Pphi_ind, COM_sigma_ind = is_COM(rec_space_abscissas,rec_space_abscissas_units; returnExtra=true)
+        normalized_COM_bool, normalized_COM_E_ind, normalized_COM_Lambda_ind, normalized_COM_Pphi_n_ind, normalized_COM_sigma_ind = is_normalized_COM(rec_space_abscissas,rec_space_abscissas_units; returnExtra=true)
+    else # ADD MORE CHECKS HERE IN FUTURE VERSIONS, IF NEEDED <---------------------------------------------------------------------
+    end
+    COMPATIBILITY_ARRAY = [Ep_bool, VEL_bool, COM_noSigma_bool, normalized_COM_noSigma_bool, COM_bool, normalized_COM_bool] # An array of true's and false's
     COMPATIBLE_SPACE_INDICES = findall(x-> x,COMPATIBILITY_ARRAY) # Get the index pointing to which function in COMPATIBLE_OPTIONS returned true (if any of them)
     if isempty(COMPATIBLE_SPACE_INDICES)
-        error(":ICRF was specified in 'regularization' input variable, but reconstruction space is not supported. Currently supported options include (E,p), (vpara,vperp), (E,μ,Pϕ;σ) and (E,Λ,Pϕ_n;σ). Please correct and re-try.")
+        error(":ICRF was specified in 'regularization' input variable, but reconstruction space is not supported. Currently supported options include $(ICRF_STREAMLINES_SUPPORTED_COORD_SYSTEMS). Please correct and re-try.")
     end
     if length(COMPATIBLE_SPACE_INDICES)>1 # If more than one of the functions in COMPATIBLE_OPTIONS returned true... 
-        error("Compatibility check malfunction. Please post an issue with a screenshot of this error message at https://github.com/juliaFusion/owCF/issues or try contacting henrikj@dtu.dk or anvalen@dtu.dk.")
+        error("Compatibility check malfunction. Please post an issue with a screenshot of this error message at https://github.com/juliaFusion/OWCF/issues or try contacting henrikj@dtu.dk or anvalen@dtu.dk.")
     end
-    COMPATIBLE_SPACE_INDEX = COMPATIBLE_SPACE_INDICES[1] # Should be only one deduced space
+    RECONSTRUCTION_SPACE_ID = COMPATIBLE_SPACE_INDICES[1] # The identification number of the reconstruction space (see below)
+    verbose && println("ok!")
+
+    verbose && print("---> Loading magnetic equilibrium from $(regularization_equil_filepath)... ")
+    M, wall = read_geqdsk(regularization_equil_filepath,clockwise_phi=false) # Assume the phi-direction is pointing counter-clockwise when tokamak is viewed from above. This is true for almost all coordinate systems used in the field of plasma physics
+    psi_axis, psi_bdry = psi_limits(M)
+    verbose && println("ok!")
 
     icrf_physics_reg = true
     if !first_tikhonov_reg
-        L1 = Vector{SparseMatrixCSC{Float64,Int64}}(undef,length(rec_space_size)) # All finite difference matrices (one for each dimension) (A Vector of sparce matrices (SparseMatrixCSC) CSC means 'compressed sparse column')
-        for idim=1:length(rec_space_size) # For each dimension
-            L1[idim] = forward_difference_matrix(rec_space_size, idim) # The forward difference matrix for this particular dimension
-        end
+        verbose && println("Computing finite difference matrix to be used in :ICRF regularization... ")
+        L1 = forward_difference_matrix(rec_space_size) # The forward difference matrix of size (length(rec_space_size) * reduce(*,rec_space_size), reduce(*,rec_space_size))
     end
-
-    # ICRF wave characteristics independent of phase space
-    ω     = 2*pi*regularization_wave_frequency # The angular frequency of the wave
-    ω_0   = (GuidingCenterOrbits.e0)*Equilibrium.Bfield(M,magnetic_axis(M)...)/getSpeciesMass(FI_species) # The gyro-motion angular frequency on-axis
-    Λ_∞ = regularization_cyclotron_harmonic*omegac0/omega # The Λ_∞ parameter (see e.g. M. Rud et al, Nucl. Fusion 2024)
-
-    if COMPATIBLE_SPACE_INDEX==1 # (E,p)
-        regularization_p_array = get_pitch_abscissa(W_abscissas[1][2:end],W_abscissas_units[1][2:end])
-        regularization_E_array = get_energy_abscissa(W_abscissas[1][2:end],W_abscissas_units[1][2:end])
-        p_res = (1-Λ_∞)*Equilibrium.Bfield(M,R_of_interest,z_of_interest)/Equilibrium.Bfield(M,magnetic_axis(M)...) # I don't know if "M.B" is the local B-field?
-        dE = 1; # Can just as well 'normalise' the change in E
-        dp = [-dE.*(pp.^2).*ee./(2*(ee.^2).*pp)+(p_res^2)*dE*ee./(ee.^2)./(2*pp) for ee in regularization_E_array, pp in regularization_p_array] # dp diverges at pitch = 0 and E = 0. Here, E0 is EE because we calculate the change in each single point in phase space
-        dE = ones(size(dp))
-        dE[findall(x -> x.==Inf, dp)] .= 0
-        dp[findall(x -> x.==Inf, dp)] .= 1
-        epsilon = [reduce(hcat,dp); reduce(hcat,dE)]  # Vector arrow tangent to streamlines. Remember the first direction is pitch, not Energy
-        epsilon_norm = reduce(hcat,[norm(epsilon[:,i],2) for i in 1:size(epsilon,2)])
-        epsilon = reduce(hcat,[epsilon[:,i]./epsilon_norm[i] for i in 1:size(epsilon,2)]) # Unit vector. Sums the square along the "1"st dimension, i.e. across rows. This is the norm of each column in epsilon
-        L1_ICRF = zeros(size(L1_2D));
-        for idx = 1:length(rec_space_coords)
-            temp = (epsilon[:,idx]*reduce(hcat,epsilon[:,idx]))*[L1[idx,:]; L1[(length(rec_space_coords)+idx),:]];
-            L1_ICRF[idx,:] = temp[1,:];
-            L1_ICRF[(length(rec_space_coords)+idx),:] = temp[2,:];
-        end
-        # CONTINUE CODING HERE!!!
-        # ADD ICRF PRIOR 
-        # CONTINUE CODING HERE!!!
-    elseif COMPATIBLE_SPACE_INDEX==2 # (vpara,vperp)
-    elseif COMPATIBLE_SPACE_INDEX==3 # (E,μ,Pϕ;σ)
-    else # 4, (E,Λ,Pϕ_n;σ)
+    
+    if RECONSTRUCTION_SPACE_ID==1 # (E,p)
+        verbose && print("---> Computing ICRF regularization matrix for (assumed) (E,p) reconstruction space (or permutations thereof)... ")
+        L_ICRF = icrf_regularization_matrix(M, rec_space_abscissas, FI_species, regularization_wave_frequency, regularization_cyclotron_harmonic; 
+                                            toroidal_mode_number=regularization_toroidal_mode_number, coord_system="(E,p)", coord_system_order=(Ep_E_ind,Ep_p_ind), 
+                                            R_of_interest=units_conversion_factor(R_of_interest_units,"m")*R_of_interest, 
+                                            z_of_interest=units_conversion_factor(z_of_interest_units,"m")*z_of_interest, L1=L1)
+    elseif RECONSTRUCTION_SPACE_ID==2 # (vpara,vperp)
+        verbose && print("---> Computing ICRF regularization matrix for (assumed) (vpara,vperp) reconstruction space (or permutations thereof)... ")
+        L_ICRF = icrf_regularization_matrix(M, rec_space_abscissas, FI_species, regularization_wave_frequency, regularization_cyclotron_harmonic; 
+                                            toroidal_mode_number=regularization_toroidal_mode_number, coord_system="(vpara,vperp)", coord_system_order=(VEL_vpara_ind,VEL_vperp_ind), 
+                                            R_of_interest=units_conversion_factor(R_of_interest_units,"m")*R_of_interest, 
+                                            z_of_interest=units_conversion_factor(z_of_interest_units,"m")*z_of_interest, L1=L1)
+    elseif RECONSTRUCTION_SPACE_ID==3 # (E,mu,Pphi)
+        verbose && print("---> Computing ICRF regularization matrix for (assumed) (E,mu,Pphi) reconstruction space (or permutations thereof)... ")
+        L_ICRF = icrf_regularization_matrix(M, rec_space_abscissas, FI_species, regularization_wave_frequency, regularization_cyclotron_harmonic; 
+                                            toroidal_mode_number=regularization_toroidal_mode_number, coord_system="(E,mu,Pphi)", 
+                                            coord_system_order=(COM_noSigma_E_ind,COM_noSigma_mu_ind,COM_noSigma_Pphi_ind), L1=L1)
+    elseif RECONSTRUCTION_SPACE_ID==4 # (E,Lambda,Pphi_n)
+        verbose && print("---> Computing ICRF regularization matrix for (assumed) (E,Lambda,Pphi_n) reconstruction space (or permutations thereof)... ")
+        L_ICRF = icrf_regularization_matrix(M, rec_space_abscissas, FI_species, regularization_wave_frequency, regularization_cyclotron_harmonic; 
+                                            toroidal_mode_number=regularization_toroidal_mode_number, coord_system="(E,Lambda,Pphi_n)", 
+                                            coord_system_order=(normalized_COM_noSigma_E_ind,normalized_COM_noSigma_Lambda_ind,normalized_COM_noSigma_Pphi_n_ind), L1=L1)
+    elseif RECONSTRUCTION_SPACE_ID==5 # (E,mu,Pphi,sigma)
+        verbose && print("---> Computing ICRF regularization matrix for (assumed) (E,mu,Pphi,sigma) reconstruction space (or permutations thereof)... ")
+        L_ICRF = icrf_regularization_matrix(M, rec_space_abscissas, FI_species, regularization_wave_frequency, regularization_cyclotron_harmonic; 
+                                            toroidal_mode_number=regularization_toroidal_mode_number, coord_system="(E,mu,Pphi,sigma)", 
+                                            coord_system_order=(COM_E_ind,COM_mu_ind,COM_Pphi_ind,COM_sigma_ind), L1=L1)
+    elseif RECONSTRUCTION_SPACE_ID==6 # (E,Lambda,Pphi_n,sigma)
+        verbose && print("---> Computing ICRF regularization matrix for (assumed) (E,Lambda,Pphi_n,sigma) reconstruction space (or permutations thereof)... ")
+        L_ICRF = icrf_regularization_matrix(M, rec_space_abscissas, FI_species, regularization_wave_frequency, regularization_cyclotron_harmonic; 
+                                            toroidal_mode_number=regularization_toroidal_mode_number, coord_system="(E,Lambda,Pphi_n,sigma)", 
+                                            coord_system_order=(normalized_COM_E_ind,normalized_COM_Lambda_ind,normalized_COM_Pphi_n_ind,normalized_COM_sigma_ind), L1=L1)
+    else
+        error("This error print should be impossible to reach. Please post an issue with a screenshot of this error message at https://github.com/juliaFusion/owCF/issues or try contacting henrikj@dtu.dk or anvalen@dtu.dk.")
     end
+    verbose && println("ok!")
+
+    !append(L,[L_ICRF])
+    !append(priors, [zeros(size(L_ICRF,1))])
+    !append(priors_name, ["ICRF"])
 end
 
 # The check below is only relevant in future versions where a general prior can be used!
