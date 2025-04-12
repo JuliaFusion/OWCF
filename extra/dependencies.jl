@@ -561,9 +561,14 @@ function icrf_streamlines(M::AbstractEquilibrium, abscissas::Vector{Vector{T}} w
         # For an m x n x l x 2 grid, epsilon will be an m x n x l x 2 array, where each element is a streamlines tangent (unit) 4-element vector, with the sigma directional element equal to 0
         epsilon = Array{Vector{Float64},space_dimensionality}(undef,space_size...)
         for c in space_indices
+            L_diff = (Λ_∞ - Lambda_array[c[il]])
+            if L_diff<0
+                epsilon[c] = zeros(space_dimensionality)
+                continue
+            end
             tangent_vector = Vector{Float64}(undef,space_dimensionality)
             tangent_vector[iE] = dE
-            tangent_vector[il] = (Λ_∞ - Lambda_array[c[il]])*dE/E_array[c[iE]]
+            tangent_vector[il] = L_diff*dE/E_array[c[iE]]
             tangent_vector[ippn] = dPphi_n
             if ("sigma" in coordinates)
                 tangent_vector[isigma] = 0.0
