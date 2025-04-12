@@ -29,46 +29,12 @@
 #         is inferred automatically in this case, and can be left unspecified.
 
 #### Input variables:
-# folderpath_OWCF - The file path to the OWCF folder - String 
+# The input variables are defined in e.g. the start_createCustomLOS_template.jl file. Please see 
+# OWCF/templates/start_createCustomLOS_template.jl for explanation.
 #
-# coordinate_system - A symbol input to tell the script what type of coordinate system the 'LOS_vec'
-#                     and 'detector_location' input variables are using. The accepted values are 
-#                     :cartesian, :cylindrical or :magrel. The :cartesian symbol is used in cases 1
-#                     and 3 (see above), the :cylindrical symbol is used in cases 2 and 4 (see above)
-#                     and the :magrel symbol is used in case 5 (see above). - Symbol
-# R_of_interest - The R coordinate of interest, in case the script is run as case 5. Meters. If :mag_axis, the magnetic axis is used. - Float64
-# z_of_interest - The z coordinate of interest, in case the script is run as case 5. Meters. If :mag_axis, the magnetic axis is used. - Float64
-# detector_location - The location of the detector at the end of the LOS. In cases 1 and 3, this 
-#                     is specified as a 3-element Cartesian vector. In cases 2 and 4, this is
-#                     specified as a 3-element cylindrical vector. In case 5, this can be left 
-#                     unspecified. - Vector{Float64}
-# filepath_equil - The file path to the magnetic equilibrium and tokamak wall/plasma boundary. This 
-#                  is needed to filter out LOS points outside of the tokamak wall/plasma boundary. 
-#                  In case 5, it's also needed to get the magnetic field vector and the (R,z) point 
-#                  of interest. - String
-# folderpath_o - The folder path to the folder where you want the output to be saved. Remember to 
-#                finish folder paths with '/'. - String
-# LOS_length - The length of the LOS. The algorithm will start at the detector_location and move 
-#              along the LOS a distance equal to LOS_length. After, it will assume there are no more 
-#              voxels relevant for the LOS and therefore stop. Specified in meters. - Float64
-# LOS_name - The name of the LOS/detector. Purely for aesthetic reasons. - String
-# LOS_vec - The vector pointing TOWARDS the detector. Does NOT need to be a unit vector. LOS_vec can
-#           be specified in several ways. For case 1, specify as a (x,y,z) vector pointing towards 
-#           the detector along the center of the LOS. For case 2, specify as a (R,phi,z) vector 
-#           poiting towards the detector along the center of the LOS. For case 3, specify as an array
-#           of 2 elements, θ_x and θ_z (explained above). For case 4, specify as an array of 2
-#           elements, θ_R and θ_phi (explained above). For case 5, specify as an array of 1 element,
-#           θ_u (explained above). - Vector{Float64}
-# LOS_width - The width of the LOS. In meters. - Float64
-# verbose - If set to true, the script will talk a lot - Bool
- 
-#### Advanced inputs (should not be changed from default values, unless you know what you're doing):
-# LOS_circ_res - The number of points by which to resolve the LOS azimuthally (around the cylinder
-#                LOS). - Int64
-# LOS_length_res - The number of points by which to resolve the LOS along the LOS - Int64
-# nR - The number of major radius grid points for the uniform (R,phi,z) grid onto which to map the LOS - Int64
-# nz - The number of vertical grid points for the uniform (R,phi,z) grid onto which to map the LOS - Int64
-# nphi - The number of toroidal grid points for the uniform (R,phi,z) grid onto which to map the LOS - Int64
+# You run the createCustomLOS.jl script by making a copy of the start_createCustomLOS_template.jl 
+# file, moving it to the OWCF/ folder, specifying the inputs and executing it by executing 
+# 'julia start_createCustomLOS_template.jl' or equivalent.
 
 #### Outputs:
 # A .vc file modelling the LOS. The .vc file follows the structure set originally by the LINE21 code.
@@ -86,43 +52,18 @@
 # - The tenth column corresponds to toroidal phi angle points
 # - The eleventh column corresponds to solid angles OMEGA
 
-# Script written by Henrik Järleblad. Last maintained 2025-01-15.
+# Script written by Henrik Järleblad. Last maintained 2025-03-26.
 ###################################################################################################
-
-folderpath_OWCF = ""
-cd(folderpath_OWCF)
-using Pkg
-Pkg.activate(".")
-
-## ---------------------------------------------------------------------------------------------
-# Inputs
-coordinate_system = :magrel # :cartesian, :cylindrical or :magrel
-(coordinate_system==:magrel) && ((R_of_interest, z_of_interest)=(:mag_axis, :mag_axis)) # If you want to specify the LOS as an angle relative to the magnetic field, you have to specify an (R,z) point of interest. Accepted values are Float64 and :mag_axis (magnetic axis). 
-detector_location = [] # TOFOR (proxy): [2.97, 0.0, 18.8] /// NE213 (proxy): [8.35,2.1,-0.27]. When coordinate_system==:magrel, detector_location can be set to whatever (the script will figure it out automatically from the angle and LOS_length)
-filepath_equil = "" # To load tokamak wall/plasma boundary and magnetic equilibrium (for coordinate_system==:magrel)
-folderpath_o = ""
-LOS_length = 0.0 # Length of line-of-sight. From detector to desired end. Meters. When coordinate_system==:magrel, assume (R,z) point of interest is at half the LOS length
-LOS_name = "test_detector"
-LOS_vec = [] # TOFOR (proxy) cartesian: [0.005,-0.001,0.9999] /// NE213 (proxy) cartesian: [0.995902688, 0.293844478e-2, -0.903836320e-1]
-LOS_width = 0.0 # TOFOR (proxy): 0.27 /// NE213 (proxy): 0.25
-plot_LOS = false # If set to true, the LOS will be plotted (top view and poloidal projection) after creation. For validation purposes.
-plot_LOS && (save_LOS_plot = true) # If set to true, the LOS plot will be saved in .png file format
-verbose = true
-
-# Advanced inputs
-LOS_circ_res = 100 # The cylindrical shape that is the line-of-sight will be resolved azimuthally into these many points
-LOS_length_res = 20000 # The cylindrical shape that is the line-of-sight will be resolved parallel to LOS_vec into these many points
-nR = 200 # The number of R grid points
-nz = 200 # The number of z grid points
-nphi = 720 # The number of phi grid points
 
 ## ---------------------------------------------------------------------------------------------
 println("Loading Julia packages... ")
-using Dates
-using FileIO
-using LinearAlgebra
-using Equilibrium
-plot_LOS && (using Plots)
+@everywhere begin
+    using Dates
+    using FileIO
+    using LinearAlgebra
+    using Equilibrium
+    plot_LOS && (using Plots)
+end
 
 ## ---------------------------------------------------------------------------------------------
 # Determine which case it is
@@ -221,7 +162,7 @@ Compute the cylindrical coordinate system coordinate phi, from the Cartesian coo
 """
 function getPhiFromXandY(x::Number,y::Number)
     if x==0 && y==0
-        return NaN
+        return 0.0 # Just define atan(0/0)=:0, for functionality's sake
     elseif x==0 && !(y==0)
         return (pi/2)*y/abs(y)
     elseif x>0.0
@@ -273,13 +214,13 @@ else # case must be 5
     verbose && println("LOS specified as angle w.r.t. the magnetic field. Computing (x,y,z) LOS vecotrs... ")
     # The most complicated one...
     if R_of_interest==:mag_axis
-        R_of_interest = M.axis[1]
+        R_of_interest = magnetic_axis(M)[1]
     end
     if !(typeof(R_of_interest)==Float64 || typeof(R_of_interest)==Int64)
         error("R_of_interest specified incorrectly! Please correct and re-try.")
     end
     if z_of_interest==:mag_axis
-        z_of_interest = M.axis[2]
+        z_of_interest = magnetic_axis(M)[2]
     end
     if !(typeof(z_of_interest)==Float64 || typeof(z_of_interest)==Int64)
         error("z_of_interest specified incorrectly! Please correct and re-try.")
@@ -311,6 +252,9 @@ LOS_vec_cyl = [LOS_vec_R, LOS_vec_phi, LOS_vec[3]]
 dot_R = dot(LOS_vec_cyl,[1.0,0.0,0.0])/norm(LOS_vec_cyl)
 dot_phi = dot(LOS_vec_cyl,[0.0,1.0,0.0])/norm(LOS_vec_cyl)
 dot_z = dot(LOS_vec_cyl,[0.0,0.0,1.0])/norm(LOS_vec_cyl)
+
+verbose && println("---> LOS vector (towards detector, cylindrical coordinates): $(LOS_vec_cyl)")
+
 LOS_parallel_to_R = false
 if isapprox(dot_R,1.0)
     verbose && println("LOS parallel to R-axis! Special algorithm will be utilized to successfully compute the LOS.")
@@ -349,6 +293,7 @@ else
     LOS_circ_angles = LOS_circ_angles[1:end-1] # Remove redundant 2*pi angle
     EDGEofLOS_vecs = Vector{Vector{Float64}}(undef,LOS_circ_res-1)
     for (ia,angle) in enumerate(LOS_circ_angles)
+        local R
         R = getRotationMatrix(los_vec,angle)
         EDGEofLOS_vecs[ia] = R*EDGEofLOS_vec # Get the vectors pointing to the edge of the cylindrical LOS, relative to the center (spine) of the LOS
     end
@@ -443,6 +388,7 @@ verbose && println("Mapping out LOS data on uniform (R,phi,z) grid... ")
 
 # Find all non-zero omega_3D_array indices
 nz_coords = findall(x-> x>0.0, omega_3D_array)
+verbose && println("---> Number of non-zero solid angle indices: $(length(nz_coords))")
 
 # Instantiate arrays for x, y, z, ... etc
 dR = abs(R_grid[2]-R_grid[1]) # Need to be uniform grid because of LINE21
@@ -463,6 +409,8 @@ LOS_in = Array{Bool,1}(undef,length(nz_coords)) # To keep track of points inside
 
 # Loop through non-zero indices
 for (inz, nz_coord) in enumerate(nz_coords)
+    local R
+
     iR = nz_coord[1]
     iphi = nz_coord[2]
     iz = nz_coord[3]
@@ -489,6 +437,7 @@ for (inz, nz_coord) in enumerate(nz_coords)
     LOS_OMEGA[inz] = OMEGA
     LOS_in[inz] = in_boundary(wall,R,z) # Is the point inside the tokamak wall/boundary? If so, set bool element to true
 end
+verbose && println("---> Number of LOS voxels inside the tokamak wall/boundary: $(sum(LOS_in))")
 
 ## ---------------------------------------------------------------------------------------------
 # Remove voxels outside of the tokamak wall/plasma boundary. Round to 9 significant digits (like the LINE21 code)
