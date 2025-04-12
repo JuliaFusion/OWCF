@@ -157,8 +157,13 @@ function getGCP(species_identifier::AbstractString; E=0.0, p=0.0, R=0.0, z=0.0, 
     species_identifier_lowercase = lowercase(species_identifier)
     species_A = match(number_pattern,species_identifier_lowercase) # The atomic mass number, e.g. RegexMatch("10") of "3he". nothing if only e.g. "he"
     species_ChemElemSymbol = match(letter_pattern,species_identifier_lowercase) # The chemical element symbol
-    if !(species_ChemElemSymbol in OWCF_SPECIES)
-        error("getGCP() input $(species_ChemElemSymbol) did not match any of the particle species available in the OWCF. Please choose from $(OWCF_SPECIES). Please correct and re-try.")
+    if isnothing(species_ChemElemSymbol)
+        error("No valid letter (a-z) included in input $(species_identifier). Please correct and re-try.")
+    else
+        species_ChemElemSymbol = species_ChemElemSymbol.match
+        if !(species_ChemElemSymbol in OWCF_SPECIES)
+            error("getGCP() input $(species_ChemElemSymbol) did not match any of the particle species available in the OWCF. Please choose from $(OWCF_SPECIES). Please correct and re-try.")
+        end
     end
     if isnothing(species_A) # No atomic mass number included with the species_identifier
         species_A = OWCF_ChemElemSymbol_to_A[species_identifier_lowercase] # Determine it via look-up Dictionary

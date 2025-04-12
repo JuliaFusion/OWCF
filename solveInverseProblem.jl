@@ -61,6 +61,8 @@
 #   filepath_start - The filepath to the start file used to execute the solveInverseProblem.jl script - String
 #   If rescale_W was set to true
 #       rescale_W_factors - The factors used to rescale the weight functions to have WF_synth match the experimental data - Vector{Float64}
+#   If :COLLISIONS and/or :ICRF was included in the 'regularization' input variable
+#       regularization_equil_filepath - The file path to the magnetic equilibrium data used to compute :COLLISIONS and/or :ICRF prior - String
 #   If :COLLISIONS was included in the 'regularization' input variable
 #       coll_phys_basis - The collision physics basis functions used to solve the inverse problem. The basis functions are saved as a multi-dimensional 
 #                         array with size recSpaceGridSize x reduce(*, recSpaceGridSize) - Array{Float64}
@@ -70,6 +72,9 @@
 #       coll_phys_Te - The electron temperature used to compute the collision physics basis functions - Float64
 #       coll_phys_ne - The electron density used to compute the collision physics basis functions - Float64
 #       coll_phys_rho - The normalized poloidal flux coordinate(s) used to compute the collision physics basis functions - Vector{Float64}
+#   If :ICRF was included in the 'regularization' input variable
+#       L_ICRF - The matrix used to regularize the inverse problem using the physics of electromagnetic wave heating in the ion 
+#                cyclotron range of frequencies (ICRF) - Matrix{Float64}
 # If the 'plot_solutions' input variable was set to true in the start file, .png files will be saved showing plots of the solutions.
 # The filename format of those .png files will be:
 #   solInvProb_[date and time]_resultsPlot_[p]_of_[P].png
@@ -87,8 +92,11 @@
 ### Other
 # 
 
-# Script written by Henrik Järleblad. Last maintained 2025-01-07.
+# Script written by Henrik Järleblad. Last maintained 2025-04-11.
 ###########################################################################################################
+
+# A dictionary to keep a record of the names of all sections and their respective execution times
+dictionary_of_sections = Dict()
 
 # println section number tracker
 prnt = 0
@@ -115,19 +123,24 @@ if plot_solutions || gif_solutions
     using Plots
 end
 if "collisions" in lowercase.(String.(regularization))
-    verbose && println("Collision physics included in list of regularization ---> OWCF dependencies needed.")
+    verbose && println("Collision physics included in list of regularization ---> Loading OWCF dependencies... ")
     include(folderpath_OWCF*"extra/dependencies.jl")
     include(folderpath_OWCF*"misc/temp_n_dens.jl")
     include(folderpath_OWCF*"misc/species_func.jl")
 end
 if rescale_W
-    verbose && println("rescale_W set to true ---> OWCF dependencies needed.")
+    verbose && println("rescale_W set to true ---> Loading OWCF dependencies... ")
+    include(folderpath_OWCF*"extra/dependencies.jl")
+end
+if ("icrf" in lowercase.(String.(regularization)))
+    verbose && println("ICRF physics included in list of regularization ---> Loading OWCF dependencies... ")
     include(folderpath_OWCF*"extra/dependencies.jl")
 end
 
 append!(timestamps,time()) # The timestamp when all necessary packages have been loaded
+dictionary_of_sections[prnt-1] = ("Loading Julia packages",diff(timestamps)[end])
 ###########################################################################################################
-# SECTION 1: PERFORM SAFETY CHECKS
+# SECTION: PERFORM SAFETY CHECKS
 println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
 
 verbose && println("Performing safety checks... ")
@@ -136,8 +149,9 @@ if !(length(filepaths_S)==length(filepaths_W))
 end
 
 append!(timestamps,time()) # The timestamp when the foundational safety check has been performed
+dictionary_of_sections[prnt-1] = ("Performing safety checks",diff(timestamps)[end])
 ###########################################################################################################
-# SECTION 2: LOAD MEASUREMENTS
+# SECTION: LOAD MEASUREMENTS
 println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
 
 verbose && print("Loading measurements... ")
@@ -186,8 +200,9 @@ end
 ok && verbose && println("Done!")
 
 append!(timestamps,time()) # The timestamp when the measurements have been loaded completely
+dictionary_of_sections[prnt-1] = ("Loading measurements",diff(timestamps)[end])
 ###########################################################################################################
-# SECTION 3: LOAD WEIGHT FUNCTIONS
+# SECTION: LOAD WEIGHT FUNCTIONS
 println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
 
 verbose && print("Loading weight functions... ")
@@ -353,8 +368,9 @@ end
 verbose && println("Done!")
 
 append!(timestamps,time()) # The timestamp when the weight functions have been loaded completely
+dictionary_of_sections[prnt-1] = ("Loading weight functions",diff(timestamps)[end])
 ###########################################################################################################
-# SECTION 4: CHECK THAT ALL ABSCISSAS MATCH IN TERMS OF DIMENSIONS AND UNITS.
+# SECTION: CHECK THAT ALL ABSCISSAS MATCH IN TERMS OF DIMENSIONS AND UNITS.
 # OTHERWISE, CORRECT THEM SO THAT ALL MATCH.
 println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
 
@@ -390,8 +406,9 @@ for i in eachindex(filepaths_W)
 end
 
 append!(timestamps,time()) # The timestamp when the abscissas units checks have been performed
+dictionary_of_sections[prnt-1] = ("Performing abscissa units checks",diff(timestamps)[end])
 ###########################################################################################################
-# SECTION 5: INTERPOLATE ONTO THE GRID SPECIFIED BY min_array, max_array and n_array 
+# SECTION: INTERPOLATE ONTO THE GRID SPECIFIED BY min_array, max_array and n_array 
 # IF THEY ARE NOT SPECIFIED, USE THE ABSCISSAS OF THE FIRST WEIGHT MATRIX IN filepaths_W
 println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
 
@@ -435,8 +452,9 @@ for (i,w_inflated) in enumerate(W_inflated)
 end
 
 append!(timestamps,time()) # The timestamp when the weight functions have been interpolated onto a common reconstruction space grid
+dictionary_of_sections[prnt-1] = ("Interpolating weight functions onto common reconstruction space grid",diff(timestamps)[end])
 ###########################################################################################################
-# SECTION 6: RESHAPE ALL INFLATED WEIGHT MATRICES INTO THEIR 2D SHAPE, TO BE USED IN INVERSE PROBLEMS
+# SECTION: RESHAPE ALL INFLATED WEIGHT MATRICES INTO THEIR 2D SHAPE, TO BE USED IN INVERSE PROBLEMS
 # THEN, INTERPOLATE EACH WEIGHT MATRIX W[i] TO MATCH THE MEASUREMENT BIN CENTER GRID OF THE CORRESPONDING SIGNAL S[i]
 println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
 
@@ -471,217 +489,9 @@ for (i,w) in enumerate(W)
 end
 
 append!(timestamps,time()) # The timestamp when the weight functions have been reshaped into 2D and interpolated onto the corresponding measurements grid
+dictionary_of_sections[prnt-1] = ("Constructing 2D weight matrices from weight functions, and interpolating to match diagnostics measurement bin centers",diff(timestamps)[end])
 ###########################################################################################################
-# SECTION 7: DEFINE FUNCTIONS THAT MIGHT NEED TO BE USED SEVERAL TIMES IN LATER SECTIONS, E.G. IF
-# - WEIGHT FUNCTIONS ARE TO BE RESCALED AND THE REFERENCE FAST-ION DISTRIBUTION IS TO BE LOADED FROM FILE
-# - COLLISIONAL PHYSICS IS TO BE USED AS REGULARIZATION WHEN SOLVING THE INVERSE PROBLEM
-# IN FUTURE VERSIONS, ADD MORE FUNCTIONAL CHECKS HERE IF NECESSARY.
-println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
-
-if (rescale_W && lowercase(String(rescale_W_F_ref_source))=="file") || ("collisions" in lowercase.(String.(regularization)))
-    verbose && println("Defining necessary coordinate space deduction functions... ")
-    function is_energy_pitch(w_abscissas::Vector{Vector{T}} where {T<:Real}, w_abscissas_units::Vector{String}; verbose=false, returnExtra=false)
-        if length(w_abscissas_units)!=3
-            verbose && println("is_energy_pitch(): Number of reconstruction space abscissas is not equal to 2. Returning false... ")
-            return (returnExtra ? (false, 0, 0) : false)
-        end
-
-        units_1 = w_abscissas_units[2] # The second dimension of the weight matrix is the first dimension of the reconstruction space
-        units_2 = w_abscissas_units[3] # The third dimension of the weight matrix is the second dimension of the reconstruction space
-        units_tot = vcat(units_1, units_2)
-        
-        w_energy_ind = findall(x-> x in keys(ENERGY_UNITS) || x in keys(ENERGY_UNITS_LONG), units_tot)
-        w_pitch_ind = findall(x-> x in keys(DIMENSIONLESS_UNITS) || x in keys(DIMENSIONLESS_UNITS_LONG), units_tot)
-        if !(length(w_energy_ind)==1 && length(w_pitch_ind)==1)
-            verbose && println("is_energy_pitch(): (E,p) coordinates not found. Returning false... ")
-            return (returnExtra ? (false, 0, 0) : false)
-        else
-            verbose && println("is_energy_pitch(): (E,p) coordinates confirmed! Returning true... ")
-            w_energy_ind .+= 1 # To align it with the original w_abscissas and w_abscissas_units indices
-            w_pitch_ind .+= 1 # To align it with the original w_abscissas and w_abscissas_units indices
-            return (returnExtra ? (true, w_energy_ind[1], w_pitch_ind[1]) : true) # [1] because we know there should be only 1 element returned by findall()
-        end
-    end
-
-    function is_vpara_vperp(w_abscissas::Vector{Vector{T}} where {T<:Real}, w_abscissas_units::Vector{String}; verbose=false, returnExtra=false)
-        if length(w_abscissas_units)!=3
-            verbose && println("is_vpara_vperp(): Number of reconstruction space abscissas is not equal to 2. Returning false... ")
-            return (returnExtra ? (false, 0, 0) : false)
-        end
-
-        units_1 = w_abscissas_units[2] # The second dimension of the weight matrix is the first dimension of the reconstruction space
-        units_2 = w_abscissas_units[3] # The third dimension of the weight matrix is the second dimension of the reconstruction space
-        units_tot = vcat(units_1, units_2)
-        w_speed_inds = findall(x-> units_are_speed(x), units_tot)
-
-        if !(length(w_speed_inds)==2)
-            verbose && println("is_vpara_vperp(): (vpara,vperp) coordinates not found. Returning false... ")
-            return (returnExtra ? (false, 0, 0) : false)
-        else
-            w_speed_inds .+= 1 # To align it with the original w_abscissas and w_abscissas_units indices
-            verbose && print("is_vpara_vperp(): (vpara,vperp) coordinates found! Distinguishing (vpara, vperp) arrays...")
-            w_vel_arrays = w_abscissas[w_speed_inds]
-            if minimum(w_vel_arrays[1])<0 && minimum(w_vel_arrays[2])>0 # vpara can be negative. vperp cannot
-                verbose && println("ok!")
-                w_vpara_ind = w_speed_inds[1] # Order of abscissas in w_vel_arrays is the same as the order in w_speed_inds
-                w_vperp_ind = w_speed_inds[2] # Order of abscissas in w_vel_arrays is the same as the order in w_speed_inds
-            elseif minimum(w_vel_arrays[2]<0 && minimum(w_vel_arrays[1]>0)) # vpara can be negative. vperp cannot
-                verbose && println("ok!")
-                w_vpara_ind = w_speed_inds[2] # Order of abscissas in w_vel_arrays is the same as the order in w_speed_inds
-                w_vperp_ind = w_speed_inds[1] # Order of abscissas in w_vel_arrays is the same as the order in w_speed_inds
-            else
-                verbose && println("")
-                @warn "Could not distinguish (vpara,vperp) arrays from weight function abscissas. Assuming abscissa with index $(w_speed_inds[1]) to be vpara and abscissa with index $(w_speed_inds[2]) to be vperp."
-                w_vpara_ind = w_speed_inds[1] # Order of abscissas in w_vel_arrays is the same as the order in w_speed_inds
-                w_vperp_ind = w_speed_inds[2] # Order of abscissas in w_vel_arrays is the same as the order in w_speed_inds
-            end
-            verbose && println("is_vpara_vperp(): Returning true... ")
-            return (returnExtra ? (true, w_vpara_ind, w_vperp_ind) : true)
-        end
-    end
-
-    function is_EpRz(w_abscissas::Vector{Vector{T}} where {T<:Real}, w_abscissas_units::Vector{String}; verbose=false, returnExtra=false)
-        if length(w_abscissas_units)!=5
-            verbose && println("is_EpRz(): Number of reconstruction space abscissas is not equal to 4. Returning false... ")
-            return (returnExtra ? (false, 0, 0, 0, 0, [], []) : false)
-        end
-        units_1 = w_abscissas_units[2] # The second dimension of the weight matrix is the first dimension of the reconstruction space
-        units_2 = w_abscissas_units[3] # The third dimension of the weight matrix is the second dimension of the reconstruction space
-        units_3 = w_abscissas_units[4] # The fourth dimension of the weight matrix is the third dimension of the reconstruction space
-        units_4 = w_abscissas_units[5] # The fifth dimension of the weight matrix is the fourth dimension of the reconstruction space
-
-        units_tot = vcat(units_1, units_2, units_3, units_4)
-        w_energy_ind = findall(x-> x in keys(ENERGY_UNITS) || x in keys(ENERGY_UNITS_LONG), units_tot)
-        w_pitch_ind = findall(x-> x in keys(DIMENSIONLESS_UNITS) || x in keys(DIMENSIONLESS_UNITS_LONG), units_tot)
-        w_Rz_inds = findall(x-> x in keys(LENGTH_UNITS) || x in keys(LENGTH_UNITS_LONG), units_tot)
-
-        if !(length(w_energy_ind)==1 && length(w_pitch_ind)==1 && length(w_Rz_inds)==2)
-            verbose && println("is_EpRz(): (E,p,R,z) coordinates not found. Returning false... ")
-            return (returnExtra ? (false, 0, 0, 0, 0, [], []) : false)
-        else
-            w_energy_ind .+= 1 # To align it with the original w_abscissas and w_abscissas_units indices
-            w_pitch_ind .+= 1 # To align it with the original w_abscissas and w_abscissas_units indices
-            w_Rz_inds .+= 1 # To align it with the original w_abscissas and w_abscissas_units indices
-
-            verbose && print("is_EpRz(): (E,p,R,z) coordinates found! Distinguishing (R,z) arrays... ")
-            w_RnZ_arrays = w_abscissas[w_Rz_inds]
-            if minimum(w_RnZ_arrays[2])<0 && minimum(w_RnZ_arrays[1])>0 # If the second LENGTH_UNITS abscissa has negative elements, and the first one does not..
-                verbose && println("ok!")
-                w_R_ind = w_Rz_inds[1] # Order of abscissas in w_RnZ_arrays is the same as the order in w_Rz_inds
-                w_z_ind = w_Rz_inds[2] # Order of abscissas in w_RnZ_arrays is the same as the order in w_Rz_inds
-                R_of_interests = w_RnZ_arrays[1] # The first LENGTH_UNITS abscissa is very likely to be the R grid points...
-                z_of_interests = w_RnZ_arrays[2] # ...and the second LENGTH_UNITS abscissa is very likely to be the z grid points
-            elseif minimum(w_RnZ_arrays[1])<0 && minimum(w_RnZ_arrays[2])>0 # If it's the other way around...
-                verbose && println("ok!")
-                w_R_ind = w_Rz_inds[2] # Order of abscissas in w_RnZ_arrays is the same as the order in w_Rz_inds
-                w_z_ind = w_Rz_inds[1] # Order of abscissas in w_RnZ_arrays is the same as the order in w_Rz_inds
-                R_of_interests = w_RnZ_arrays[2] # ...it's very likely to be the other way around.
-                z_of_interests = w_RnZ_arrays[1] # ...it's very likely to be the other way around.
-            else
-                verbose && println("")
-                @warn "Could not deduce (R,z) arrays from weight function abscissas. Assuming abscissa with index $(w_Rz_inds[1]) to be R and abscissa with index $(w_Rz_inds[2]) to be z."
-                w_R_ind = w_Rz_inds[1] # Order of abscissas in w_RnZ_arrays is the same as the order in w_Rz_inds
-                w_z_ind = w_Rz_inds[2] # Order of abscissas in w_RnZ_arrays is the same as the order in w_Rz_inds
-                R_of_interests = w_RnZ_arrays[1]
-                z_of_interests = w_RnZ_arrays[2]
-            end
-            verbose && println("is_EpRz(): Returning true... ")
-            return (returnExtra ? (true, w_energy_ind[1], w_pitch_ind[1], w_R_ind, w_z_ind, R_of_interests, z_of_interests) : true)
-        end
-    end
-
-    function get_energy_abscissa(w_abscissas::Vector{Vector{T}} where {T<:Real}, w_abscissas_units::Vector{String}; verbose=false, returnExtra=false)
-        # Assume there is only one energy abscissa
-        w_energy_ind = findfirst(x-> x in keys(ENERGY_UNITS) || x in keys(ENERGY_UNITS_LONG), w_abscissas_units)
-        if isnothing(w_energy_ind)
-            verbose && println("No energy abscissa found in input abscissas! Returning nothing... ")
-            return returnExtra ? (nothing,nothing) : nothing
-        end
-
-        return returnExtra ? (w_abscissas[w_energy_ind], w_energy_ind) : w_abscissas[w_energy_ind]
-    end
-
-    function get_pitch_abscissa(w_abscissas::Vector{Vector{T}} where {T<:Real}, w_abscissas_units::Vector{String}; verbose=false, returnExtra=false)
-        w_dimensionless_inds = findall(x-> x in keys(DIMENSIONLESS_UNITS) || x in keys(DIMENSIONLESS_UNITS_LONG), w_abscissas_units)
-    
-        if isempty(w_dimensionless_inds)
-            verbose && println("No dimensionless abscissa found in input abscissas! Returning nothing...")
-            return returnExtra ? (nothing,nothing) : nothing
-        end
-    
-        w_pitch_ind = 0
-        for w_dimensionless_ind in w_dimensionless_inds
-            w_abscissa = w_abscissas[w_dimensionless_ind]
-            if maximum(w_abscissa)<=1 && minimum(w_abscissa)>=-1
-                w_pitch_ind = w_dimensionless_ind
-                break # Assume there is only one pitch-like coordinate
-            end
-        end
-    
-        if w_pitch_ind==0
-            verbose && println("No pitch-like dimensionless abscissa found in input abscissas! Returning nothing...")
-            return returnExtra ? (nothing,nothing) : nothing
-        end
-    
-        return returnExtra ? (w_abscissas[w_pitch_ind], w_pitch_ind) : w_abscissas[w_pitch_ind]
-    end
-
-    function get_vpara_abscissa(w_abscissas::Vector{Vector{T}} where {T<:Real}, w_abscissas_units::Vector{String}; verbose=false, returnExtra=false)
-        w_speed_inds = findall(x-> units_are_speed(x), w_abscissas_units)
-        if isempty(w_speed_inds)
-            verbose && println("No speed abscissa found in input abscissas! Returning nothing...")
-            return returnExtra ? (nothing,nothing) : nothing
-        end
-        if length(w_speed_inds)>2
-            @warn "Impossible to determine vpara since more than two abscissas with unit of measurement 'speed' was found. Returning nothing... "
-            return returnExtra ? (nothing,nothing) : nothing
-        end
-
-        if length(w_speed_inds)==1
-            verbose && println("One abscissa with unit of measurement 'speed' was found. Assuming it is vpara. Returning... ")
-            return returnExtra ? (w_abscissas[w_speed_inds], w_speed_inds[1]) : w_abscissas[w_speed_inds]
-        end
-
-        # w_speed_inds must be length 2 then
-        w_speed_abscissa_1 = w_speed_inds[1]
-        w_speed_abscissa_2 = w_speed_inds[2]
-        if minimum(w_speed_abscissa_1)<0 # Must be vpara since vperp>= always holds
-            return returnExtra ? (w_speed_abscissa_1, w_speed_inds[1]) : w_speed_abscissa_1
-        elseif minimum(w_speed_abscissa_2)<0 # -||-
-            return returnExtra ? (w_speed_abscissa_2, w_speed_inds[2]) : w_speed_abscissa_2
-        else # Ambiguous
-            @warn "Cannot deduce vpara from w_abscissas and w_abscissas_units. Returning abscissas with smallest index as vpara."
-            return returnExtra ? (w_speed_abscissa_1, w_speed_inds[1]) : w_speed_abscissa_1
-        end
-    end
-
-    function get_vperp_abscissa(w_abscissas::Vector{Vector{T}} where {T<:Real}, w_abscissas_units::Vector{String}; verbose=false, returnExtra=false)
-        w_speed_inds = findall(x-> units_are_speed(x), w_abscissas_units)
-        if isempty(w_speed_inds)
-            verbose && println("No speed abscissa found in input abscissas! Returning nothing...")
-            return returnExtra ? (nothing,nothing) : nothing
-        end
-        if length(w_speed_inds)>2
-            @warn "Impossible to determine vperp since more than two abscissas with unit of measurement 'speed' was found. Returning nothing... "
-            return returnExtra ? (nothing,nothing) : nothing
-        end
-
-        if length(w_speed_inds)==1
-            verbose && println("One abscissa with unit of measurement 'speed' was found. Assuming it is vperp. Returning... ")
-            return returnExtra ? (w_abscissas[w_speed_inds], w_speed_inds[1]) : w_abscissas[w_speed_inds]
-        end
-
-        # w_speed_inds must be length 2 then
-        w_vpara_abscissa, w_vpara_ind = get_vpara_abscissa(w_abscissas, w_abscissas_units; verbose=verbose, returnExtra=returnExtra)
-        w_vperp_ind = filter(x-> x!=w_vpara_ind,w_speed_inds)[1]
-
-        return returnExtra ? (w_abscissas[w_vperp_ind], w_vperp_ind) : w_abscissas[w_vperp_ind]
-    end
-end
-
-append!(timestamps,time()) # The timestamp when the (possibly necessary) utility functions have been defined
-###########################################################################################################
-# SECTION 8: IF rescale_W WAS SET TO true IN THE START FILE, LOAD OR COMPUTE FAST-ION DISTRIBUTION(S).
+# SECTION: IF rescale_W WAS SET TO true IN THE START FILE, LOAD OR COMPUTE FAST-ION DISTRIBUTION(S).
 # USE THIS/THESE DISTRIBUTION(S) TOGETHER WITH THE WEIGHT MATRICES TO COMPUTE REFERENCE MEASUREMENTS.
 # COMPUTE RESCALING FACTORS TO BE ABLE TO RESCALE WEIGHT FUNCTIONS TO HAVE THE REFERENCE MEASUREMENTS MATCH 
 # THE EXPERIMENTAL MEASUREMENTS.
@@ -902,8 +712,9 @@ else
 end
 
 append!(timestamps,time()) # The timestamp when the weight function rescale factors have been computed
+dictionary_of_sections[prnt-1] = ("Computing weight functions rescale factors (if requested)",diff(timestamps)[end])
 ###########################################################################################################
-# SECTION 9: IF :COLLISIONS WAS INCLUDED IN THE regularization INPUT VARIABLE, AND THE RECONSTRUCTION 
+# SECTION: IF :COLLISIONS WAS INCLUDED IN THE regularization INPUT VARIABLE, AND THE RECONSTRUCTION 
 # SPACE IS A SPACE IN WHICH COLLISIONS REGULARIZATION IS SUPPORTED, COMPUTE SLOWING-DOWN BASIS FUNCTIONS
 println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
 
@@ -1241,8 +1052,9 @@ else
 end
 
 append!(timestamps,time()) # The timestamp when the collision physics basis functions have been computed
+dictionary_of_sections[prnt-1] = ("Computing collision physics basis functions (if requested)",diff(timestamps)[end])
 ###########################################################################################################
-# SECTION 10: ENFORCE THE NOISE FLOOR
+# SECTION: ENFORCE THE NOISE FLOOR
 println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
 
 verbose && println("Enforcing a noise floor of $(noise_floor_factor). All error values smaller than $(noise_floor_factor)*maximum(S) will be set to $(noise_floor_factor)*maximum(S)... ")
@@ -1260,8 +1072,9 @@ for (i,s) in enumerate(S)
 end
 
 append!(timestamps,time()) # The timestamp when the noise floor has been enforced
+dictionary_of_sections[prnt-1] = ("Enforcing a noise floor on the measurement uncertainties",diff(timestamps)[end])
 ###########################################################################################################
-# SECTION 11: EXCLUDE UNWANTED MEASUREMENT BINS
+# SECTION: EXCLUDE UNWANTED MEASUREMENT BINS
 println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
 
 if !(length(excluded_measurement_intervals)==length(excluded_measurement_units)==length(filepaths_S))
@@ -1305,47 +1118,129 @@ else
 end
 
 append!(timestamps,time()) # The timestamp when unwanted measurements have been excluded
+dictionary_of_sections[prnt-1] = ("Excluding unwanted measurement bins",diff(timestamps)[end])
 ###########################################################################################################
-# SECTION 12: IF REQUESTED, INCLUDE 1st ORDER TIKHONOV AS REGULARIZATION FOR THE INVERSE PROBLEM
-# THIS SECTION MIGHT BE CHANGED IN THE FUTURE TO INCLUDE MORE FORMS OF REGULARIZATIONS AND PRIORS
+# SECTION: INITIALIZE REGULARIZATION AND PRIOR SKELETON (EMPTY ARRAYS). IF REQUESTED, INCLUDE REGULARIZATION 
+# MATRICES. THESE INCLUDE (COLLISION PHYSICS INCLUDED IN SECTION ABOVE):
+#   - 0th ORDER TIKHONOV
+#   - 1st ORDER TIKHONOV
+#   - ICRF PHYSICS INFORMATION
+# THIS SECTION WILL BE CHANGED IN THE FUTURE IF MORE FORMS OF REGULARIZATIONS AND PRIORS ARE TO BE INCLUDED
 println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
 
-rec_space_abscissas = W_abscissas[1][2:end]
-#rec_space_abscissas_diff = map(x-> x[1], diff.(rec_space_abscissas)) # Assume rectangular grid with equidistant grid point spacing
-rec_space_size = Tuple(length.(rec_space_abscissas)) # The size of the reconstruction space, e.g. (33,52,12). All w abscissas are the same (because of sections 4 and 5), hence [1]. First w abscissa is the diagnostic measurement bins, hence [2:end].
+rec_space_abscissas = W_abscissas[1][2:end] # The abscissas of the space of the solution to the inverse problem. All w abscissas are the same (because of sections 4 and 5), hence [1]. First w abscissa is the diagnostic measurement bins, hence [2:end].
+rec_space_abscissas_units = W_abscissas_units[1][2:end] # The units of the rec_space_abscissas
+rec_space_size = Tuple(length.(rec_space_abscissas)) # The size of the reconstruction space, e.g. (33,52,12).
 rec_space_coords = CartesianIndices(rec_space_size) # All reconstruction space coordinates. E.g. [(1,1,1), (1,1,2), ..., (N1,N2,N3)] where Ni is the number of grid points in the i:th reconstruction space dimension
 verbose && println("Creating list of reconstruction space coordinates (length=$(length(rec_space_coords))=$(reduce(*,map(x-> "x$(x)",rec_space_size))[2:end]))... ")
 
-if "firsttikhonov" in lowercase.(String.(regularization))
-    verbose && println(":FIRSTTIKHONOV included in 'regularization' input variable. Adding 1st order Tikhonov regularization to the inverse solving algorithm... ")
-    L1 = Vector{SparseMatrixCSC{Float64,Int64}}(undef,length(rec_space_size)) # All finite difference matrices (one for each dimension) (A Vector of sparce matrices (SparseMatrixCSC) CSC means 'compressed sparse column')
-    for idim=1:length(rec_space_size) # For each dimension
-        l1 = spzeros(length(rec_space_coords),length(rec_space_coords)) # The finite difference matrix for a specific dimension (idim)
-        for (i,rec_space_coord_i) in enumerate(rec_space_coords) # For every reconstruction space point (every row in the finite difference matrix)
-            for (j,rec_space_coord_j) in enumerate(rec_space_coords) # -||- (for every column in the finite difference matrix)
-                if sum(Tuple(rec_space_coord_j) .- Tuple(rec_space_coord_i))==1 && (rec_space_coord_j[idim]-rec_space_coord_i[idim])==1 # If the coordinates differ by one (neighbours with j coordinate larger than i coordinate) and the difference is in the right dimension (idim)
-                    l1[i,i] = -1 # Construct the forward difference matrix
-                    l1[i,j] = 1 # Construct the forward difference matrix
-                    break # Only one such nearest neighbour for every row, so move on to the next row
-                end
-            end
-        end
-        L1[idim] = l1 # The finite difference matrix for this particular dimension
-    end
-    L1 = vcat(L1...)
-    L = [L1]
-    priors = [zeros(size(L1,1))]
-    priors_name = ["1st order Tikhonov"]
-else
-    verbose && println("Creating regularization and prior skeleton (empty arrays)... ")
-    L = []
-    priors = []
-    priors_name = []
+verbose && println("Creating inverse problem regularization and prior information skeleton (empty arrays)... ")
+L = []
+priors = []
+priors_name = []
+
+if "zerotikhonov" in lowercase.(String.(regularization))
+    verbose && println(":ZEROTIKHONOV included in 'regularization' input variable. Adding 0th order Tikhonov regularization to the inverse solving algorithm... ")
+    append!(L, [sparse(1.0(SparseArrays.I),length(rec_space_coords),length(rec_space_coords))]) # Sparse identity matrix
+    append!(priors, [zeros(length(rec_space_coords))])
+    append!(priors_name, ["0th order Tikhonov"])
 end
 
+first_tikhonov_reg = false
+if "firsttikhonov" in lowercase.(String.(regularization))
+    verbose && println(":FIRSTTIKHONOV included in 'regularization' input variable. Adding 1st order Tikhonov regularization to the inverse solving algorithm... ")
+    first_tikhonov_reg = true
+    L1 = forward_difference_matrix(rec_space_size) # The forward difference matrix of size (length(rec_space_size) * reduce(*,rec_space_size), reduce(*,rec_space_size))
+    !append(L,[L1])
+    !append(priors, [zeros(size(L1,1))])
+    !append(priors_name, ["1st order Tikhonov"])
+end
+
+icrf_physics_reg = false
+if "icrf" in lowercase.(String.(regularization))
+    verbose && print(":ICRF included in 'regularization' input variable. Checking reconstruction space compatibility... ")
+    # is_energy_pitch, is_vpara_vperp etc are functions in OWCF/extra/dependencies.jl
+    Ep_bool, Ep_E_ind, Ep_p_ind = is_energy_pitch(rec_space_abscissas, rec_space_abscissas_units; returnExtra=true)
+    VEL_bool, VEL_vpara_ind, VEL_vperp_ind = is_vpara_vperp(rec_space_abscissas, rec_space_abscissas_units; returnExtra=true)
+    if length(rec_space_abscissas)==3 # (E,mu,Pphi) or (E,Lambda,Pphi_n)
+        COM_noSigma_bool, COM_noSigma_E_ind, COM_noSigma_mu_ind, COM_noSigma_Pphi_ind = is_COM(rec_space_abscissas, rec_space_abscissas_units; returnExtra=true)
+        normalized_COM_noSigma_bool, normalized_COM_noSigma_E_ind, normalized_COM_noSigma_Lambda_ind, normalized_COM_noSigma_Pphi_n_ind = is_normalized_COM(rec_space_abscissas, rec_space_abscissas_units; returnExtra=true)
+    elseif length(rec_space_abscissas)==4 # (E,mu,Pphi,sigma) or (E,Lambda,Pphi_n,sigma)
+        COM_bool, COM_E_ind, COM_mu_ind, COM_Pphi_ind, COM_sigma_ind = is_COM(rec_space_abscissas,rec_space_abscissas_units; returnExtra=true)
+        normalized_COM_bool, normalized_COM_E_ind, normalized_COM_Lambda_ind, normalized_COM_Pphi_n_ind, normalized_COM_sigma_ind = is_normalized_COM(rec_space_abscissas,rec_space_abscissas_units; returnExtra=true)
+    else # ADD MORE CHECKS HERE IN FUTURE VERSIONS, IF NEEDED <---------------------------------------------------------------------
+    end
+    COMPATIBILITY_ARRAY = [Ep_bool, VEL_bool, COM_noSigma_bool, normalized_COM_noSigma_bool, COM_bool, normalized_COM_bool] # An array of true's and false's
+    COMPATIBLE_SPACE_INDICES = findall(x-> x,COMPATIBILITY_ARRAY) # Get the index pointing to which function in COMPATIBLE_OPTIONS returned true (if any of them)
+    if isempty(COMPATIBLE_SPACE_INDICES)
+        error(":ICRF was specified in 'regularization' input variable, but reconstruction space is not supported. Currently supported options include $(ICRF_STREAMLINES_SUPPORTED_COORD_SYSTEMS). Please correct and re-try.")
+    end
+    if length(COMPATIBLE_SPACE_INDICES)>1 # If more than one of the functions in COMPATIBLE_OPTIONS returned true... 
+        error("Compatibility check malfunction. Please post an issue with a screenshot of this error message at https://github.com/juliaFusion/OWCF/issues or try contacting henrikj@dtu.dk or anvalen@dtu.dk.")
+    end
+    RECONSTRUCTION_SPACE_ID = COMPATIBLE_SPACE_INDICES[1] # The identification number of the reconstruction space (see below)
+    verbose && println("ok!")
+
+    verbose && print("---> Loading magnetic equilibrium from $(regularization_equil_filepath)... ")
+    M, wall = read_geqdsk(regularization_equil_filepath,clockwise_phi=false) # Assume the phi-direction is pointing counter-clockwise when tokamak is viewed from above. This is true for almost all coordinate systems used in the field of plasma physics
+    psi_axis, psi_bdry = psi_limits(M)
+    verbose && println("ok!")
+
+    icrf_physics_reg = true
+    if !first_tikhonov_reg
+        verbose && println("Computing finite difference matrix to be used in :ICRF regularization... ")
+        L1 = forward_difference_matrix(rec_space_size) # The forward difference matrix of size (length(rec_space_size) * reduce(*,rec_space_size), reduce(*,rec_space_size))
+    end
+    
+    if RECONSTRUCTION_SPACE_ID==1 # (E,p)
+        verbose && print("---> Computing ICRF regularization matrix for (assumed) (E,p) reconstruction space (or permutations thereof)... ")
+        L_ICRF = icrf_regularization_matrix(M, rec_space_abscissas, FI_species, regularization_wave_frequency, regularization_cyclotron_harmonic; 
+                                            toroidal_mode_number=regularization_toroidal_mode_number, coord_system="(E,p)", coord_system_order=(Ep_E_ind,Ep_p_ind), 
+                                            R_of_interest=units_conversion_factor(R_of_interest_units,"m")*R_of_interest, 
+                                            z_of_interest=units_conversion_factor(z_of_interest_units,"m")*z_of_interest, L1=L1)
+    elseif RECONSTRUCTION_SPACE_ID==2 # (vpara,vperp)
+        verbose && print("---> Computing ICRF regularization matrix for (assumed) (vpara,vperp) reconstruction space (or permutations thereof)... ")
+        L_ICRF = icrf_regularization_matrix(M, rec_space_abscissas, FI_species, regularization_wave_frequency, regularization_cyclotron_harmonic; 
+                                            toroidal_mode_number=regularization_toroidal_mode_number, coord_system="(vpara,vperp)", coord_system_order=(VEL_vpara_ind,VEL_vperp_ind), 
+                                            R_of_interest=units_conversion_factor(R_of_interest_units,"m")*R_of_interest, 
+                                            z_of_interest=units_conversion_factor(z_of_interest_units,"m")*z_of_interest, L1=L1)
+    elseif RECONSTRUCTION_SPACE_ID==3 # (E,mu,Pphi)
+        verbose && print("---> Computing ICRF regularization matrix for (assumed) (E,mu,Pphi) reconstruction space (or permutations thereof)... ")
+        L_ICRF = icrf_regularization_matrix(M, rec_space_abscissas, FI_species, regularization_wave_frequency, regularization_cyclotron_harmonic; 
+                                            toroidal_mode_number=regularization_toroidal_mode_number, coord_system="(E,mu,Pphi)", 
+                                            coord_system_order=(COM_noSigma_E_ind,COM_noSigma_mu_ind,COM_noSigma_Pphi_ind), L1=L1)
+    elseif RECONSTRUCTION_SPACE_ID==4 # (E,Lambda,Pphi_n)
+        verbose && print("---> Computing ICRF regularization matrix for (assumed) (E,Lambda,Pphi_n) reconstruction space (or permutations thereof)... ")
+        L_ICRF = icrf_regularization_matrix(M, rec_space_abscissas, FI_species, regularization_wave_frequency, regularization_cyclotron_harmonic; 
+                                            toroidal_mode_number=regularization_toroidal_mode_number, coord_system="(E,Lambda,Pphi_n)", 
+                                            coord_system_order=(normalized_COM_noSigma_E_ind,normalized_COM_noSigma_Lambda_ind,normalized_COM_noSigma_Pphi_n_ind), L1=L1)
+    elseif RECONSTRUCTION_SPACE_ID==5 # (E,mu,Pphi,sigma)
+        verbose && print("---> Computing ICRF regularization matrix for (assumed) (E,mu,Pphi,sigma) reconstruction space (or permutations thereof)... ")
+        L_ICRF = icrf_regularization_matrix(M, rec_space_abscissas, FI_species, regularization_wave_frequency, regularization_cyclotron_harmonic; 
+                                            toroidal_mode_number=regularization_toroidal_mode_number, coord_system="(E,mu,Pphi,sigma)", 
+                                            coord_system_order=(COM_E_ind,COM_mu_ind,COM_Pphi_ind,COM_sigma_ind), L1=L1)
+    elseif RECONSTRUCTION_SPACE_ID==6 # (E,Lambda,Pphi_n,sigma)
+        verbose && print("---> Computing ICRF regularization matrix for (assumed) (E,Lambda,Pphi_n,sigma) reconstruction space (or permutations thereof)... ")
+        L_ICRF = icrf_regularization_matrix(M, rec_space_abscissas, FI_species, regularization_wave_frequency, regularization_cyclotron_harmonic; 
+                                            toroidal_mode_number=regularization_toroidal_mode_number, coord_system="(E,Lambda,Pphi_n,sigma)", 
+                                            coord_system_order=(normalized_COM_E_ind,normalized_COM_Lambda_ind,normalized_COM_Pphi_n_ind,normalized_COM_sigma_ind), L1=L1)
+    else
+        error("This error print should be impossible to reach. Please post an issue with a screenshot of this error message at https://github.com/juliaFusion/owCF/issues or try contacting henrikj@dtu.dk or anvalen@dtu.dk.")
+    end
+    verbose && println("ok!")
+
+    !append(L,[L_ICRF])
+    !append(priors, [zeros(size(L_ICRF,1))])
+    !append(priors_name, ["ICRF"])
+end
+
+# The check below is only relevant in future versions where a general prior can be used!
+!(sum(diff(length.(priors)))==0) && error("The number of reconstruction space points should be equal for all priors, i.e. [N,...,N]. Instead, $(length.(priors)) was found. Please correct and re-try.")
+
 append!(timestamps,time()) # The timestamp when the regularization matrices have been initialized
+dictionary_of_sections[prnt-1] = ("Initializing regularization matrices (if requested)",diff(timestamps)[end])
 ###########################################################################################################
-# SECTION 13: EXCLUDE ALL RECONSTRUCTION SPACE POINTS FOR WHICH THE WEIGHT MATRICES OF ALL DIAGNOSTICS ARE ZERO
+# SECTION: EXCLUDE ALL RECONSTRUCTION SPACE POINTS FOR WHICH THE WEIGHT MATRICES OF ALL DIAGNOSTICS ARE ZERO
 # PLEASE NOTE! THIS ALSO TAKES CARE OF INVALID ORBITS, SHOULD THE RECONSTRUCTION SPACE BE E.G. ORBIT SPACE 
 # OR CONSTANTS-OF-MOTION SPACE.
 println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
@@ -1399,8 +1294,9 @@ end
 # BUG.
 # BUG. 
 append!(timestamps,time()) # The timestamp when reconstruction space points with zero sensitivity for all diagnostics have been excluded from the problem
+dictionary_of_sections[prnt-1] = ("Excluding reconstruction space points with zero sensitivity",diff(timestamps)[end])
 ###########################################################################################################
-# SECTION 14: INCLUDE COLLISIONAL PHYSICS BY MULTIPLYING THE WEIGHT MATRICES WITH THE SLOWING-DOWN BASIS FUNCTIONS
+# SECTION: INCLUDE COLLISIONAL PHYSICS BY MULTIPLYING THE WEIGHT MATRICES WITH THE SLOWING-DOWN BASIS FUNCTIONS
 println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
 
 if "collisions" in lowercase.(String.(regularization)) # Don't need all the safety checks here, it was already taken care of in section 9
@@ -1415,8 +1311,9 @@ else
 end
 
 append!(timestamps,time()) # The timestamp when the weight matrices have been transformed using collision physics
+dictionary_of_sections[prnt-1] = ("Multiplying weight matrices by collision physics basis function (if requested)",diff(timestamps)[end])
 ###########################################################################################################
-# SECTION 15: RESCALE WEIGHT FUNCTIONS
+# SECTION: RESCALE WEIGHT FUNCTIONS
 println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
 
 if rescale_W
@@ -1429,8 +1326,9 @@ if rescale_W
 end
 
 append!(timestamps,time()) # The timestamp when the weight matrices have been rescaled
+dictionary_of_sections[prnt-1] = ("Rescaling weight matrices (if requested)",diff(timestamps)[end])
 ###########################################################################################################
-# SECTION 16: NORMALIZE ALL WEIGHT MATRICES AND MEASUREMENTS BY THE MEASUREMENT ERRORS
+# SECTION: NORMALIZE ALL WEIGHT MATRICES AND MEASUREMENTS BY THE MEASUREMENT ERRORS
 println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
 
 verbose && println("Normalizing all weight matrices and measurements by the measurement uncertainties... ")
@@ -1442,8 +1340,9 @@ for (i,w) in enumerate(W)
 end
 
 append!(timestamps,time()) # The timestamp when the weight matrices and measurements have been normalized
+dictionary_of_sections[prnt-1] = ("Normalize measurements by uncertainties",diff(timestamps)[end])
 ###########################################################################################################
-# SECTION 17: CONCATENATE ALL MEASUREMENTS AND BUILD TOTAL WEIGHT MATRIX
+# SECTION: CONCATENATE ALL MEASUREMENTS AND BUILD TOTAL WEIGHT MATRIX
 println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
 
 verbose && println("Concatenating all diagnostic measurements into one long S vector... ")
@@ -1453,25 +1352,9 @@ verbose && println("Concatenating all weight matrices into one big W matrix... "
 W_hat_long = vcat(W_hat...)
 
 append!(timestamps,time()) # The timestamp when the total weight matrices and measurement vector have been built
+dictionary_of_sections[prnt-1] = ("Concatenating all weight matrices and measurements",diff(timestamps)[end])
 ###########################################################################################################
-# SECTION 18: IF Oth ORDER TIKHONOV IS INCLUDED IN THE regularization INPUT VARIABLE, CREATE MATRIX
-println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
-
-if "zerotikhonov" in lowercase.(String.(regularization))
-    verbose && println(":ZEROTIKHONOV included in 'regularization' input variable. Adding 0th order Tikhonov regularization to the inverse solving algorithm... ")
-    append!(L, [sparse(1.0(SparseArrays.I),length(rec_space_coords),length(rec_space_coords))]) # Sparse identity matrix
-    append!(priors, [zeros(length(rec_space_coords))])
-    append!(priors_name, ["0th order Tikhonov"])
-else
-    verbose && println("No 0th order Tikhonov regularization included.")
-end
-
-# The check below is only relevant in future versions where a general prior can be used!
-!(sum(diff(length.(priors)))==0) && error("The number of reconstruction space points should be equal for all priors, i.e. [N,...,N]. Instead, $(length.(priors)) was found. Please correct and re-try.")
-
-append!(timestamps,time()) # The timestamp when/if the 0th order Tikhonov regularization has been included
-###########################################################################################################
-# SECTION 19: NORMALIZE WEIGHT MATRIX AND SIGNAL TO ORDER UNITY
+# SECTION: NORMALIZE WEIGHT MATRIX AND SIGNAL TO ORDER UNITY
 println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
 
 verbose && println("Normalizing weight matrix W and measurements S to order unity... ")
@@ -1481,8 +1364,9 @@ W_hh = W_hat_long ./Whm
 S_hh = S_hat_long ./Shm
 
 append!(timestamps,time()) # The timestamp when the weight matrices and signals have been normalized to order unity
+dictionary_of_sections[prnt-1] = ("Normalizing weight matrix and measurements to order unity",diff(timestamps)[end])
 ###########################################################################################################
-# SECTION 20: SOLVE THE INVERSE PROBLEM
+# SECTION: SOLVE THE INVERSE PROBLEM
 println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
 
 if !(length(nr_array)==length(regularization))
@@ -1555,8 +1439,9 @@ for (i,hp) in enumerate(hyper_points)
 end
 
 append!(timestamps,time()) # The timestamp when the inverse problem has been solved
+dictionary_of_sections[prnt-1] = ("Solving the inverse problem",diff(timestamps)[end])
 ###########################################################################################################
-# SECTION 21: COMPUTE OPTIMAL L-CURVE VALUE
+# SECTION: COMPUTE OPTIMAL L-CURVE VALUE
 println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
 
 verbose && println("Computing optimal L-curve value... ")
@@ -1578,8 +1463,9 @@ end
 ilm = argmax(gamma) # Index of L-curve maximum curvature
 
 append!(timestamps,time()) # The timestamp when the optimal L-curve value has been computed
+dictionary_of_sections[prnt-1] = ("Computing optimal L-curve regularization strength",diff(timestamps)[end])
 ###########################################################################################################
-# SECTION 22: PLOT SOLUTIONS AND RELATED QUANTITIES, IF SPECIFIED
+# SECTION: PLOT SOLUTIONS AND RELATED QUANTITIES, IF SPECIFIED
 println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
 
 date_and_time = split("$(Dates.now())","T")[1]*"at"*split("$(Dates.now())","T")[2][1:5] # Might be needed immidiately below, and definitely when saving output data
@@ -1740,8 +1626,9 @@ if plot_solutions || gif_solutions
 end
 
 append!(timestamps,time()) # The timestamp when the results figures have been plotted
+dictionary_of_sections[prnt-1] = ("Plotting solutions",diff(timestamps)[end])
 ###########################################################################################################
-# SECTION 23: SAVE RECONSTRUCTION AND RELATED QUANTITIES
+# SECTION: SAVE RECONSTRUCTION AND RELATED QUANTITIES
 println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
 
 verbose && println("Saving inverse problem solution and related quantities... ")
@@ -1846,6 +1733,9 @@ write(myfile,"filepath_start",filepath_start)
 if rescale_W
     write(myfile,"rescale_W_factors",rescale_W_factors)
 end
+if collision_physics_reg || icrf_physics_reg
+    write(myfile,"regularization_equil_filepath",regularization_equil_filepath)
+end
 if collision_physics_reg
     write(myfile,"coll_phys_basis",F_SD_safe_inflated)
     write(myfile,"coll_phys_thermal_species",regularization_thermal_ion_species)
@@ -1858,42 +1748,16 @@ end
 close(myfile)
 
 append!(timestamps,time()) # The timestamp when the output data has been saved
+dictionary_of_sections[prnt-1] = ("Saving output data",diff(timestamps)[end])
 ###########################################################################################################
-# SECTION 24: PRINT COMPLETION STATEMENT AND STATS
-println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
+# FINAL SECTION: PRINT COMPLETION STATEMENT AND STATS
+println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------")
 
-append!(timestamps,time()) # The final timestamp of the solveInverseProblem.jl script
-timediffs = diff(timestamps)
-timesum = sum(timediffs)
-timekeys = Dict()
-timekeys[0] = ("Loading Julia packages",timediffs[1],100*timediffs[1]/timesum) # SECTION 0
-timekeys[1] = ("Performing safety checks",timediffs[2],100*timediffs[2]/timesum) # SECTION 1
-timekeys[2] = ("Loading measurements",timediffs[3],100*timediffs[3]/timesum) # SECTION 2
-timekeys[3] = ("Loading weight functions",timediffs[4],100*timediffs[4]/timesum) # SECTION 3
-timekeys[4] = ("Performing abscissa units checks",timediffs[5],100*timediffs[5]/timesum) # SECTION 4
-timekeys[5] = ("Interpolating weight functions onto common reconstruction space grid",timediffs[6],100*timediffs[6]/timesum) # SECTION 5
-timekeys[6] = ("Constructing 2D weight matrices from weight functions, and interpolating to match diagnostics measurement bin centers",timediffs[7],100*timediffs[7]/timesum) # SECTION 6
-timekeys[7] = ("Defining utility functions (if needed)",timediffs[8],100*timediffs[8]/timesum) # SECTION 7
-timekeys[8] = ("Computing weight functions rescale factors (if requested)",timediffs[9],100*timediffs[9]/timesum) # SECTION 8
-timekeys[9] = ("Computing collision physics basis functions (if requested)",timediffs[10],100*timediffs[10]/timesum) # SECTION 9
-timekeys[10] = ("Enforcing a noise floor on the measurement uncertainties",timediffs[11],100*timediffs[11]/timesum) # SECTION 10
-timekeys[11] = ("Excluding unwanted measurement bins",timediffs[12],100*timediffs[12]/timesum) # SECTION 11
-timekeys[12] = ("Initializing regularization matrices and 1st order Tikhonov matrix (if requested)",timediffs[13],100*timediffs[13]/timesum) # SECTION 12
-timekeys[13] = ("Excluding reconstruction space points with zero sensitivity",timediffs[14],100*timediffs[14]/timesum) # SECTION 13
-timekeys[14] = ("Multiplying weight matrices by collision physics basis function (if requested)",timediffs[15],100*timediffs[15]/timesum) # SECTION 14
-timekeys[15] = ("Rescaling weight matrices (if requested)",timediffs[16],100*timediffs[16]/timesum) # SECTION 15
-timekeys[16] = ("Normalize measurements by uncertainties",timediffs[17],100*timediffs[17]/timesum) # SECTION 16
-timekeys[17] = ("Concatenating all weight matrices and measurements",timediffs[18],100*timediffs[18]/timesum) # SECTION 17
-timekeys[18] = ("Compute and include 0th order Tikhonov matrix (if requested)",timediffs[19],100*timediffs[19]/timesum) # SECTION 18
-timekeys[19] = ("Normalizing weight matrix and measurements to order unity",timediffs[20],100*timediffs[20]/timesum) # SECTION 19
-timekeys[20] = ("Solving the inverse problem",timediffs[21],100*timediffs[21]/timesum) # SECTION 20
-timekeys[21] = ("Computing optimal L-curve regularization strength",timediffs[22],100*timediffs[22]/timesum) # SECTION 21
-timekeys[22] = ("Plotting solutions",timediffs[23],100*timediffs[23]/timesum) # SECTION 22
-timekeys[23] = ("Saving output data",timediffs[24],100*timediffs[24]/timesum) # SECTION 23
+timesum = sum(diff(timestamps))
 
 println("------------------------------ solveInverseProblem.jl completed successfully! ------------------------------")
 println("---> Total script run time: $(round(timesum,sigdigits=5)) seconds, where")
-for key in sort([k for k in keys(timekeys)]) # To get the keys sorted correctly
-    println("------> SECTION $(key). $(timekeys[key][1]) took $(round(timekeys[key][2],sigdigits=3)) seconds ($(round(timekeys[key][3],sigdigits=3)) %)")
+for key in sort([k for k in keys(dictionary_of_sections)]) # To get the keys sorted correctly
+    println("------> SECTION $(key). $(dictionary_of_sections[key][1]) took $(round(dictionary_of_sections[key][2],sigdigits=3)) seconds ($(round(100*dictionary_of_sections[key][2]/timesum,sigdigits=3)) %)")
 end
 println("------------------------------------------------------------------------------------------------------------")
