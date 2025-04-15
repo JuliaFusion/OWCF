@@ -1,4 +1,4 @@
-# This simple tutorial will show you how to manually create a wall for the extra/compSolovev.jl script,
+# This simple tutorial will show you how to manually create a wall for the extra/createCustomMagneticEquilibrium.jl script,
 # if you don't want the algorithm to automatically decide on a wall for you.
 # It is recommended that you execute this script block-by-block in VSCode.
 # You do this by highlighting the code of interest, and press ctrl + enter (you can also use shift + enter, to advance line-by-line)
