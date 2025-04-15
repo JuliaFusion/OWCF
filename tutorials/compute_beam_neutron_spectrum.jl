@@ -33,7 +33,7 @@ include(folderpath_OWCF*"misc/availReacts.jl") # We load the OWCF fusion reactio
 pushfirst!(PyVector(pyimport("sys")."path"), "") # Add all DRESS code scripts, to be able to import them
 
 ##############################################################################################################
-# If you want to load the magnetic field from an .eqdsk file (or from an output file of the OWCF/extra/createSolovev.jl
+# If you want to load the magnetic field from an .eqdsk file (or from an output file of the OWCF/extra/createCustomMagneticEquilibrium.jl
 # script), you need to specify the path to the output file. This is done with the 'filepath_equil' variable 
 # below. If you instead want to specify the magnetic field yourself, as a simple 3-element Vector, 
 # simply leave the 'filepath_equil' variable unspecified (""), and change the '0.0' elements in the B_vec 

@@ -27,6 +27,7 @@
 #
 ### Inputs:
 # folderpath_OWCF - The path to the OWCF folder on your computer - String
+# plot_test_results - If true, test results will be plotted and saved in .png file format - Bool
 # clear_test_outputs_folder_when_done - If true, the OWCF/tests/outputs/ folder will be cleared when 
 #                                  the run_tests.jl script has finished all tests. 'false' can be useful
 #                                  if test results are to be manually inspected in detail - Bool
@@ -44,12 +45,13 @@
 # printed output should be included as a screenshot when creating a pull-request at the Github repo
 # https://github.com/JuliaFusion/OWCF/pulls.
 
-# Script written by Henrik Järleblad. Last mainted 2025-03-26.
+# Script written by Henrik Järleblad. Last mainted 2025-04-15.
 ###################################################################################################
 
-folderpath_OWCF = "/home/henrikj/Codes/OWCF/" # The path to where the OWCF folder is saved on your computer. Remember to finish with '/'
-clear_test_outputs_folder_when_done = false # Should be set to true, be default
-VERY_VERBOSE = false # Should be set to false, unless debugging
+folderpath_OWCF = "/path/to/the/OWCF/" # The path to where the OWCF folder is saved on your computer. Remember to finish with '/'
+plot_test_results = false # If set to true, test results will be plotted and saved in .png file format in the OWCF/tests/outputs/ folder
+clear_test_outputs_folder_when_done = true # Should be set to true, be default
+VERY_VERBOSE = false # Should be set to false, unless developer debugging
 
 ###------------------------------------------------------------------------------------------------###
 ###-------------------------------------- START OF TESTS ------------------------------------------###
@@ -91,14 +93,75 @@ VERY_VERBOSE = false # Should be set to false, unless debugging
 ###-------------------------------------- START OF TESTS ------------------------------------------###
 ###----------------------- PLEASE DO NOT ALTER ANYTHING BELOW THESE LINES! ------------------------###
 ###------------------------------------------------------------------------------------------------###
-
 ###------------------------------------------------------------------------------------------------###
+###-------------------------------------- START OF TESTS ------------------------------------------###
+###----------------------- PLEASE DO NOT ALTER ANYTHING BELOW THESE LINES! ------------------------###
+###------------------------------------------------------------------------------------------------###
+###------------------------------------------------------------------------------------------------###
+###-------------------------------------- START OF TESTS ------------------------------------------###
+###----------------------- PLEASE DO NOT ALTER ANYTHING BELOW THESE LINES! ------------------------###
+###------------------------------------------------------------------------------------------------###
+###------------------------------------------------------------------------------------------------###
+###-------------------------------------- START OF TESTS ------------------------------------------###
+###----------------------- PLEASE DO NOT ALTER ANYTHING BELOW THESE LINES! ------------------------###
+###------------------------------------------------------------------------------------------------###
+###------------------------------------------------------------------------------------------------###
+###-------------------------------------- START OF TESTS ------------------------------------------###
+###----------------------- PLEASE DO NOT ALTER ANYTHING BELOW THESE LINES! ------------------------###
+###------------------------------------------------------------------------------------------------###
+###------------------------------------------------------------------------------------------------###
+###-------------------------------------- START OF TESTS ------------------------------------------###
+###----------------------- PLEASE DO NOT ALTER ANYTHING BELOW THESE LINES! ------------------------###
+###------------------------------------------------------------------------------------------------###
+###------------------------------------------------------------------------------------------------###
+###-------------------------------------- START OF TESTS ------------------------------------------###
+###----------------------- PLEASE DO NOT ALTER ANYTHING BELOW THESE LINES! ------------------------###
+###------------------------------------------------------------------------------------------------###
+###------------------------------------------------------------------------------------------------###
+###-------------------------------------- START OF TESTS ------------------------------------------###
+###----------------------- PLEASE DO NOT ALTER ANYTHING BELOW THESE LINES! ------------------------###
+###------------------------------------------------------------------------------------------------###
+###------------------------------------------------------------------------------------------------###
+###-------------------------------------- START OF TESTS ------------------------------------------###
+###----------------------- PLEASE DO NOT ALTER ANYTHING BELOW THESE LINES! ------------------------###
+###------------------------------------------------------------------------------------------------###
+###------------------------------------------------------------------------------------------------###
+###-------------------------------------- START OF TESTS ------------------------------------------###
+###----------------------- PLEASE DO NOT ALTER ANYTHING BELOW THESE LINES! ------------------------###
+###------------------------------------------------------------------------------------------------###
+###------------------------------------------------------------------------------------------------###
+###-------------------------------------- START OF TESTS ------------------------------------------###
+###----------------------- PLEASE DO NOT ALTER ANYTHING BELOW THESE LINES! ------------------------###
+###------------------------------------------------------------------------------------------------###
+###------------------------------------------------------------------------------------------------###
+###-------------------------------------- START OF TESTS ------------------------------------------###
+###----------------------- PLEASE DO NOT ALTER ANYTHING BELOW THESE LINES! ------------------------###
+###------------------------------------------------------------------------------------------------###
+
+############---------------------------------------------------------------------------------------###
 t_start = time() # Test script runtime start
 using Distributed # To enable test files of accessing the 'folderpath_OWCF' variable value correctly
 oldstd = stdout # To be able to suppress prints from the test scripts, but not warnings and errors
 SUPPRESS_SUBTEST_PRINT = !VERY_VERBOSE
 
+# Activating the OWCF environment, loading Julia packages
+@everywhere begin
+    folderpath_OWCF = $folderpath_OWCF
+    cd(folderpath_OWCF)
+    using Pkg
+    Pkg.activate(".")
+
+    using Dates
+    using JLD2
+    plot_test_results && (using Plots)
+end
+
 # Checking so that the OWCF/tests/outputs/ folder is empty
+if !isdir(folderpath_OWCF*"tests/outputs/")
+    print("The folder $(folderpath_OWCF)tests/outputs/ does not exist. Creating... ")
+    mkdir(folderpath_OWCF*"tests/outputs")
+    println("ok!")
+end
 if !isempty(readdir(folderpath_OWCF*"tests/outputs/"))
     num_o_files = length(readdir(folderpath_OWCF*"tests/outputs/")); ff = num_o_files==1 ? "file" : "files"
     println("The $(folderpath_OWCF)tests/outputs/ folder was not empty ($(num_o_files) $(ff)).")
@@ -120,117 +183,41 @@ if !isempty(readdir(folderpath_OWCF*"tests/outputs/"))
     end
 end
 
-# Activating the OWCF environment, loading Julia packages
-@everywhere begin
-    folderpath_OWCF = $folderpath_OWCF
-    cd(folderpath_OWCF)
-    using Pkg
-    Pkg.activate(".")
-
-    using Dates
-    using JLD2
-end
-
 date_and_time = split("$(Dates.now())","T")[1]*" at "*split("$(Dates.now())","T")[2][1:5]
-NUMBER_OF_TESTS = 5 # CHANGE THIS NUMBER WHEN ADDING MORE TESTS!!!
+test_list = readdir(folderpath_OWCF*"tests/start_files/") # All tests are in the OWCF/tests/start_files/ folder
+NUMBER_OF_TESTS = length(test_list) # The total number of tests
+test_prog = 0 # An integer to keep track of testing progress
 err_dict = Dict() # A dictionary to keep track of which tests threw errors, and what the errors were
 ###------------------------------------------------------------------------------------------------###
 
-###------------------------------------------------------------------------------------------------###
+############---------------------------------------------------------------------------------------###
 println("-------------------------------------------------------------------------------- The OWCF tests --------------------------------------------------------------------------------")
 println("-------------------------------------------------------------------------------- Current date and time: $(date_and_time)")
 println("-------------------------------------------------------------------------------- OWCF folder path: $(folderpath_OWCF)")
 println("-------------------------------------------------------------------------------- Starting the OWCF tests... ")
-test_prog = 0
 ###------------------------------------------------------------------------------------------------###
 
-###------------------------------------------------------------------------------------------------###
-println("- Running createCustomLOS.jl test 1 (total run_tests.jl progress: $(round(100*test_prog/NUMBER_OF_TESTS,digits=3)) %)... ")
-SUPPRESS_SUBTEST_PRINT && redirect_stdout(devnull)
+############---------------------------------------------------------------------------------------###
+for test in test_list
+    global test_prog
 
-try
-    include(folderpath_OWCF*"tests/start_files/start_createCustomLOS_test1.jl")
-catch e
-    global err_dict
-    @warn "The createCustomLOS.jl test 1 unfortunately resulted in an error. Please examine error specification when test results are printed."
-    err_dict["createCustomLOS.jl test 1"] = "$(e)"
+    println("- Running $(test) (total run_tests.jl progress: $(round(100*test_prog/NUMBER_OF_TESTS,digits=3)) %)... ")
+    SUPPRESS_SUBTEST_PRINT && redirect_stdout(devnull)
+
+    try
+        include(folderpath_OWCF*"tests/start_files/$(test)")
+    catch e
+        global err_dict
+        @warn "The test $(test) unfortunately resulted in an error. Please examine error specification when test results are printed."
+        err_dict["$(test)"] = "$(e)"
+    end
+
+    SUPPRESS_SUBTEST_PRINT && redirect_stdout(oldstd)
+    test_prog += 1 # Test completed!
 end
-
-SUPPRESS_SUBTEST_PRINT && redirect_stdout(oldstd)
-test_prog += 1 # Test completed!
 ###------------------------------------------------------------------------------------------------###
 
-###------------------------------------------------------------------------------------------------###
-println("- Running createCustomLOS.jl test 2 (total run_tests.jl progress: $(round(100*test_prog/NUMBER_OF_TESTS,digits=3)) %)... ")
-SUPPRESS_SUBTEST_PRINT && redirect_stdout(devnull)
-
-try
-    include(folderpath_OWCF*"tests/start_files/start_createCustomLOS_test2.jl")
-catch e
-    global err_dict
-    @warn "The createCustomLOS.jl test 2 unfortunately resulted in an error. Please examine error specification when test results are printed."
-    err_dict["createCustomLOS.jl test 2"] = "$(e)"
-end
-
-SUPPRESS_SUBTEST_PRINT && redirect_stdout(oldstd)
-test_prog += 1 # Test completed!
-###------------------------------------------------------------------------------------------------###
-
-###------------------------------------------------------------------------------------------------###
-println("- Running createCustomLOS.jl test 3 (total run_tests.jl progress: $(round(100*test_prog/NUMBER_OF_TESTS,digits=3)) %)... ")
-SUPPRESS_SUBTEST_PRINT && redirect_stdout(devnull)
-
-try
-    include(folderpath_OWCF*"tests/start_files/start_createCustomLOS_test3.jl")
-catch e
-    global err_dict
-    @warn "The createCustomLOS.jl test 3 unfortunately resulted in an error. Please examine error specification when test results are printed."
-    err_dict["createCustomLOS.jl test 3"] = "$(e)"
-end
-
-SUPPRESS_SUBTEST_PRINT && redirect_stdout(oldstd)
-test_prog += 1 # Test completed!
-###------------------------------------------------------------------------------------------------###
-
-###------------------------------------------------------------------------------------------------###
-println("- Running createCustomLOS.jl test 4 (total run_tests.jl progress: $(round(100*test_prog/NUMBER_OF_TESTS,digits=3)) %)... ")
-SUPPRESS_SUBTEST_PRINT && redirect_stdout(devnull)
-
-try
-    include(folderpath_OWCF*"tests/start_files/start_createCustomLOS_test4.jl")
-catch e
-    global err_dict
-    @warn "The createCustomLOS.jl test 4 unfortunately resulted in an error. Please examine error specification when test results are printed."
-    err_dict["createCustomLOS.jl test 4"] = "$(e)"
-end
-
-SUPPRESS_SUBTEST_PRINT && redirect_stdout(oldstd)
-test_prog += 1 # Test completed!
-###------------------------------------------------------------------------------------------------###
-
-###------------------------------------------------------------------------------------------------###
-println("- Running createCustomLOS.jl test 5 (total run_tests.jl progress: $(round(100*test_prog/NUMBER_OF_TESTS,digits=3)) %)... ")
-SUPPRESS_SUBTEST_PRINT && redirect_stdout(devnull)
-
-try
-    include(folderpath_OWCF*"tests/start_files/start_createCustomLOS_test5.jl")
-catch e
-    global err_dict
-    @warn "The createCustomLOS.jl test 5 unfortunately resulted in an error. Please examine error specification when test results are printed."
-    err_dict["createCustomLOS.jl test 5"] = "$(e)"
-end
-
-SUPPRESS_SUBTEST_PRINT && redirect_stdout(oldstd)
-test_prog += 1 # Test completed!
-###------------------------------------------------------------------------------------------------###
-
-###------------------------------------------------------------------------------------------------###
-# CONTINUE CODING MORE TESTS HERE!!!
-# CONTINUE CODING MORE TESTS HERE!!!
-# CONTINUE CODING MORE TESTS HERE!!!
-###------------------------------------------------------------------------------------------------###
-
-###------------------------------------------------------------------------------------------------###
+############---------------------------------------------------------------------------------------###
 # Removing all created files from the OWCF/tests/outputs/ folder
 println("--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------")
 if clear_test_outputs_folder_when_done
@@ -245,7 +232,7 @@ else
 end
 ###------------------------------------------------------------------------------------------------###
 
-###------------------------------------------------------------------------------------------------###
+############---------------------------------------------------------------------------------------###
 # Print all errors (if any) and total test result
 println("--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------")
 println("- Printing test results (total run_tests.jl progress: $(100*test_prog/NUMBER_OF_TESTS) %)... ")
@@ -267,7 +254,7 @@ else
 end
 ###------------------------------------------------------------------------------------------------###
 
-###------------------------------------------------------------------------------------------------###
+############---------------------------------------------------------------------------------------###
 t_end = time() # Test script runtime end
 println("-------------------------------------------------------------------------------- Total runtime: $(round(t_end-t_start)) seconds")
 println("-------------------------------------------------------------------------------- OWCF folder path: $(folderpath_OWCF)")

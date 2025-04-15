@@ -1,9 +1,9 @@
 ################################ start_createCustomLOS_template.jl #########################################
-# This file contains all the inputs that the script createCustomLOS.jl needs to create a custom diagnostic 
-# line-of-sight (LOS) for synthetic diagnostics. This file also executes the script createCustomLOS.jl after the 
-# inputs are defined.
+# This file contains all the inputs that the script OWCF/extra/createCustomLOS.jl needs to create a custom 
+# diagnostic line-of-sight (LOS) for synthetic diagnostics. This file also executes the script 
+# OWCF/extra/createCustomLOS.jl after the inputs are defined.
 #
-# createCustomLOS.jl allows the user of the OWCF to create a custom line-of-sight (LOS) to use as a 
+# OWCF/extra/createCustomLOS.jl allows the user of the OWCF to create a custom line-of-sight (LOS) to use as a 
 # diagnostic for computing weight functions. The LOS will be saved as a .vc file that can be used by 
 # other OWCF script, often as the 'filepath_diagnostic' input variable. The LOS can be constructed in 
 # either of the following 5 ways:
@@ -61,6 +61,8 @@
 #           elements, θ_R and θ_phi (explained above). For case 5, specify as an array of 1 element,
 #           θ_u (explained above). - Vector{Float64}
 # LOS_width - The width of the LOS. In meters. - Float64
+# plot_LOS - If set to true, the LOS will be plotted (top and poloidal projection view) when created - Bool
+# save_LOS_plot - If set to true, the LOS plot will be saved in .png file format after plotted - Bool
 # verbose - If set to true, the script will talk a lot - Bool
  
 ### Advanced inputs (should NOT be changed from default values, unless you know what you're doing):
