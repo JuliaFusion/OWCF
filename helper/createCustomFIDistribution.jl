@@ -6,7 +6,7 @@
 # The NBI collision-physics function are computed using the formulas in W.G.F. Core, Nucl. Fusion 33, 829 (1993)
 # and J.D. Gaffey, J. Plasma Physics 16, 149-169, (1976). In the current version of the OWCF, the collision-physics functions
 # are created only in (E,p) as a 2D FI distribution, and then computed as constant in (R,z) for all (R,z) grid points.
-# The filepath_equil file can be an .eqdsk file, or computed with the extra/createSolovev.jl script.
+# The filepath_equil file can be an .eqdsk file, or computed with the extra/createCustomMagneticEquilibrium.jl script.
 # The filepath_thermal_profiles file can be a TRANSP .cdf file, "" (default OWCF temperature and density profiles will be used) or 
 # an output file of the helper/createCustomThermalProfiles.jl script.
 ################################################################################

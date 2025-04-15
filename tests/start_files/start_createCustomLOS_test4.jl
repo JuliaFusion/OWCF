@@ -94,7 +94,7 @@ using Distributed # Needed to be loaded, even though multi-core computations are
     LOS_name = "test_detector_4"
     LOS_vec = [-10.0,-60.0] # TOFOR (proxy) cartesian: [0.005,-0.001,0.9999] /// NE213 (proxy) cartesian: [0.995902688, 0.293844478e-2, -0.903836320e-1]
     LOS_width = 0.27 # TOFOR (proxy): 0.27 /// NE213 (proxy): 0.25
-    plot_LOS = true # If set to true, the LOS will be plotted (top view and poloidal projection) after creation. For validation purposes.
+    plot_LOS = $plot_test_results # SET TO TRUE, VIA THE plot_test_results INPUT VARIABLE IN THE OWCF/tests/run_tests.jl SCRIPT
     plot_LOS && (save_LOS_plot = true) # If set to true, the LOS plot will be saved in .png file format
     verbose = true
     

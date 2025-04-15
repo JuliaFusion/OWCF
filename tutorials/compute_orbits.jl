@@ -16,7 +16,7 @@ using Plots # Then, we load the Plots.jl package, to be able to plot things
 include(folderpath_OWCF*"misc/species_func.jl") # Then, we load OWCF species functions to be able to easily work with different particle species
 ##############################################################################################################
 folderpath_equil = folderpath_OWCF*"equilibrium/JET/g96100/g96100_0-53.0012.eqdsk" # Specify the filepath to a magnetic equilibrium file.
-# The magnetic equilibrium file can be either an .eqdsk file or a .jld2 file obtained from the extra/compSolovev.jl script
+# The magnetic equilibrium file can be either an .eqdsk file or a .jld2 file obtained from the extra/createCustomMagneticEquilibrium.jl script
 M, wall = read_geqdsk(folderpath_equil, clockwise_phi=false) # Then, we load the magnetic equilibrium into the M variable and the 
 # tokamak wall into the wall variable, via the read_geqdsk() function. We have to specify whether the coordinate system is arranged so as to 
 # have the phi-coordinate in the (R,phi,z) coordinate system point in the clockwise or counter-clockwise direction, viewed from above.
