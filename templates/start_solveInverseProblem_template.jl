@@ -122,7 +122,7 @@
 #                                in (E,p) and (vpara,vperp), orbit-space reconstructions in (3D) (E,mu,Pphi), (E,Lambda,Pphi_n) and (3+1 D) (E,mu,Pphi,sigma), (E,Lambda,Pphi_n,sigma).
 #                  One or several of the above options should be specified as elements in a Vector. Otherwise, empty Vector - Vector{Symbol}
 # regularization_equil_filepath - If :COLLISIONS and/or :ICRF is included in the 'regularization' Vector, the filepath to a magnetic equilibrium file 
-#                                 (either in .eqdsk file format or an OWCF/extra/createSolovev.jl output file) must be specified. For :COLLISIONS, this is to 
+#                                 (either in .eqdsk file format or an OWCF/extra/createCustomMagneticEquilibrium.jl output file) must be specified. For :COLLISIONS, this is to 
 #                                 compute necessary quantities for the creation of the slowing-down basis functions, e.g. the Spitzer slowing-down time.
 #                                 FOR :ICRF, this is to compute valid orbits, if an orbit-space (3D) reconstruction is to be performed - String
 # regularization_thermal_ion_temp - If :COLLISIONS is included in the 'regularization' Vector, data on the thermal ion temperatures must be specified. 

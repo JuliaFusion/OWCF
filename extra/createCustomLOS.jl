@@ -500,7 +500,7 @@ if plot_LOS
     plt_top = Plots.plot!(LOS_x,LOS_y,linewidth=2.0,color=:gray,label="")
     plt_top = Plots.plot!(aspect_ratio=:equal,xlabel="x [m]",ylabel="y [m]")
     plt_top = Plots.plot!(xtickfontsize=14,ytickfontsize=14,xguidefontsize=16,yguidefontsize=16)
-    plt_top = Plots.plot!(plt_top,title="Top view",titlefontsize=20)
+    plt_top = Plots.plot!(plt_top,title="Top view $(date_and_time)",titlefontsize=20)
 
     myplt = Plots.plot(plt_top,plt_crs,layout=(1,2),left_margin=5Plots.mm,bottom_margin=5Plots.mm, size=(1000,500))
     myplt = Plots.plot!(dpi=600)

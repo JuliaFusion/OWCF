@@ -89,8 +89,8 @@ By default, the upper bounds 'mx' of the grid are found by adding 6σ to the mea
 The lower bounds 'mn' of the grid are found by subtracting 6σ from the mean μ. By default, the number 
 of grid points in all dimensions is the same: 50. To use the function to create a D-dimensional Gaussian
 distribution, where D is any integer >0, do e.g. the following. The example below is for a 3-dimensional case:
-m = [100.0, 0.6, 3.3]
-v = [25.0, 0.01, 0.04]
+μ = [100.0, 0.6, 3.3]
+σ = [25.0, 0.01, 0.04]
 myGauss = gaussian(μ, σ; mx=[200.0, 1.0, 3.8], mn=[0.0, -1.0, 3.0], n=[10,101,104])
 
 The variable 'myGauss' will then be a 10x101x104 array. In the first dimension, the lower and upper bounds will 
