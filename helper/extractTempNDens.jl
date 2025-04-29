@@ -79,13 +79,8 @@ pushfirst!(PyVector(pyimport("sys")."path"), "") # To import DRESS code Python f
 ## --------------------------------------------------------------------------
 verbose && println("Loading Python packages... ")
 py"""
-import h5py
 import numpy as np
-from netCDF4 import Dataset
-
 import forward
-import transp_dists
-import transp_output
 import vcone
 """
 
@@ -130,6 +125,8 @@ end
 
 ## --------------------------------------------------------------------------
 py"""
+import transp_output
+import transp_dists
 # Load TRANSP simulation data
 print("Extracting TRANSP data... ")
 tr_out = transp_output.TranspOutput($TRANSP_id, step=1,

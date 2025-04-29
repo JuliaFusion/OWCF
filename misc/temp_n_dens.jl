@@ -26,31 +26,6 @@
 # The getTempProfileFromTRANSP() and getDensProfileFromTRANSP() functions return an interpolation 
 # object representing the temperature and density profiles, respectively, at the specified timepoint,
 # for the specified TRANSP .cdf pulse file, for the specified species (electrons are also valid).
-#
-# Prior to loading this collection of functions (for example via 'include(misc/temp_n_dens.jl)' when standing
-# in the OWCF-folder), you should have performed the usual activation of the OWCF Julia environment.
-# This is done as follows
-#
-# folderpath_OWCF = "/path/to/the/OWCF/folder/"
-# using Distributed
-# @everywhere begin
-#     using Pkg
-#     cd(folderpath_OWCF)
-#     Pkg.activate(".")
-# end
-# 
-# This is performed in e.g. every OWCF start template file. It is also possible to skip the Distributed.jl
-# package. This is then done as 
-#
-# folderpath_OWCF = "/path/to/the/OWCF/folder/"
-# using Pkg
-# cd(folderpath_OWCF)#
-# Pkg.activate(".")
-
-#### Inputs:
-# PLEASE NOTE! In your script, you have to define the folderpath_OWCF variable, which is a string 
-# with the file path to the OWCF folder on your computer, before loading this file with 
-# include(folderpath_OWCF*"/misc/temp_n_dens.jl")
 
 #### Outputs
 # -
@@ -66,9 +41,8 @@
 
 using NetCDF
 using Interpolations
-include(folderpath_OWCF*"/misc/rewriteReacts.jl")
-include(folderpath_OWCF*"/misc/species_func.jl")
-include(folderpath_OWCF*"/misc/load_TRANSP_interp_object.jl")
+include("rewriteReacts.jl")
+include("load_TRANSP_interp_object.jl")
 
 """
     getAnalyticalTemp(T_axis, ρ_pol)

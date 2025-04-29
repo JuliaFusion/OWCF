@@ -460,13 +460,8 @@ println("")
 verbose && println("Loading Python modules... ")
 @everywhere begin
     py"""
-    import h5py
     import numpy as np
-    from netCDF4 import Dataset
-
     import forward
-    import transp_dists
-    import transp_output
     import vcone
     """
 end
@@ -496,6 +491,8 @@ verbose && println("Setting all Python variables and structures on all distribut
     # Load TRANSP simulation data
     if (not $TRANSP_id=="") and (not projVel): # If there is some TRANSP_id specified and we do not want to simply compute projected velocities...
         if ($fileext_thermal).lower()=="cdf": # If there is some TRANSP .cdf output file specified...
+            import transp_output
+            import transp_dists
             if $verbose:
                 print("From Python: Loading TRANSP output from TRANSP files... ")
             tr_out = transp_output.TranspOutput($TRANSP_id, step=1, out_file=$filepath_thermal_distr,fbm_files=[$filepath_FI_cdf]) # Load the TRANSP shot file. Assume first step. This is likely to be patched in the future.

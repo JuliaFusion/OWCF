@@ -511,13 +511,8 @@ verbose && println("Loading Python modules... ")
 @everywhere begin
     py"""
     import os.path
-    import h5py
     import numpy as np
-    from netCDF4 import Dataset
-
     import forward
-    import transp_dists
-    import transp_output
     import vcone
     """
 end
@@ -603,6 +598,8 @@ if lowercase(fileext_thermal)=="cdf" && lowercase(fileext_FI_cdf)=="cdf" && !pro
         verbose && println("Setting all Python variables and structures on all distributed workers/processes... ")
         @everywhere begin
             py"""
+            import transp_output
+            import transp_dists
             if $verbose:
                 print("From Python: Loading TRANSP output from TRANSP files... ")
             tr_out = transp_output.TranspOutput($TRANSP_id, step=1, out_file=$filepath_thermal_distr,fbm_files=[$filepath_FI_cdf]) # Load the TRANSP shot file. Assume first step. This is likely to be patched in the future.

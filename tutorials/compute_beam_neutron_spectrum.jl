@@ -98,13 +98,9 @@ diagnostic_filepath = ""
 # In this section, the Python packages are loaded. To be able to use the DRESS code interface to compute 
 # expected neutron spectra
 py"""
-import h5py
 import numpy as np
-
 import forward
 import spec
-import transp_dists
-import transp_output
 import vcone
 """
 
