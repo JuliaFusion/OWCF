@@ -64,18 +64,17 @@ FORCE_UNITS_LONG = Dict("newton"=>1.0,"dyne"=>1.0e-5,"kilopond"=>9.80665,"poundf
 PRESSURE_UNITS = Dict("Pa"=>1.0,"hPa"=>1.0e2,"mmHg"=>133.322387415,"kPa"=>1.0e3,"bar"=>1.0e5,"atm"=>101325.0)
 PRESSURE_UNITS_LONG = Dict("pascal"=>1.0,"hectopascal"=>1.0e2,"millimetermercury"=>133.322387415,"kilopascal"=>1.0e3,"bar"=>1.0e5,"atmosphere"=>101325.0)
 
+# Converts to A_s
+CHARGE_UNITS = Dict("e"=>1.602176634e-19,"C"=>1.0,"ℱ"=>9.648533212e4)
+CHARGE_UNITS_LONG = Dict("elementarycharge"=>1.602176634e-19,"coulomb"=>1.0,"faraday"=>9.648533212e4)
+
 # Converts to kg_m^2_s^-2
-const e0_OWCF = 1.60217733e-19 # Coulombs / Joules
-ENERGY_UNITS = Dict("eV"=>e0_OWCF,"keV"=>1.0e3*e0_OWCF,"MeV"=>1.0e6*e0_OWCF,"GeV"=>1.0e9*e0_OWCF,"mJ"=>1.0e-3,"J"=>1.0e0,"cal"=>4.184,"kJ"=>1.0e3,"MJ"=>1.0e6)
-ENERGY_UNITS_LONG = Dict("electronvolt"=>e0_OWCF,"kiloelectronvolt"=>1.0e3*e0_OWCF,"megaelectronvolt"=>1.0e6*e0_OWCF,"gigaelectronvolt"=>1.0e9*e0_OWCF,"millijoule"=>1.0e-3,"joule"=>1.0e0,"calorie"=>4.184,"kilojoule"=>1.0e3,"megajoule"=>1.0e6)
+ENERGY_UNITS = Dict("eV"=>CHARGE_UNITS["e"],"keV"=>1.0e3*CHARGE_UNITS["e"],"MeV"=>1.0e6*CHARGE_UNITS["e"],"GeV"=>1.0e9*CHARGE_UNITS["e"],"mJ"=>1.0e-3,"J"=>1.0e0,"cal"=>4.184,"kJ"=>1.0e3,"MJ"=>1.0e6)
+ENERGY_UNITS_LONG = Dict("electronvolt"=>CHARGE_UNITS["e"],"kiloelectronvolt"=>1.0e3*CHARGE_UNITS["e"],"megaelectronvolt"=>1.0e6*CHARGE_UNITS["e"],"gigaelectronvolt"=>1.0e9*CHARGE_UNITS["e"],"millijoule"=>1.0e-3,"joule"=>1.0e0,"calorie"=>4.184,"kilojoule"=>1.0e3,"megajoule"=>1.0e6)
 
 # Converts to kg_m^2_s^-3
 POWER_UNITS = Dict("W"=>1.0,"hp"=>745.7,"kW"=>1.0e3,"RT"=>3516.853,"MW"=>1.0e6,"GW"=>1.0e9)
 POWER_UNITS_LONG = Dict("watt"=>1.0,"horsepower"=>745.7,"kilowatt"=>1.0e3,"refrigerationton"=>3516.853,"megawatt"=>1.0e6,"gigawatt"=>1.0e9)
-
-# Converts to A_s
-CHARGE_UNITS = Dict("e"=>1.602176634e-19,"C"=>1.0,"F"=>9.648533212e4)
-CHARGE_UNITS_LONG = Dict("elementarycharge"=>1.602176634e-19,"coulomb"=>1.0,"faraday"=>9.648533212e4)
 
 # Converts to kg_m^2_s^-3_A^-1
 VOLTAGE_UNITS = Dict("V"=>1.0,"kV"=>1.0e3)
@@ -85,8 +84,8 @@ VOLTAGE_UNITS_LONG = Dict("volt"=>1.0,"kilovolt"=>1.0e3)
 MAGNETICFIELD_UNITS = Dict("mG"=>1.0e-7,"G"=>1.0e-4,"mT"=>1.0e-3,"kG"=>1.0e-1,"T"=>1.0,"kT"=>1.0e3)
 MAGNETICFIELD_UNITS_LONG = Dict("milligauss"=>1.0e-7,"gauss"=>1.0e-4,"millitesla"=>1.0e-3,"kilogauss"=>1.0e-1,"tesla"=>1.0,"kilotesla"=>1.0e3)
 
-OWCF_UNITS = merge(OWCF_BASE_UNITS, ACCELERATION_UNITS, FORCE_UNITS, PRESSURE_UNITS, ENERGY_UNITS, POWER_UNITS, CHARGE_UNITS, VOLTAGE_UNITS,MAGNETICFIELD_UNITS)
-OWCF_UNITS_LONG = merge(OWCF_BASE_UNITS_LONG, ACCELERATION_UNITS_LONG, FORCE_UNITS_LONG, PRESSURE_UNITS_LONG, ENERGY_UNITS_LONG, POWER_UNITS_LONG, CHARGE_UNITS_LONG, VOLTAGE_UNITS_LONG,MAGNETICFIELD_UNITS_LONG)
+OWCF_UNITS = merge(OWCF_BASE_UNITS, ACCELERATION_UNITS, FORCE_UNITS, PRESSURE_UNITS, CHARGE_UNITS, ENERGY_UNITS, POWER_UNITS, VOLTAGE_UNITS,MAGNETICFIELD_UNITS)
+OWCF_UNITS_LONG = merge(OWCF_BASE_UNITS_LONG, ACCELERATION_UNITS_LONG, FORCE_UNITS_LONG, PRESSURE_UNITS_LONG, CHARGE_UNITS_LONG, ENERGY_UNITS_LONG, POWER_UNITS_LONG, VOLTAGE_UNITS_LONG,MAGNETICFIELD_UNITS_LONG)
 
 
 """

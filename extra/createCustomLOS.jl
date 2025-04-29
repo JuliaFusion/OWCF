@@ -53,7 +53,7 @@
 # - The eleventh column corresponds to solid angles OMEGA
 
 # Script written by Henrik Järleblad. Last maintained 2025-03-26.
-###################################################################################################
+###############################################################################################################
 
 ## ---------------------------------------------------------------------------------------------
 println("Loading Julia packages... ")
@@ -503,7 +503,7 @@ if plot_LOS
     plt_top = Plots.plot!(plt_top,title="Top view $(date_and_time)",titlefontsize=20)
 
     myplt = Plots.plot(plt_top,plt_crs,layout=(1,2),left_margin=5Plots.mm,bottom_margin=5Plots.mm, size=(1000,500))
-    myplt = Plots.plot!(dpi=600)
+    myplt = Plots.plot!(dpi=200)
     display(myplt)
 
     if save_LOS_plot

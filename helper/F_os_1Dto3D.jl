@@ -85,8 +85,8 @@ myfile = jldopen(filepath_F_os,false,false,false,IOStream)
 if haskey(myfile,"extra_kw_args")
     extra_kw_args = myfile["extra_kw_args"]
 else
-    verbose && println("No extra keyword arguments for orbit integration found in fast-ion distribution file. Assuming :toa, :limit_phi and :maxiter=0")
-    extra_kw_args = Dict(:toa => true, :limit_phi => true, :maxiter => 0)
+    verbose && println("No extra keyword arguments for orbit integration found in fast-ion distribution file. Assuming :toa, :limit_phi and :max_tries=0")
+    extra_kw_args = Dict(:toa => true, :limit_phi => true, :max_tries => 0)
     # toa is 'try only adaptive'
     # limits the number of toroidal turns for orbits
     # The orbit integration algorithm will try progressively smaller timesteps these number of times

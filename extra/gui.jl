@@ -825,7 +825,7 @@ function plot_orbit_movie(M::AbstractEquilibrium, o::Orbit; wall::Union{Nothing,
 end
 
 """
-    plot_orbit_movie(M, myEPRc; wall=nothing, extra_kw_args=Dict(:toa => true, :limit_phi => true, :maxiter => 0), verbose=false, kwargs...)
+    plot_orbit_movie(M, myEPRc; wall=nothing, extra_kw_args=Dict(:toa => true, :limit_phi => true, :max_tries => 0), verbose=false, kwargs...)
 
 Please see documentation for other versions of plot_orbit_movie().
 """
@@ -836,7 +836,7 @@ function plot_orbit_movie(M::AbstractEquilibrium, myEPRc::EPRCoordinate; wall::U
 end
 
 """
-    plot_orbit_movie(M, E, pm, Rm; wall=nothing, FI_species="D", extra_kw_args=Dict(:toa => true, :limit_phi => true, :maxiter => 0), verbose=false, anim_numOtau_p = 3, save_anim=false)
+    plot_orbit_movie(M, E, pm, Rm; wall=nothing, FI_species="D", extra_kw_args=Dict(:toa => true, :limit_phi => true, :max_tries => 0), verbose=false, anim_numOtau_p = 3, save_anim=false)
 
 Given the magnetic equilibrium and (E,pm,Rm) triplet, compute the resulting orbit and plot an animation of its motion. 'wall' specifies the tokamak first wall, 'FI_species' specifies the fast-ion species (e.g. "D", "T" etc),
 'extra_kw_args' specifies extra keyword arguments for the equations-of-motion integration, 'verbose' specifies extra function print output activity, 'anim_numOtau_p' specifies length of animation and 'save_anim' specifies

@@ -19,13 +19,15 @@ The OWCF_manual.pdf contains more detailed (but possibly outdated) information t
 > H. Järleblad *et al*, *A framework for synthetic diagnostics using energetic-particle orbits in tokamaks*, Comp. Phys. Comm. **294**, 108930 (2024)  
 ***
 ## To install:
+Since the OWCF can utilize the DRESS code [J. Eriksson *et al* 2016 Comp. Phys. Comm. **199** 40-46] when computing expected neutron and gamma-ray product energies for fusion reactions, a Python executable needs to be provided (e.g. the path printed when you type "which python" or "which python3" in your Mac/Linux terminal or "where" in your Windows terminal). In addition, the *numpy*, *scipy* and *pandas* Python packages need to be installed for your Python executable. Furthermore, if you want to use TRANSP [Breslau J., Gorelenkova M., Poli F., Sachdev J., Pankin A. and Perumpilly G. 2018 TRANSP (https://doi.org/10.11578/dc.20180627.4)] output files in .cdf file format as input files to load thermal plasma data from when computing neutron/gamma-ray energies, the *netCDF4* package also need to be installed for your Python executable. For further info, the OWCF installation manuals tell you everything you need to know:
+
 - For Windows, please follow the steps in howToInstallJuliaAndTheOWCF_Windows.pdf.
 - For Mac, please follow the steps in howToInstallJuliaAndTheOWCF_Mac.pdf
 
-I highly recommend you read one of those .pdf documents before trying to install the OWCF.
-If you really want to install the OWCF in a quick-and-dirty-and-risky way, do the following
+I recommend you read one of those .pdf documents before trying to install the OWCF.
+If you want to install the OWCF in a quick way, do the following
 
-*navigate to the OWCF folder using a terminal*  
+> *navigate to the OWCF folder using a terminal*  
 > julia    
 > using Pkg  
 > Pkg.activate(".")  

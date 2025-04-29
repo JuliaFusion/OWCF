@@ -45,7 +45,7 @@
 # printed output should be included as a screenshot when creating a pull-request at the Github repo
 # https://github.com/JuliaFusion/OWCF/pulls.
 
-# Script written by Henrik Järleblad. Last mainted 2025-04-15.
+# Script written by Henrik Järleblad. Last mainted 2025-04-25.
 ###################################################################################################
 
 folderpath_OWCF = "/path/to/the/OWCF/" # The path to where the OWCF folder is saved on your computer. Remember to finish with '/'
@@ -53,6 +53,26 @@ plot_test_results = false # If set to true, test results will be plotted and sav
 clear_test_outputs_folder_when_done = true # Should be set to true, be default
 VERY_VERBOSE = false # Should be set to false, unless developer debugging
 
+###------------------------------------------------------------------------------------------------###
+###-------------------------------------- START OF TESTS ------------------------------------------###
+###----------------------- PLEASE DO NOT ALTER ANYTHING BELOW THESE LINES! ------------------------###
+###------------------------------------------------------------------------------------------------###
+###------------------------------------------------------------------------------------------------###
+###-------------------------------------- START OF TESTS ------------------------------------------###
+###----------------------- PLEASE DO NOT ALTER ANYTHING BELOW THESE LINES! ------------------------###
+###------------------------------------------------------------------------------------------------###
+###------------------------------------------------------------------------------------------------###
+###-------------------------------------- START OF TESTS ------------------------------------------###
+###----------------------- PLEASE DO NOT ALTER ANYTHING BELOW THESE LINES! ------------------------###
+###------------------------------------------------------------------------------------------------###
+###------------------------------------------------------------------------------------------------###
+###-------------------------------------- START OF TESTS ------------------------------------------###
+###----------------------- PLEASE DO NOT ALTER ANYTHING BELOW THESE LINES! ------------------------###
+###------------------------------------------------------------------------------------------------###
+###------------------------------------------------------------------------------------------------###
+###-------------------------------------- START OF TESTS ------------------------------------------###
+###----------------------- PLEASE DO NOT ALTER ANYTHING BELOW THESE LINES! ------------------------###
+###------------------------------------------------------------------------------------------------###
 ###------------------------------------------------------------------------------------------------###
 ###-------------------------------------- START OF TESTS ------------------------------------------###
 ###----------------------- PLEASE DO NOT ALTER ANYTHING BELOW THESE LINES! ------------------------###
@@ -192,8 +212,8 @@ err_dict = Dict() # A dictionary to keep track of which tests threw errors, and 
 
 ############---------------------------------------------------------------------------------------###
 println("-------------------------------------------------------------------------------- The OWCF tests --------------------------------------------------------------------------------")
-println("-------------------------------------------------------------------------------- Current date and time: $(date_and_time)")
 println("-------------------------------------------------------------------------------- OWCF folder path: $(folderpath_OWCF)")
+println("-------------------------------------------------------------------------------- Current date and time: $(date_and_time)")
 println("-------------------------------------------------------------------------------- Starting the OWCF tests... ")
 ###------------------------------------------------------------------------------------------------###
 
@@ -215,6 +235,7 @@ for test in test_list
     SUPPRESS_SUBTEST_PRINT && redirect_stdout(oldstd)
     test_prog += 1 # Test completed!
 end
+println("- All tests completed (total run_tests.jl progress: $(round(100*test_prog/NUMBER_OF_TESTS,digits=3)) %)... ")
 ###------------------------------------------------------------------------------------------------###
 
 ############---------------------------------------------------------------------------------------###
@@ -235,12 +256,13 @@ end
 ############---------------------------------------------------------------------------------------###
 # Print all errors (if any) and total test result
 println("--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------")
-println("- Printing test results (total run_tests.jl progress: $(100*test_prog/NUMBER_OF_TESTS) %)... ")
+println("- Printing test results... ")
 
 tot_number_o_errs = length(keys(err_dict))
 println("- Total number of errors: $(tot_number_o_errs)")
 if tot_number_o_errs==0
     println("- CONGRATULATIONS! The OWCF can be assumed to function correctly.")
+    println("")
     println("---> IF YOU ARE A USER, please go ahead and safely use the OWCF. Enjoy!")
     println("---> IF YOU ARE A DEVELOPER, please attach a screenshot of the test results to your pull-request on Github, if you would like to merge your branch with the main OWCF branch.")
 else
@@ -249,15 +271,16 @@ else
         println(" --->  $(key): $(err_dict[key])")
         println("")
     end
+    println("")
     println("---> IF YOU ARE A USER, please post a new issue at https://github.com/JuliaFusion/OWCF/issues, attach the test results and describe your situation. Thank you!")
-    println("---> IF YOU ARE A DEVELOPER, please investigate the error(s), fix them and re-run run-tests.jl.")
+    println("---> IF YOU ARE A DEVELOPER, please investigate the error(s) (the specific OWCF scripts and lines of code (integers) are specified above), fix the errors and re-run run-tests.jl.")
 end
 ###------------------------------------------------------------------------------------------------###
 
 ############---------------------------------------------------------------------------------------###
 t_end = time() # Test script runtime end
+println("-------------------------------------------------------------------------------- End of the OWCF tests")
 println("-------------------------------------------------------------------------------- Total runtime: $(round(t_end-t_start)) seconds")
 println("-------------------------------------------------------------------------------- OWCF folder path: $(folderpath_OWCF)")
-println("-------------------------------------------------------------------------------- End of the OWCF tests!")
 println("-------------------------------------------------------------------------------- The OWCF tests --------------------------------------------------------------------------------")
 ###------------------------------------------------------------------------------------------------###

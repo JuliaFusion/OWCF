@@ -432,13 +432,8 @@ println("")
 println("Loading Python modules... ")
 @everywhere begin
     py"""
-    import h5py
     import numpy as np
-    from netCDF4 import Dataset
-
     import forward
-    import transp_dists
-    import transp_output
     import vcone
     """
 end
@@ -459,6 +454,8 @@ thermal_species = $thermal_species
 
 # Load thermal and/or fast-ion TRANSP data
 if ($fileext_thermal=="cdf"):
+    import transp_output
+    import transp_dists
     tr_out = transp_output.TranspOutput($TRANSP_id, step=1, # The TRANSP_id and the step number (always 1 for 1 fbm_file)
                                         out_file=$filepath_thermal_distr, # The thermal distribution file
                                         fbm_files=[$filepath_FI_TRANSP_shot]) # Load the TRANSP shot file

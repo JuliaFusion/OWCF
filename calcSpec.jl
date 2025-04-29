@@ -471,12 +471,8 @@ println("")
 verbose && println("Loading Python packages...")
 @everywhere begin
     py"""
-    import h5py
     import numpy as np
-
     import forward
-    import transp_dists
-    import transp_output
     import vcone
     """
 end
@@ -507,14 +503,19 @@ verbose && println("Defining the thermal species distribution (and TRANSP output
 
     # Load thermal and/or fast-ion TRANSP data
     if $fileext_thermal=="cdf" and (not $fileext_FI=="cdf"):
+        import transp_output
+        import transp_dists
         tr_out = transp_output.TranspOutput($TRANSP_id, step=1, out_file=$filepath_thermal_distr,fbm_files=[$filepath_FI_TRANSP_shot]) # Load the TRANSP shot file
         thermal_dist = transp_dists.Thermal(tr_out, ion=thermal_species) # Then load the thermal ion distribution from that .cdf file
     elif $fileext_thermal=="cdf" and $fileext_FI=="cdf":
+        import transp_output
+        import transp_dists
         tr_out = transp_output.TranspOutput($TRANSP_id, step=1, # The TRANSP_id and the step number (always 1 for 1 fbm_file)
                                             out_file=$filepath_thermal_distr, # The thermal distribution file
                                             fbm_files=[$filepath_FI_distr]) # The fast-ion distribution file
         thermal_dist = transp_dists.Thermal(tr_out, ion=thermal_species) # Then load the thermal ion distribution from that .cdf file
     elif (not $fileext_thermal=="cdf") and $fileext_FI=="cdf":
+        import transp_output
         tr_out = transp_output.TranspOutput($TRANSP_id, step=1, # The TRANSP_id and the step number (always 1 for 1 fbm_file)
                                             out_file=$filepath_TRANSP_shot, # The TRANSP shot file
                                             fbm_files=[$filepath_FI_distr]) # The fast-ion distribution file...
