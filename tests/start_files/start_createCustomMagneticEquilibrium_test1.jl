@@ -20,7 +20,8 @@
 # α - The constant relating beta regime (This must be chosen manually to achieve desired total plasma β-value)
 # qstar - The kink safety factor (1.57 in ITER for example)
 # filepath_wall - The filepath to a .jld2 file containing (optional) data for the tokamak wall - String
-# folderpath_o - The folderpath to the output folder where the results will be saved - String
+# filename_out - ...
+# folderpath_out - The folderpath to the output folder where the results will be saved - String
 # plot_equilibrium - If set to true, the magnetic equilibrium will be plotted when created - Bool
 # save_equil_plot - If set to true, the magnetic equilibrium plot will be saved in .png format when plotted - Bool
 # verbose - If true, the script will talk a lot! - Bool
@@ -50,7 +51,8 @@ using Distributed # Needed to be loaded, even though multi-core computations are
     qstar = 3.33 # Kink safety factor. qstar = ϵB0/avg(B_pol) where the average of the poloidal magnetic field B_pol is at the separatrix 
     filepath_wall = "" # Specify, or leave as ""
     folderpath_OWCF = $folderpath_OWCF
-    folderpath_o = folderpath_OWCF*"tests/outputs/"
+    filename_out = "createCustomMagneticEquilibrium_test1"
+    folderpath_out = folderpath_OWCF*"tests/outputs/"
 
     plot_equilibrium = $plot_test_results # SET TO TRUE, VIA THE plot_test_results INPUT VARIABLE IN THE OWCF/tests/run_tests.jl SCRIPT
     plot_equilibrium && (save_equil_plot = true) # If set to true, the magnetic equilibrium plot will be saved in .png file format

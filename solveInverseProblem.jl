@@ -118,23 +118,25 @@ using LinearAlgebra
 using SparseArrays
 using Statistics
 using SCS, Convex
-include(folderpath_OWCF*"misc/convert_units.jl")
+include("extra/constants.jl")
+include("misc/convert_units.jl")
+
 if plot_solutions || gif_solutions
     using Plots
 end
 if "collisions" in lowercase.(String.(regularization))
     verbose && println("Collision physics included in list of regularization ---> Loading OWCF dependencies... ")
-    include(folderpath_OWCF*"extra/dependencies.jl")
-    include(folderpath_OWCF*"misc/temp_n_dens.jl")
-    include(folderpath_OWCF*"misc/species_func.jl")
+    include("extra/dependencies.jl")
+    include("misc/temp_n_dens.jl")
+    include("misc/species_func.jl")
 end
 if rescale_W
     verbose && println("rescale_W set to true ---> Loading OWCF dependencies... ")
-    include(folderpath_OWCF*"extra/dependencies.jl")
+    include("extra/dependencies.jl")
 end
 if ("icrf" in lowercase.(String.(regularization)))
     verbose && println("ICRF physics included in list of regularization ---> Loading OWCF dependencies... ")
-    include(folderpath_OWCF*"extra/dependencies.jl")
+    include("extra/dependencies.jl")
 end
 
 append!(timestamps,time()) # The timestamp when all necessary packages have been loaded
@@ -1173,7 +1175,7 @@ if "icrf" in lowercase.(String.(regularization))
     COMPATIBILITY_ARRAY = [Ep_bool, VEL_bool, COM_noSigma_bool, normalized_COM_noSigma_bool, COM_bool, normalized_COM_bool] # An array of true's and false's
     COMPATIBLE_SPACE_INDICES = findall(x-> x,COMPATIBILITY_ARRAY) # Get the index pointing to which function in COMPATIBLE_OPTIONS returned true (if any of them)
     if isempty(COMPATIBLE_SPACE_INDICES)
-        error(":ICRF was specified in 'regularization' input variable, but reconstruction space is not supported. Currently supported options include $(ICRF_STREAMLINES_SUPPORTED_COORD_SYSTEMS). Please correct and re-try.")
+        error(":ICRF was specified in 'regularization' input variable, but reconstruction space is not supported. Currently supported options include $(OWCF_ICRF_STREAMLINES_SUPPORTED_COORD_SYSTEMS). Please correct and re-try.")
     end
     if length(COMPATIBLE_SPACE_INDICES)>1 # If more than one of the functions in COMPATIBLE_OPTIONS returned true... 
         error("Compatibility check malfunction. Please post an issue with a screenshot of this error message at https://github.com/juliaFusion/OWCF/issues or try contacting henrikj@dtu.dk or anvalen@dtu.dk.")

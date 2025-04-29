@@ -90,7 +90,7 @@ using Distributed # Needed to be loaded, even though multi-core computations are
     filepath_equil = folderpath_OWCF*"equilibrium/JET/g96100/g96100_0-53.0012.eqdsk" # To load tokamak wall/plasma boundary and magnetic equilibrium (for coordinate_system==:magrel)
     folderpath_o = folderpath_OWCF*"tests/outputs/"
     LOS_length = 22.0 # Length of line-of-sight. From detector to desired end. Meters. When coordinate_system==:magrel, assume (R,z) point of interest is at half the LOS length
-    LOS_name = "test_detector_3"
+    LOS_name = "createCustomLOS_test3"
     LOS_vec = [90.0,0.0] # TOFOR (proxy) cartesian: [0.005,-0.001,0.9999] /// NE213 (proxy) cartesian: [0.995902688, 0.293844478e-2, -0.903836320e-1]
     LOS_width = 0.27 # TOFOR (proxy): 0.27 /// NE213 (proxy): 0.25
     plot_LOS = $plot_test_results # SET TO TRUE, VIA THE plot_test_results INPUT VARIABLE IN THE OWCF/tests/run_tests.jl SCRIPT

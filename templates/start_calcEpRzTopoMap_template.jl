@@ -144,7 +144,7 @@ end
     # EXTRA KEYWORD ARGUMENTS BELOW
     extra_kw_args = Dict(:limit_phi => true, :max_tries => 0)
     # limit_phi limits the number of toroidal turns for orbits
-    # The orbit integration algorithm will try progressively smaller timesteps maxiter number of times
+    # The orbit integration algorithm will try progressively smaller timesteps max_tries number of times
 end
 
 ## -----------------------------------------------------------------------------

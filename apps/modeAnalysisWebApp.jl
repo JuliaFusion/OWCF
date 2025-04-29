@@ -115,14 +115,14 @@ myfile = jldopen(filepath_tm,false,false,false,IOStream)
 if haskey(myfile,"extra_kw_args")
     extra_kw_args = myfile["extra_kw_args"]
 else
-    verbose && println("No extra keyword arguments for orbit integration found in topological map file. Assuming :toa, :limit_phi and :maxiter=0")
+    verbose && println("No extra keyword arguments for orbit integration found in topological map file. Assuming :toa, :limit_phi and :max_tries=0")
     extra_kw_args = Dict(:limit_phi => true, :max_tries => 0)
     # limit_phi: limits the number of toroidal turns for orbits
     # max_tries: The orbit integration algorithm will try progressively smaller timesteps these number of times
 end
 close(myfile)
-if haskey(extra_kw_args, :maxiter) # To allow compatibility with older OWCF files
-    delete!(extra_kw_args, :maxiter)
+if haskey(extra_kw_args, :max_tries) # To allow compatibility with older OWCF files
+    delete!(extra_kw_args, :max_tries)
 end
 
 #########################################################################################

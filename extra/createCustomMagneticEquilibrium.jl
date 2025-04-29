@@ -69,8 +69,14 @@ end
 # Determine output file name
 verbose && println("Determining output file name... ")
 date_and_time = split("$(Dates.now())","T")[1]*"at"*split("$(Dates.now())","T")[2][1:5]
-filepath_output_orig = folderpath_o*"solovev_equilibrium_"*date_and_time
+
+if !(filename_out=="") # If the 'filename_out' input variable has been specified... 
+    filepath_output_orig = folderpath_out*filename_out # Use the 'filename_out' input variable to name the output data file
+else # Otherwise, if the 'filename_out' input variable was left unspecified (default), use the default file name format
+    filepath_output_orig = folderpath_out*"solovev_equilibrium_"*date_and_time
+end
 filepath_output = deepcopy(filepath_output_orig)
+
 count = 1
 while isfile(filepath_output*".jld2") # To take care of not overwriting files. Add _(1), _(2) etc
     global filepath_output; global count # Declare global scope of specified variables
@@ -97,7 +103,7 @@ if plot_LOS
     plt_crs = Plots.plot!(xtickfontsize=14,ytickfontsize=14,xguidefontsize=16,yguidefontsize=16)
     plt_crs = Plots.plot!(legend=:bottomright,legendfontsize=13)
     plt_crs = Plots.plot!(title="Mag. equil. (pol. proj) $(date_and_time)",titlefontsize=14)
-    plt_crs = Plots.plot!(dpi=600)
+    plt_crs = Plots.plot!(dpi=200)
     display(myplt)
 
     if save_equil_plot
@@ -108,7 +114,7 @@ end
 
 ## --------------------------------------------------------------------------
 # Save the data
-global filepath_output = filepath_output*".jld2"
+filepath_output = filepath_output*".jld2"
 myfile = jldopen(filepath_output,true,true,false,IOStream)
 write(myfile,"S",S)
 write(myfile,"wall",wall)
