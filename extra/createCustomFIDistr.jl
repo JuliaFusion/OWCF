@@ -1,131 +1,109 @@
+######################################################## createCustomFIDistr.jl #################################################################
+
+#### Description:
 # This script will create a custom fast-ion (FI) distribution in (E,p,R,z) coordinates.
-# It will be saved in a .jld2 file format with file keys compatible with the input requirements to e.g. calcSpec.jl.
+# It will be saved in a .jld2 file format with file keys compatible with the input requirements to e.g. OWCF/calcSpec.jl.
 # Currently, Gaussian and neutral beam injection (NBI) collision-physics (former NBI slowing-down) functions are supported.
 # You could also choose whether the FI distribution should be created only in (E,p) as a 2D FI distribution.
-# It will then be computed as constant in (R,z) for all (R,z) grid points. This is done via the constant_Rz input variable
+# It will then be computed as constant in (R,z) for all (R,z) grid points. Please see the start file example at 
+# OWCF/templates/start_createCustomFIDistr_template.jl for more inputs information.
+#
 # The NBI collision-physics function are computed using the formulas in W.G.F. Core, Nucl. Fusion 33, 829 (1993)
 # and J.D. Gaffey, J. Plasma Physics 16, 149-169, (1976). In the current version of the OWCF, the collision-physics functions
 # are created only in (E,p) as a 2D FI distribution, and then computed as constant in (R,z) for all (R,z) grid points.
 # The filepath_equil file can be an .eqdsk file, or computed with the extra/createCustomMagneticEquilibrium.jl script.
 # The filepath_thermal_profiles file can be a TRANSP .cdf file, "" (default OWCF temperature and density profiles will be used) or 
 # an output file of the helper/createCustomThermalProfiles.jl script.
-################################################################################
 
-################################################################################
-############################ Specify inputs ####################################
-################################################################################
-# PLEASE NOTE!
-# You only need to specify the general inputs immidiately below and then the specific 
-# inputs for the fast-ion distribution type that you need, i.e.
-# if distribution_type == :gaussian, elseif distribution_type == :collisional etc.
+#### Input variables:
+# The input variables are defined in e.g. the start_createCustomFIDistr_template.jl file. Please see 
+# OWCF/templates/start_createCustomFIDistr_template.jl for explanation.
+#
+# You run the createCustomFIDistr.jl script by making a copy of the start_createCustomFIDistr_template.jl 
+# file, moving it to the OWCF/ folder, specifying the inputs and executing it by executing 
+# 'julia start_createCustomFIDistr_template.jl' or equivalent.
 
-# Start of general inputs
-constant_Rz = true # Set to true, if the FI distribution should be computed as constant in (R,z) position space
-distribution_type = :gaussian # Currently supported options include :gaussian, :collisional and :custom
-folderpath_OWCF = "" # /path/to/the/directory/of/the/OWCF/
-folderpath_out = "" # /path/to/where/you/want/your/output/file/to/be/saved.jld2
-max_E = 250.0 # keV. The maximum of the energy grid points
-max_p = 1.0 # -. The maximum of the pitch grid points
-max_R = 3.9 # m. The maximum of the R grid points
-max_z = 2.0 # m. The maximum of the z grid points
-min_E = 1.0 # keV. The minimum of the energy grid points
-min_p = -1.0 # -. The minimum of the pitch grid points
-min_R = 1.8 # m. The minimum of the R grid points
-min_z = -2.0 # m. The minimum of the z grid points
-nE = 100 # Number of grid points in energy (E)
-np = 50 # Number of grid points in pitch (p)
-nR = 20 # Number of grid points in major radius (R). PLEASE NOTE! Even if constant_Rz is set to true, this needs to be specified!
-nz = 20 # Number of grid points in vertical coordinate (z). PLEASE NOTE! Even if constant_Rz is set to true, this needs to be specified!
-save_plots = true # If true, (E,p) and (R,z) plots of the computed FI distribution will be saved in .png file format. For post-analysis.
-tot_N_FI = 1.0e19 # The total number of fast ions in the plasma. Obtained when integrating over all of (E,p,R,z) space
-verbose = true # If true, the script will talk a lot!
-# End of general inputs
+#### Outputs:
+# A .jld2 file containing the created fast-ion distribution and its abscissas. If the 'filename_out' input variable has been left 
+# unspecified ("") in the start file, the default output data file name format will be used: 
+#   createCustomFIDistr_[distribution type]_[nE]x[np]x[nR]x[nz]_[date and time].jld2. 
+# The keys of the output file are as follows:
+#   - F_EpRz - The 4D array containing the fast-ion distribution data. The element with index (iE,ip,iR,iz) is the value of the 
+#              fast-ion distribution at the phase-space point (E_array[iE],p_array[ip],R_array[iR],z_array[iz]). The units of the 
+#              fast-ion distribution is keV^-1_m^-3. The total number of fast ions of F_EpRz is obtained by integrating 
+#              over (E,p,R,z) space with the 2*pi*R Jacobian included - Array{Float64}
+#   - E_array - The grid points of the energy abscissa of the fast-ion distribution - Vector{Float64}
+#   - E_array_units - The units of the grid points in E_array. As of the current OWCF version, this will always be "keV" - String
+#   - p_array - The grid points of the pitch (v_||/v) abscissa of the fast-ion distribution - Vector{Float64}
+#   - p_array_units - The units of the grid points of p_array. As of the current OWCF version, this will always be "-" - String
+#   - R_array - The grid points of the R (major radius) abscissa of the fast-ion distribution - Vector{Float64}
+#   - R_array_units - The units of the grid points of R_array. As of the current OWCF version, this will always be "m" - String
+#   - z_array - The grid points of the z (vertical coordinate) abscissa of the fast-ion distribution - Vector{Float64}
+#   - z_array_units - The units of the grid points of z_array. As of the current OWCF version, this will always be "m" - String
+#   - constant_Rz - If true, the fast-ion distribution is constant in (R,z) space - Bool
+#   - distribution_type - The fast-ion distribution type. Currently supported options are :gaussian, :collisional and :custom - Symbol
+#   - ntot - The total number of fast ions in the fast-ion distribution. It is F_EpRz integrated over all of (E,p,R,z) space - Float64
+# Depending on the value of the 'distribution_type' input variable, different additional keys will be included in the output file.
+# These additional keys are as follows:
+# If distribution_type==:gaussian
+#   - floor_level - If a value of the fast-ion distribution is below floor_level*maximum(f_Gaussian), the FI distribution will be 
+#                   manually set to 0 for that index - Float64
+#   - X_peak - The (E,p,R,z) coordinate of the peak of the Gaussian distribution - Array{Float64}
+#   - Sigma - The values of the correlation Sigma for the Gaussian distribution i.e.
+#             (1/(4*pi^2)) * (det(Sigma)^(-1/2)) * exp(-0.5*transpose(X-X_peak)*(Sigma^(-1))*(X-X_peak)) - Array{Float64}
+# If distribution_type==:collisional
+#   - assume_Ti_equalTo_Te - A bool to indicate whether it was assumed that the ion and electron temperatures were equal or not - Bool
+#   - assume_ni_equalTo_ne - A bool to indicate whether it was assumed that the ion and electron densities were equal or not - Bool
+#   - dampen - A bool to indicate whether the slowing-down distribution functions are dampened below the critical energy or not - Bool
+#   - FI_species - The particle species of the fast ions of the fast-ion distribution. Please see OWCF/misc/species_func.jl for more - String
+#   - filepath_equil - The file path to the magnetic equilibrium data used to compute the slowing-down function - String
+#   - filepath_thermal_profiles - The file path to the thermal ion temperature and density profiles used to -||-  String
+#   - R_of_temp_n_dens - The major radius (R) coordinate of the thermal ion temperature and density values - Float64
+#   - z_of_temp_n_dens - The vertical (z) cooridnate of the -||- - Float64
+#   - thermal_species - The thermal ion species of the plasma. Please see OWCF/misc/species_func.jl for more info - String
+#   - filepath_thermal_electron_profiles - For some inputs, the file path to the (thermal) electron temp/dens profiles is included - String
+#   - damp_type - If 'dampen' was set to true, the type of damping is included in the output file data - Symbol
+#   - E_tail_length - If 'dampen' was set to true, the length of the energy tail below the critical energy is included. In keV - Float64
+#   - timepoint - For some inputs, the timepoint of the tokamak discharge is included - Float64
+#   - dens_on_axis - If no thermal ion profiles were specified, the thermal ion density on-axis needs to be specified. In m^-3 - Float64
+#   - temp_on_axis - If no thermal ion profiles were specified, the thermal ion temperature on-axis needs to be specified. In keV - Float64
 
-# Start of specific inputs
-if distribution_type == :gaussian # If you would like a gaussian FI distribution, please specify...
-    floor_level = 1.0e-3 # Below floor_level*maximum(f_Gaussian), the FI distribution will be manually set to 0
-    peak_E = 50.0 # keV. The energy (E) coordinate of the peak of the gaussian 
-    peak_p = 0.5 # -. The pitch (E) coordinate of the peak of the gaussian 
-    peak_R = 0.0 # m. The major radius (R) coordinate of the peak of the gaussian. If constant_Rz==true, this does not matter
-    peak_z = 0.0 # m. The vertical coordinate (z) coordinate of the peak of the gaussian. If constant_Rz==true, this does not matter
-    Sigma = [50.0, 0.05, 0.0, 0.0] # The values of Sigma for the Gaussian distribution (1/(4*pi^2)) * (det(Sigma)^(-1/2)) * exp(-0.5*transpose(X-X_peak)*(Sigma^(-1))*(X-X_peak))
-elseif distribution_type == :collisional # If you would like a collision-physics FI distribution, please specify...
-    assume_Ti_equalTo_Te = false # Should Ti=Te be assumed?
-    assume_ni_equalTo_ne = false # Should ni=ne be assumed?
-    constant_Rz = true # Currently, the collision-physics functions need to be assumed constant in Rz
-    dampen = false # Set to true, if the collision-physics functions should be damped below the NBI injection energy
-    FI_species = "" # The FI particle species. Valid list of species can be found in misc/species_func.jl
-    filepath_equil = "" # For example "g94701_0-50.7932.eqdsk" or "solovev_equilibrium_2024-09-30.jld2"
-    filepath_thermal_profiles = "" # /path/to/a/thermal/plasma/data/file. # For example "96100J01.cdf", "my_custom_thermal_profiles.jld2" or ""
-    inj_E = 0.0 # keV. The injection energy (E) coordinate of the collision-physics function
-    inj_p = 0.0 # -. The injection pitch (p) coordinate of the collision-physics function
-    inj_R = 0.0 # m. The injection major radius (R) coordinate of the collision-physics function
-    inj_z = 0.0 # m. The injection vertical (z) coordinate of the collision-physics function
-    R_of_temp_n_dens = inj_R # By default, the inj_R input variable is used to determine the vertical (z) coordinate of the thermal temperature+density profiles
-    z_of_temp_n_dens = inj_z # By default, the inj_z input variable is used to determine the vertical (z) coordinate of the thermal temperature+density profiles
-    thermal_species = "" # The thermal ion species of interest for the temp+dens profiles. Valid list of species can be found in misc/species_func.jl
-    # /\ For the thermal_species input variable, only one thermal species is currently supported.
+#### Other:
+#
 
-    # ---Conditional input variables---
-    # These input variables might need to be specified, depending on how the input variables above are specified.
-    # Please check how you specified the input variables above, and specify the conditional input variables below accordingly.
-    if (!assume_Ti_equalTo_Te || !assume_ni_equalTo_ne) && !(lowercase(filepath_thermal_profiles[end-2:end])=="cdf") # If Ti==Te is not true, or if ni=ne is not true, and the thermal profile file is not a TRANSP .cdf file, please specify...
-        filepath_thermal_electron_profiles = "" # # /path/to/a/thermal/electron/data/file. Should be an output of the createCustomThermalProfiles.jl
-    end
-    if dampen # If dampen is set to true, please specify... 
-        damp_type = :erfc # The type of damping. Can be either :erfc (complementory error-function) or :linear
-        E_tail_length = nothing # The length (in keV) of the tail of the collision-physics functions below the NBI injection energy.
-        # /\ If left as nothing, automatic damping below the v_L speed (W.G.F. Core, Nucl. Fusion 33, 829 (1993)) will be used
-    end
-    if lowercase(filepath_thermal_profiles[end-2:end])=="cdf" # If the thermal profiles data is a TRANSP file, please specify...
-        timepoint = 00.000 # seconds. The timepoint of interest for the temperature+density profiles to be extracted from the TRANSP .cdf format file
-    elseif filepath_thermal_profiles=="" # If the thermal profiles data is left unspecified, please specify...
-        dens_on_axis = 0.0 # m^-3. The thermal density value on-axis
-        temp_on_axis = 0.0 # keV. The thermal temperature value on-axis
-    elseif lowercase(filepath_thermal_profiles[end-3:end])=="jld2"
-        # Nothing extra to specify, if the thermal profiles data is an output file of the helper/createCustomThermalProfiles.jl script
-    else
-        error("Invalid thermal profile input file format! Please correct and re-try.")
-    end
-elseif distribution_type==:custom
-    if constant_Rz
-        function custom_FI_Ep_distribution(E,p)
-            # Define a function that takes an (E,p) point as input, and returns a distribution value for that point
-            return f
-        end
-    else
-        function custom_FI_distribution(E,p,R,z)
-            # Define a function that takes an (E,p,R,z) point as input, and returns a distribution value for that point
-            return f
-        end
-    end
-else
-    error("distribution_type input variable not correctly specified (:gaussian, :collisional, :custom). Please correct and re-try.")
-end
-# End of specific inputs
+# Script written by Henrik Järleblad. Last maintained 2025-04-24.
+#################################################################################################################################################
+
 ################################################################################
 ############################ Change to OWCF directory ##########################
 ############################ Load Julia packages ###############################
 ################################################################################
 verbose && println("Loading Julia packages... ")
-cd(folderpath_OWCF)
-using Pkg
-Pkg.activate(".")
-using JLD2
-using Statistics
-using LinearAlgebra
-using Interpolations
-using Dates
-include(folderpath_OWCF*"misc/temp_n_dens.jl")
-if save_plots
-    using Plots
-end
-if distribution_type==:collisional
-    include(folderpath_OWCF*"extra/dependencies.jl")
+@everywhere begin
+    using JLD2
+    using Statistics
+    using LinearAlgebra
+    using Interpolations
+    using Dates
+    include(folderpath_OWCF*"misc/temp_n_dens.jl")
+    if save_plots
+        using Plots
+    end
+    if distribution_type==:collisional
+        include(folderpath_OWCF*"extra/dependencies.jl")
+    end
 end
 ################################################################################
 ############################ Main script #######################################
 ################################################################################
+
+if distribution_type==:collisional && !constant_Rz
+    @warn "The 'distribution_type' input variable was set to $(distribution_type), but the 'constant_Rz' input variable was set to $(constant_Rz). 
+    As of the current OWCF version, the 'constant_Rz' variable needs to be set to true if the 'distribution_type' input variable is set to :collisional.
+    This will therefore now be enforced."
+    constant_Rz = true
+end
+
 # Create the (equidistant) (E,p) grid
 E_array = collect(range(min_E,stop=max_E,length=nE)); dE = diff(E_array)[1]
 p_array = collect(range(min_p,stop=max_p,length=np)); dp = diff(p_array)[1]
@@ -151,6 +129,9 @@ if constant_Rz
         F_Ep = map(x-> x<floor_level*maximum(F_Ep) ? 0.0 : x, F_Ep) # Set everything below floor_level*maximum(F_Ep) to 0.0, to avoid extremely small, unstable values.
     elseif distribution_type==:collisional
         verbose && println("Creating NBI collision-physics distribution function... ")
+        if filepath_thermal_profiles==""
+            filepath_thermal_profiles="nothing" # Change to "nothing" for code convenience reasons
+        end
         if ((split(filepath_equil,"."))[end] == "eqdsk") || ((split(filepath_equil,"."))[end] == "geqdsk")
             M, wall = read_geqdsk(filepath_equil,clockwise_phi=false) # Assume counter-clockwise phi-direction
         else # Otherwise, assume magnetic equilibrium is a saved .jld2 file
@@ -163,16 +144,16 @@ if constant_Rz
         psi_on_axis, psi_at_bdry = psi_limits(M)
         rho_of_temp_n_dens = sqrt((ψ_rz-psi_on_axis)/(psi_at_bdry-psi_on_axis)) # The formula for the normalized flux coordinate ρ_pol = sqrt((ψ-ψ_axis)/(ψ_edge-ψ_axis))
         verbose && println("Successfully computed rho_pol for the (R,z) point of temperature and density.")
-        if lowercase(filepath_thermal_profiles[end-2:end])=="cdf" # If the thermal profiles data is a TRANSP file...
-            T_i_vec = [(getTempProfileFromTRANSP(timepoint,filepath_thermal_profiles,thermal_species))(rho_of_temp_n_dens)] # The thermal ion temperature at the (R,z) point and timepoint of interest, extracted from a TRANSP .cdf file, and put into a single-element vector
-            n_i_vec = [(getDensProfileFromTRANSP(timepoint,filepath_thermal_profiles,thermal_species))(rho_of_temp_n_dens)] # The thermal ion density at the (R,z) point and timepoint of interest, extracted from a TRANSP .cdf file, and put into a single-element vector
-            n_e = n_i_vec[1] # Initially assume that n_e == n_i
-            verbose && println("Successfully computed Ti, ni and ne from TRANSP .cdf file.")
-        elseif filepath_thermal_profiles=="" # If the thermal profiles data is left unspecified...
+        if filepath_thermal_profiles=="nothing" # If the thermal profiles data is left unspecified...
             T_i_vec = [getAnalyticalTemp(temp_on_axis,rho_of_temp_n_dens)]
             n_i_vec = [getAnalyticalDens(dens_on_axis,rho_of_temp_n_dens)]
             n_e = n_i_vec[1] # Initially assume that n_e == n_i
             verbose && println("Successfully computed Ti, ni and ne from OWCF default formulas.")
+        elseif lowercase(filepath_thermal_profiles[end-2:end])=="cdf" # If the thermal profiles data is a TRANSP file...
+            T_i_vec = [(getTempProfileFromTRANSP(timepoint,filepath_thermal_profiles,thermal_species))(rho_of_temp_n_dens)] # The thermal ion temperature at the (R,z) point and timepoint of interest, extracted from a TRANSP .cdf file, and put into a single-element vector
+            n_i_vec = [(getDensProfileFromTRANSP(timepoint,filepath_thermal_profiles,thermal_species))(rho_of_temp_n_dens)] # The thermal ion density at the (R,z) point and timepoint of interest, extracted from a TRANSP .cdf file, and put into a single-element vector
+            n_e = n_i_vec[1] # Initially assume that n_e == n_i
+            verbose && println("Successfully computed Ti, ni and ne from TRANSP .cdf file.")
         elseif lowercase(filepath_thermal_profiles[end-3:end])=="jld2" # If the thermal profiles data is an output file of the helper/createCustomThermalProfiles.jl script
             myfile = jldopen(filepath_thermal_profiles,false,false,false,IOStream)
             rho_array_from_file = myfile["rho_pol"]
@@ -250,9 +231,9 @@ else # If !constant_Rz
         X_peak = [peak_E, peak_p, peak_R, peak_z] # The mean (peak) of the Gaussian
         F_EpRz = zeros(length(E_array),length(p_array),length(R_array),length(z_array)) # The pre-allocated fast-ion distribution
         progress_length = reduce(*,[length(E_array),length(p_array),length(R_array),length(z_array)]) # The product of all (E,p,R,z) vector lengths
-        global progress # Declare global scope
         progress = 1
         for (iE,E) in enumerate(E_array), (ip,p) in enumerate(p_array), (iR,R) in enumerate(R_array), (iz,z) in enumerate(z_array)
+            global progress
             X = [E,p,R,z]
             F_EpRz[iE,ip,iR,iz] = (1/(4*pi^2)) * (det(Sigmam)^(-1/2)) * exp(-0.5*transpose(X .- X_peak)*inv(Sigmam)*(X .- X_peak)) # The 4D Gaussian formula
             verbose && println("Creating (E,p,R,z) Gaussian FI distribution: $(round(100*progress/progress_length,sigdigits=4)) %... ")
@@ -271,7 +252,10 @@ else # If !constant_Rz
         progress_length = reduce(*,[length(E_array),length(p_array),length(R_array),length(z_array)]) # The product of all (E,p,R,z) vector lengths
         progress = 1
         for (iE,E) in enumerate(E_array), (ip,p) in enumerate(p_array), (iR,R) in enumerate(R_array), (iz,z) in enumerate(z_array)
+            global progress
+            verbose && println("Fast-ion distribution creation progress: $(round(100*progress/progress_length,digits=2))... ")
             F_EpRz[iE,ip,iR,iz] = custom_FI_distribution(E,p,R,z)
+            progress +=1
         end
     else
         error("distribution_type input variable not correctly specified (:gaussian, :collisional, :custom). Please correct and re-try.")
@@ -283,35 +267,54 @@ end
 # The date and time. For creating unique output file names
 date_and_time = split("$(Dates.now())","T")[1]*"at"*split("$(Dates.now())","T")[2][1:5]
 
+# Create the output data .jld2 file name, given inputs or distribution type and date+time
+if !(filename_out=="") # If the 'filename_out' input variable has been specified... 
+    filepath_output_orig = folderpath_out*filename_out # Use the 'filename_out' input variable to name the output data file
+else # Otherwise, if the 'filename_out' input variable was left unspecified (default), use the default file name format
+    filepath_output_orig = folderpath_out*"createCustomFIDistr_$(distribution_type)_$(nE)x$(np)x$(nR)x$(nz)_"*date_and_time
+end
+filepath_output = deepcopy(filepath_output_orig)
+count = 1
+while isfile(filepath_output*".jld2") # To take care of not overwriting files. Add _(1), _(2) etc
+    global count; global filepath_output
+    filepath_output = filepath_output_orig*"_($(Int64(count)))"
+    count += 1 # global scope, to surpress warnings
+end
+
 if save_plots # If plots should be saved of the computed distribution function...
     if constant_Rz
         # If the FI distribution is constant in (R,z) position space, it does not matter which (R,z) point we examine for plotting
         myplt = Plots.heatmap(E_array,p_array,F_EpRz[:,:,1,1]',xlabel="Energy [keV]",ylabel="Pitch [-]",title="f(E,p) [keV^-1]",dpi=600)
-        png(myplt,folderpath_out*"createCustomFIDistribution_"*date_and_time)
+        png(myplt,filepath_output*"_Ep_plot")
     else
         F_Ep = dropdims(sum((2*pi*dR*dz) .* reshape(R_array,(1,1,length(R_array),1)) .*F_EpRz,dims=(3,4)),dims=(3,4))
-        F_Rz = dropdims(sum((dE*dp) .*F_EpRz,dims=(3,4)),dims=(3,4))
+        F_Rz = dropdims(sum((dE*dp) .*F_EpRz,dims=(1,2)),dims=(1,2))
 
         myplt_Ep = Plots.heatmap(E_array,p_array,F_Ep',xlabel="Energy [keV]",ylabel="Pitch [-]",title="f(E,p) [keV^-1]",dpi=600)
         myplt_Rz = Plots.heatmap(R_array,z_array,F_Rz',xlabel="R [m]",ylabel="z [m]",title="f(R,z) [m^-3]",aspect_ratio=:equal,dpi=600)
 
-        png(myplt_Ep,folderpath_out*"createCustomFIDistribution_Ep"*date_and_time)
-        png(myplt_Rz,folderpath_out*"createCustomFIDistribution_Rz"*date_and_time)
+        png(myplt_Ep,filepath_output*"_Ep_plot")
+        png(myplt_Rz,filepath_output*"_Rz_plot")
     end
 end
 
 # Save results
-myfile = jldopen(folderpath_out*"FI_distr_$(distribution_type)_$(nE)x$(np)x$(nR)x$(nz)_"*date_and_time*".jld2",true,true,false,IOStream)
+myfile = jldopen(filepath_output*".jld2",true,true,false,IOStream)
 write(myfile,"F_EpRz",F_EpRz)
 write(myfile,"E_array",E_array)
+write(myfile,"E_array_units","keV")
 write(myfile,"p_array",p_array)
-write(myfile,"constant_Rz",constant_Rz)
+write(myfile,"p_array_units","-")
 write(myfile,"R_array",R_array)
+write(myfile,"R_array_units","m")
 write(myfile,"z_array",z_array)
+write(myfile,"z_array_units","m")
+write(myfile,"constant_Rz",constant_Rz)
 write(myfile,"distribution_type","$(distribution_type)")
 write(myfile,"ntot",tot_N_FI)
 if distribution_type==:gaussian
     write(myfile,"floor_level",floor_level)
+    write(myfile,"X_peak",[peak_E, peak_p, peak_R, peak_z])
     write(myfile,"Sigma",Sigma)
 elseif distribution_type==:collisional
     write(myfile,"assume_Ti_equalTo_Te",assume_Ti_equalTo_Te)
@@ -340,4 +343,4 @@ elseif distribution_type==:collisional
 else
 end
 close(myfile)
-println("~~~createCustomFIDistribution.jl completed successfully!~~~")
+println("~~~createCustomFIDistr.jl completed successfully!~~~")

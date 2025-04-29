@@ -184,8 +184,8 @@ end
 close(myfile)
 close(myfile2)
 
-if haskey(extra_kw_args, :maxiter)
-    delete!(extra_kw_args, :maxiter)
+if haskey(extra_kw_args, :max_tries)
+    delete!(extra_kw_args, :max_tries)
 end
 
 ## ------
