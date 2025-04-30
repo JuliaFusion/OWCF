@@ -267,8 +267,8 @@ dvols = get4DVols(test_Eq_array, test_pq_array, test_Rq_array, test_zq_array)
 
 ############---------------------------------------------------------------------------------------###
 test_E_array = collect(range(5.0,stop=1000.0,length=4))
-test_pm_array = collect(range(-1.0,stop=1.0,length=9))
-test_Rm_array = collect(range(magnetic_axis(M)[1]-0.1,stop=maximum(wall.r),length=10))
+test_pm_array = collect(range(-1.0,stop=1.0,length=19))
+test_Rm_array = collect(range(magnetic_axis(M)[1]-0.1,stop=maximum(wall.r),length=20))
 
 extra_kw_args=Dict(:toa => true, :limit_phi => true, :max_tries => 0)
 orbs, og = OrbitTomography.orbit_grid(M, test_E_array, test_pm_array, test_Rm_array; q=getSpeciesEcu(test_FI_species), amu=getSpeciesAmu(test_FI_species), wall=wall, extra_kw_args...)
@@ -278,8 +278,8 @@ test_F_os_3D = OWCF_map_orbits(og,unmap_orbits(og,test_F_os_3D),true) # This ens
 ###------------------------------------------------------------------------------------------------###
 
 ############---------------------------------------------------------------------------------------###
-test_Lambda_array = collect(range(0.0,stop=1.5,length=9))
-test_Pphi_n_array = collect(range(-1.0,stop=1.0,length=10))
+test_Lambda_array = collect(range(0.0,stop=1.5,length=19))
+test_Pphi_n_array = collect(range(-1.0,stop=1.0,length=20))
 
 test_topoMap_os = getOSTopoMap(M, test_E_array, test_pm_array, test_Rm_array; wall=wall, distinguishLost=true)
 test_topoMap_COM = getCOMTopoMap(M, test_E_array, test_Lambda_array, test_Pphi_n_array)
