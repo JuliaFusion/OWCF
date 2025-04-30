@@ -266,74 +266,149 @@ dvols = get4DVols(test_Eq_array, test_pq_array, test_Rq_array, test_zq_array)
 ###------------------------------------------------------------------------------------------------###
 
 ############---------------------------------------------------------------------------------------###
-test_E_array = collect(range(5.0,stop=1000.0,length=4))
+test_E_array = collect(range(5.0,stop=1000.0,length=11))
 test_pm_array = collect(range(-1.0,stop=1.0,length=19))
 test_Rm_array = collect(range(magnetic_axis(M)[1]-0.1,stop=maximum(wall.r),length=20))
+dE = diff(test_E_array)[1]
+dpm = diff(test_pm_array)[1]
+dRm = diff(test_Rm_array)[1]
 
 extra_kw_args=Dict(:toa => true, :limit_phi => true, :max_tries => 0)
 orbs, og = OrbitTomography.orbit_grid(M, test_E_array, test_pm_array, test_Rm_array; q=getSpeciesEcu(test_FI_species), amu=getSpeciesAmu(test_FI_species), wall=wall, extra_kw_args...)
 
-test_F_os_3D = gaussian([test_E_array[3],test_pm_array[5],test_Rm_array[5]],[100.0,0.3,0.2]; mx=maximum.([test_E_array,test_pm_array,test_Rm_array]), mn=minimum.([test_E_array,test_pm_array,test_Rm_array]), n=length.([test_E_array,test_pm_array,test_Rm_array]), floor_level=0.001)
+test_F_os_3D = gaussian([test_E_array[3],test_pm_array[15],test_Rm_array[15]],[100.0,0.3,0.08]; mx=maximum.([test_E_array,test_pm_array,test_Rm_array]), mn=minimum.([test_E_array,test_pm_array,test_Rm_array]), n=length.([test_E_array,test_pm_array,test_Rm_array]), floor_level=0.001)
 test_F_os_3D = OWCF_map_orbits(og,unmap_orbits(og,test_F_os_3D),true) # This ensures only pixels corresponding to valid orbits are kept
 ###------------------------------------------------------------------------------------------------###
 
 ############---------------------------------------------------------------------------------------###
-test_Lambda_array = collect(range(0.0,stop=1.5,length=19))
-test_Pphi_n_array = collect(range(-1.0,stop=1.0,length=20))
+test_F_COM_3D, test_E_array_os2com, test_Lambda_array_os2com, test_Pphi_n_array_os2com = os2COM(M, test_F_os_3D, test_E_array, test_pm_array, test_Rm_array, test_FI_species; needJac=true, wall=wall) # FI distribution
+dE_os2com = diff(test_E_array_os2com)[1] # Should be the same as dE above
+dLambda = diff(test_Lambda_array_os2com)[1]
+dPphi_n = diff(test_Pphi_n_array_os2com)[1]
+
+test_os_Ntot = sum((dE*dpm*dRm) .*test_F_os_3D)
+test_COM_Ntot = sum((dE_os2com*dLambda*dPphi_n) .*(test_F_COM_3D[:,:,:,1] + test_F_COM_3D[:,:,:,2]))
+
+Ntot_diff = abs((test_os_Ntot-test_COM_Ntot)/test_os_Ntot)
+if Ntot_diff>0.03 # For this test, due to low-resolution grids, the difference between f(E,pm,Rm) and f(E,Λ,Pϕ_n;σ) in terms of total number of fast ions is approx. 2.4% (i.e. a <3% criterion will suffice to ensure correct functionality)
+    error("(E,pm,Rm) → (E,Λ,Pϕ_n;σ) transform via OWCF/extra/dependencies.jl/os2COM() did not preserve the total number of fast ions, i.e. ∫f(E,pm,Rm)*dE*dpm*dRm ≠ ∫(f(E,Λ,Pϕ_n;σ=-1)+f(E,Λ,Pϕ_n;σ=+1))*dE*dΛ*dPϕ_n")
+end
+###------------------------------------------------------------------------------------------------###
+
+############---------------------------------------------------------------------------------------###
+if plot_test_results
+    myplt1 = Plots.heatmap(test_Rm_array, test_pm_array, dropdims(sum(dE .*test_F_os_3D,dims=1),dims=1), xlabel="Rm [m]", ylabel="pm [-]")
+    myplt2 = Plots.heatmap(test_Rm_array, test_E_array, dropdims(sum(dpm .*test_F_os_3D,dims=2),dims=2), xlabel="Rm [m]", ylabel="E [keV]")
+    myplt3 = Plots.heatmap(test_E_array, test_pm_array, transpose(dropdims(sum(dRm .*test_F_os_3D,dims=3),dims=3)), xlabel="E [keV]", ylabel="pm [-]")
+    myplt4 = Plots.heatmap(test_Pphi_n_array_os2com, test_Lambda_array_os2com, dropdims(sum(dE_os2com .*test_F_COM_3D[:,:,:,1],dims=1),dims=1), title="σ=-1", xlabel="Pϕ_n [-]", ylabel="Λ [-]")
+    myplt5 = Plots.heatmap(test_Pphi_n_array_os2com, test_E_array_os2com, dropdims(sum(dLambda .*test_F_COM_3D[:,:,:,1],dims=2),dims=2), title="σ=-1", xlabel="Pϕ_n [-]", ylabel="E [keV]")
+    myplt6 = Plots.heatmap(test_E_array_os2com, test_Lambda_array_os2com, transpose(dropdims(sum(dPphi_n .*test_F_COM_3D[:,:,:,1],dims=3),dims=3)), title="σ=-1", xlabel="E [keV]", ylabel="Λ [-]")
+    myplt7 = Plots.heatmap(test_Pphi_n_array_os2com, test_Lambda_array_os2com, dropdims(sum(dE_os2com .*test_F_COM_3D[:,:,:,2],dims=1),dims=1), title="σ=+1", xlabel="Pϕ_n [-]", ylabel="Λ [-]")
+    myplt8 = Plots.heatmap(test_Pphi_n_array_os2com, test_E_array_os2com, dropdims(sum(dLambda .*test_F_COM_3D[:,:,:,2],dims=2),dims=2), title="σ=+1", xlabel="Pϕ_n [-]", ylabel="E [keV]")
+    myplt9 = Plots.heatmap(test_E_array_os2com, test_Lambda_array_os2com, transpose(dropdims(sum(dPphi_n .*test_F_COM_3D[:,:,:,2],dims=3),dims=3)), title="σ=+1", xlabel="E [keV]", ylabel="Λ [-]")
+
+    myplt = Plots.plot(myplt1, myplt2, myplt3,
+                    myplt4, myplt5, myplt6,
+                    myplt7, myplt8, myplt9,
+                    layout=(3,3),size=(1200,1200),dpi=200)
+    display(myplt)
+    png(myplt, folderpath_OWCF*"tests/outputs/dependencies_test_F_os_And_F_COM")
+end
+###------------------------------------------------------------------------------------------------###
+
+############---------------------------------------------------------------------------------------###
+if plot_test_results
+    test_F_os_E = dropdims(sum((dpm*dRm) .*test_F_os_3D,dims=(2,3)),dims=(2,3))
+    test_F_COM_E = dropdims(sum((dLambda*dPphi_n) .*(test_F_COM_3D[:,:,:,1] + test_F_COM_3D[:,:,:,2]),dims=(2,3)),dims=(2,3))
+    myplt = Plots.plot(test_E_array, test_F_os_E, label="(E,pm,Rm)",linewidth=3)
+    myplt = Plots.plot!(test_E_array_os2com, test_F_COM_E, label="(E,Λ,Pϕ_n;σ)",linewidth=1.5)
+    myplt = Plots.plot!(xlabel="E [keV]",title="f(E)",ylabel="f [keV^-1]",dpi=100)
+    display(myplt)
+    png(myplt, folderpath_OWCF*"tests/outputs/dependencies_test_F_os_vs_F_COM_energy_comp")
+end
+###------------------------------------------------------------------------------------------------###
+
+############---------------------------------------------------------------------------------------###
+test_Lambda_array = collect(range(0.0,stop=1.5,length=29))
+test_Pphi_n_array = collect(range(-1.0,stop=1.0,length=30))
 
 test_topoMap_os = getOSTopoMap(M, test_E_array, test_pm_array, test_Rm_array; wall=wall, distinguishLost=true)
-test_topoMap_COM = getCOMTopoMap(M, test_E_array, test_Lambda_array, test_Pphi_n_array)
+test_topoMap_COM_coGoing = getCOMTopoMap(M, test_E_array, test_Lambda_array, test_Pphi_n_array; sigma=+1)
+test_topoMap_COM_ctGoing = getCOMTopoMap(M, test_E_array, test_Lambda_array, test_Pphi_n_array; sigma=-1)
+test_topoMap_COM_os2COM, test_E_array_os2com, test_Lambda_array_os2com, test_Pphi_n_array_os2com = os2COM(M, test_topoMap_os, test_E_array, test_pm_array, test_Rm_array, test_FI_species; isTopoMap=true, wall=wall) # topoMap
 ###------------------------------------------------------------------------------------------------###
 
 ############---------------------------------------------------------------------------------------###
-pm_array_ext = vcat(test_pm_array[1]-(diff(test_pm_array))[1],test_pm_array) # Extend pm_array one row below
-topoMap_ext_1 = vcat(vcat([1,2,3,4,5,6,7,8,9],ones(length(test_Rm_array)-9))', test_topoMap_os[1,:,:])
-topoMap_ext_2 = vcat(vcat([1,2,3,4,5,6,7,8,9],ones(length(test_Rm_array)-9))', test_topoMap_os[2,:,:])
-topoMap_ext_3 = vcat(vcat([1,2,3,4,5,6,7,8,9],ones(length(test_Rm_array)-9))', test_topoMap_os[3,:,:])
-topoMap_ext_4 = vcat(vcat([1,2,3,4,5,6,7,8,9],ones(length(test_Rm_array)-9))', test_topoMap_os[4,:,:])
-myplt1 = Plots.heatmap(test_Rm_array,pm_array_ext,topoMap_ext_1,color=:Set1_9,legend=false,xlabel="Rm [m]", ylabel="pm", title="E: $(round(test_E_array[1],digits=3)) keV", ylims=extrema(test_pm_array), xlims=extrema(test_Rm_array))
-myplt2 = Plots.heatmap(test_Rm_array,pm_array_ext,topoMap_ext_2,color=:Set1_9,legend=false,xlabel="Rm [m]", ylabel="pm", title="E: $(round(test_E_array[2],digits=3)) keV", ylims=extrema(test_pm_array), xlims=extrema(test_Rm_array))
-myplt3 = Plots.heatmap(test_Rm_array,pm_array_ext,topoMap_ext_3,color=:Set1_9,legend=false,xlabel="Rm [m]", ylabel="pm", title="E: $(round(test_E_array[3],digits=3)) keV", ylims=extrema(test_pm_array), xlims=extrema(test_Rm_array))
-myplt4 = Plots.heatmap(test_Rm_array,pm_array_ext,topoMap_ext_4,color=:Set1_9,legend=false,xlabel="Rm [m]", ylabel="pm", title="E: $(round(test_E_array[4],digits=3)) keV", ylims=extrema(test_pm_array), xlims=extrema(test_Rm_array))
+if plot_test_results
+    pm_array_ext = vcat(test_pm_array[1]-(diff(test_pm_array))[1],test_pm_array) # Extend pm_array one row below
+    Lambda_array_ext = vcat(test_Lambda_array[1]-(diff(test_Lambda_array))[1],test_Lambda_array) # Extend test_Lambda_array one row below
+    Lambda_array_ext_os2com = vcat(test_Lambda_array_os2com[1]-(diff(test_Lambda_array_os2com))[1],test_Lambda_array_os2com) # Extend test_Lambda_array_os2com one row below
 
-myplt = Plots.plot(myplt1,myplt2,myplt3,myplt4,layout=(2,2),size=(800,800),dpi=100)
-display(myplt)
-png(myplt,folderpath_OWCF*"tests/outputs/dependencies_test_topoMap_os")
+    iE = 1 # First energy slice
+    iE_os2com = iE # First (1) is always first (1)
+
+    topoMap_ext_1 = vcat(vcat([1,2,3,4,5,6,7,8,9],ones(length(test_Rm_array)-9))', test_topoMap_os[iE,:,:])
+    topoMap_ext_2 = vcat(vcat([1,2,3,4,5,6,7,8,9],ones(length(test_Pphi_n_array)-9))', test_topoMap_COM_coGoing[iE,:,:])
+    topoMap_ext_3 = vcat(vcat([1,2,3,4,5,6,7,8,9],ones(length(test_Pphi_n_array_os2com)-9))', test_topoMap_COM_os2COM[iE_os2com,:,:,2]) # coGoing
+    topoMap_ext_4 = vcat(vcat([1,2,3,4,5,6,7,8,9],ones(length(test_Pphi_n_array)-9))', test_topoMap_COM_ctGoing[iE,:,:])
+    topoMap_ext_5 = vcat(vcat([1,2,3,4,5,6,7,8,9],ones(length(test_Pphi_n_array_os2com)-9))', test_topoMap_COM_os2COM[iE_os2com,:,:,1]) # ctGoing
+
+    myplt1 = Plots.heatmap(test_Rm_array, pm_array_ext, topoMap_ext_1, color=:Set1_9, legend=false, xlabel="Rm [m]", ylabel="pm", title="E: $(round(test_E_array[iE],digits=3)) keV", ylims=extrema(test_pm_array), xlims=extrema(test_Rm_array))
+    myplt2 = Plots.heatmap(test_Pphi_n_array, Lambda_array_ext, topoMap_ext_2, color=:Set1_9, legend=false, xlabel="Pϕ_n [-]", ylabel="Λ [-]", title="getCOMTopoMap() σ=+1", ylims=extrema(test_Lambda_array), xlims=extrema(test_Pphi_n_array))
+    myplt3 = Plots.heatmap(test_Pphi_n_array_os2com, Lambda_array_ext_os2com, topoMap_ext_3, color=:Set1_9, legend=false, xlabel="Pϕ_n [-]", ylabel="Λ [-]", title="os2COM() σ=+1", ylims=extrema(test_Lambda_array), xlims=extrema(test_Pphi_n_array))
+    myplt4 = Plots.heatmap(test_Pphi_n_array, Lambda_array_ext, topoMap_ext_4, color=:Set1_9, legend=false, xlabel="Pϕ_n [-]", ylabel="Λ [-]", title="getCOMTopoMap() σ=-1", ylims=extrema(test_Lambda_array), xlims=extrema(test_Pphi_n_array))
+    myplt5 = Plots.heatmap(test_Pphi_n_array_os2com, Lambda_array_ext_os2com, topoMap_ext_5, color=:Set1_9, legend=false, xlabel="Pϕ_n [-]", ylabel="Λ [-]", title="os2COM() σ=-1", ylims=extrema(test_Lambda_array), xlims=extrema(test_Pphi_n_array))
+
+    myplt = Plots.plot(myplt1,Plots.plot(myplt2,myplt3,layout=(1,2)),Plots.plot(myplt4,myplt5,layout=(1,2)),layout=(3,1),size=(800,1200),dpi=200)
+    display(myplt)
+    png(myplt,folderpath_OWCF*"tests/outputs/dependencies_test_topoMap_os_1of3")
+end
 ###------------------------------------------------------------------------------------------------###
 
 ############---------------------------------------------------------------------------------------###
-Lambda_array_ext = vcat(test_Lambda_array[1]-(diff(test_Lambda_array))[1],test_Lambda_array) # Extend test_Lambda_array one row below
-topoMap_ext_1 = vcat(vcat([1,2,3,4,5,6,7,8,9],ones(length(test_Pphi_n_array)-9))', test_topoMap_COM[1,:,:])
-topoMap_ext_2 = vcat(vcat([1,2,3,4,5,6,7,8,9],ones(length(test_Pphi_n_array)-9))', test_topoMap_COM[2,:,:])
-topoMap_ext_3 = vcat(vcat([1,2,3,4,5,6,7,8,9],ones(length(test_Pphi_n_array)-9))', test_topoMap_COM[3,:,:])
-topoMap_ext_4 = vcat(vcat([1,2,3,4,5,6,7,8,9],ones(length(test_Pphi_n_array)-9))', test_topoMap_COM[4,:,:])
-myplt1 = Plots.heatmap(test_Pphi_n_array,Lambda_array_ext,topoMap_ext_1,color=:Set1_9,legend=false,xlabel="Λ [-]", ylabel="Pϕ_n [-]", title="E: $(round(test_E_array[1],digits=3)) keV", ylims=extrema(test_Lambda_array), xlims=extrema(test_Pphi_n_array))
-myplt2 = Plots.heatmap(test_Pphi_n_array,Lambda_array_ext,topoMap_ext_2,color=:Set1_9,legend=false,xlabel="Λ [-]", ylabel="Pϕ_n [-]", title="E: $(round(test_E_array[2],digits=3)) keV", ylims=extrema(test_Lambda_array), xlims=extrema(test_Pphi_n_array))
-myplt3 = Plots.heatmap(test_Pphi_n_array,Lambda_array_ext,topoMap_ext_3,color=:Set1_9,legend=false,xlabel="Λ [-]", ylabel="Pϕ_n [-]", title="E: $(round(test_E_array[3],digits=3)) keV", ylims=extrema(test_Lambda_array), xlims=extrema(test_Pphi_n_array))
-myplt4 = Plots.heatmap(test_Pphi_n_array,Lambda_array_ext,topoMap_ext_4,color=:Set1_9,legend=false,xlabel="Λ [-]", ylabel="Pϕ_n [-]", title="E: $(round(test_E_array[4],digits=3)) keV", ylims=extrema(test_Lambda_array), xlims=extrema(test_Pphi_n_array))
+if plot_test_results
+    iE = Int64(round(length(test_E_array)/2)) # Middle energy slice
+    iE_os2com = Int64(round(length(test_E_array_os2com)/2)) # Should be same as iE
 
-myplt = Plots.plot(myplt1,myplt2,myplt3,myplt4,layout=(2,2),size=(800,800),dpi=100)
-display(myplt)
-png(myplt,folderpath_OWCF*"tests/outputs/dependencies_test_topoMap_COM")
+    topoMap_ext_1 = vcat(vcat([1,2,3,4,5,6,7,8,9],ones(length(test_Rm_array)-9))', test_topoMap_os[iE,:,:])
+    topoMap_ext_2 = vcat(vcat([1,2,3,4,5,6,7,8,9],ones(length(test_Pphi_n_array)-9))', test_topoMap_COM_coGoing[iE,:,:])
+    topoMap_ext_3 = vcat(vcat([1,2,3,4,5,6,7,8,9],ones(length(test_Pphi_n_array_os2com)-9))', test_topoMap_COM_os2COM[iE_os2com,:,:,2]) # coGoing
+    topoMap_ext_4 = vcat(vcat([1,2,3,4,5,6,7,8,9],ones(length(test_Pphi_n_array)-9))', test_topoMap_COM_ctGoing[iE,:,:])
+    topoMap_ext_5 = vcat(vcat([1,2,3,4,5,6,7,8,9],ones(length(test_Pphi_n_array_os2com)-9))', test_topoMap_COM_os2COM[iE_os2com,:,:,1]) # ctGoing
+
+    myplt1 = Plots.heatmap(test_Rm_array, pm_array_ext, topoMap_ext_1, color=:Set1_9, legend=false, xlabel="Rm [m]", ylabel="pm", title="E: $(round(test_E_array[iE],digits=3)) keV", ylims=extrema(test_pm_array), xlims=extrema(test_Rm_array))
+    myplt2 = Plots.heatmap(test_Pphi_n_array, Lambda_array_ext, topoMap_ext_2, color=:Set1_9, legend=false, xlabel="Pϕ_n [-]", ylabel="Λ [-]", title="getCOMTopoMap() σ=+1", ylims=extrema(test_Lambda_array), xlims=extrema(test_Pphi_n_array))
+    myplt3 = Plots.heatmap(test_Pphi_n_array_os2com, Lambda_array_ext_os2com, topoMap_ext_3, color=:Set1_9, legend=false, xlabel="Pϕ_n [-]", ylabel="Λ [-]", title="os2COM() σ=+1", ylims=extrema(test_Lambda_array), xlims=extrema(test_Pphi_n_array))
+    myplt4 = Plots.heatmap(test_Pphi_n_array, Lambda_array_ext, topoMap_ext_4, color=:Set1_9, legend=false, xlabel="Pϕ_n [-]", ylabel="Λ [-]", title="getCOMTopoMap() σ=-1", ylims=extrema(test_Lambda_array), xlims=extrema(test_Pphi_n_array))
+    myplt5 = Plots.heatmap(test_Pphi_n_array_os2com, Lambda_array_ext_os2com, topoMap_ext_5, color=:Set1_9, legend=false, xlabel="Pϕ_n [-]", ylabel="Λ [-]", title="os2COM() σ=-1", ylims=extrema(test_Lambda_array), xlims=extrema(test_Pphi_n_array))
+
+    myplt = Plots.plot(myplt1,Plots.plot(myplt2,myplt3,layout=(1,2)),Plots.plot(myplt4,myplt5,layout=(1,2)),layout=(3,1),size=(800,1200),dpi=200)
+    display(myplt)
+    png(myplt,folderpath_OWCF*"tests/outputs/dependencies_test_topoMap_os_2of3")
+end
 ###------------------------------------------------------------------------------------------------###
 
 ############---------------------------------------------------------------------------------------###
-#test_F_COM_3D = os2COM(M, test_F_os_3D, test_E_array, test_pm_array, test_Rm_array, test_FI_species; needJac=true, wall=wall, verbose=true) # FI distribution
+if plot_test_results
+    #iE = end # Last energy slice
+    #iE_os2com = end # Last (end) is always last (end)
 
-#dE = diff(test_E_array)[1]; dpm = diff(test_pm_array)[1]; dRm = diff(test_Rm_array)[1]
-#myplt1 = Plots.heatmap(test_Rm_array, test_pm_array, dropdims(sum(dE .*,dims=1),dims=1))
-# CODE A PLOT OF F_os_3D AND F_COM_3D
-# CODE A PLOT OF F_os_3D AND F_COM_3D
-# CODE A PLOT OF F_os_3D AND F_COM_3D
+    topoMap_ext_1 = vcat(vcat([1,2,3,4,5,6,7,8,9],ones(length(test_Rm_array)-9))', test_topoMap_os[end,:,:])
+    topoMap_ext_2 = vcat(vcat([1,2,3,4,5,6,7,8,9],ones(length(test_Pphi_n_array)-9))', test_topoMap_COM_coGoing[end,:,:])
+    topoMap_ext_3 = vcat(vcat([1,2,3,4,5,6,7,8,9],ones(length(test_Pphi_n_array_os2com)-9))', test_topoMap_COM_os2COM[end,:,:,2]) # coGoing
+    topoMap_ext_4 = vcat(vcat([1,2,3,4,5,6,7,8,9],ones(length(test_Pphi_n_array)-9))', test_topoMap_COM_ctGoing[end,:,:])
+    topoMap_ext_5 = vcat(vcat([1,2,3,4,5,6,7,8,9],ones(length(test_Pphi_n_array_os2com)-9))', test_topoMap_COM_os2COM[end,:,:,1]) # ctGoing
 
-###------------------------------------------------------------------------------------------------###
+    myplt1 = Plots.heatmap(test_Rm_array, pm_array_ext, topoMap_ext_1, color=:Set1_9, legend=false, xlabel="Rm [m]", ylabel="pm", title="E: $(round(test_E_array[end],digits=3)) keV", ylims=extrema(test_pm_array), xlims=extrema(test_Rm_array))
+    myplt2 = Plots.heatmap(test_Pphi_n_array, Lambda_array_ext, topoMap_ext_2, color=:Set1_9, legend=false, xlabel="Pϕ_n [-]", ylabel="Λ [-]", title="getCOMTopoMap() σ=+1", ylims=extrema(test_Lambda_array), xlims=extrema(test_Pphi_n_array))
+    myplt3 = Plots.heatmap(test_Pphi_n_array_os2com, Lambda_array_ext_os2com, topoMap_ext_3, color=:Set1_9, legend=false, xlabel="Pϕ_n [-]", ylabel="Λ [-]", title="os2COM() σ=+1", ylims=extrema(test_Lambda_array), xlims=extrema(test_Pphi_n_array))
+    myplt4 = Plots.heatmap(test_Pphi_n_array, Lambda_array_ext, topoMap_ext_4, color=:Set1_9, legend=false, xlabel="Pϕ_n [-]", ylabel="Λ [-]", title="getCOMTopoMap() σ=-1", ylims=extrema(test_Lambda_array), xlims=extrema(test_Pphi_n_array))
+    myplt5 = Plots.heatmap(test_Pphi_n_array_os2com, Lambda_array_ext_os2com, topoMap_ext_5, color=:Set1_9, legend=false, xlabel="Pϕ_n [-]", ylabel="Λ [-]", title="os2COM() σ=-1", ylims=extrema(test_Lambda_array), xlims=extrema(test_Pphi_n_array))
 
-############---------------------------------------------------------------------------------------###
-#test_topoMap_COM_1 = os2COM(M, test_topoMap_os, test_E_array, test_pm_array, test_Rm_array, test_FI_species; isTopoMap=true, wall=wall) # topoMap
-
-# CODE A PLOT OF topoMAP_COM_1
-# CODE A PLOT OF topoMAP_COM_1
-# CODE A PLOT OF topoMAP_COM_1
+    myplt = Plots.plot(myplt1,Plots.plot(myplt2,myplt3,layout=(1,2)),Plots.plot(myplt4,myplt5,layout=(1,2)),layout=(3,1),size=(800,1200),dpi=200)
+    display(myplt)
+    png(myplt,folderpath_OWCF*"tests/outputs/dependencies_test_topoMap_os_3of3")
+end
 ###------------------------------------------------------------------------------------------------###
 
 ############---------------------------------------------------------------------------------------###

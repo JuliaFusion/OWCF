@@ -48,9 +48,9 @@
 # Script written by Henrik Järleblad. Last mainted 2025-04-25.
 ###################################################################################################
 
-folderpath_OWCF = "/path/to/the/OWCF/" # The path to where the OWCF folder is saved on your computer. Remember to finish with '/'
-plot_test_results = false # If set to true, test results will be plotted and saved in .png file format in the OWCF/tests/outputs/ folder
-clear_test_outputs_folder_when_done = true # Should be set to true, be default
+folderpath_OWCF = "/home/henrikj/Codes/OWCF/" # The path to where the OWCF folder is saved on your computer. Remember to finish with '/'
+plot_test_results = true # If set to true, test results will be plotted and saved in .png file format in the OWCF/tests/outputs/ folder
+clear_test_outputs_folder_when_done = false # Should be set to true, be default
 VERY_VERBOSE = false # Should be set to false, unless developer debugging
 
 ###------------------------------------------------------------------------------------------------###
