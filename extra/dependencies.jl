@@ -43,7 +43,6 @@ using LinearAlgebra
 using NearestNeighbors
 using NetCDF
 using OrbitTomography
-import OrbitTomography: orbit_grid
 using ProgressMeter
 using SparseArrays
 using VoronoiDelaunay
@@ -3159,8 +3158,10 @@ end
 
 Compute the orbit-sapce topological map for the energy slice specified by E (keV). Use pmRm_inds to iterate through the pm and Rm coordinates. 
 """
-function getOSTopoMap(M::AbstractEquilibrium, E::Float64, pmRm_inds_array::Vector{Tuple{CartesianIndex{1}, CartesianIndex{1}}}, pm_array::AbstractVector, Rm_array::AbstractVector; FI_species::String="D", wall::Union{Nothing,Boundary{Float64}}=nothing, distinguishLost::Bool=false, distinguishIncomplete::Bool=false, extra_kw_args=Dict(:toa => true))
-    topoMap = @showprogress 1 "Computing topoMap for E=$(E) keV... " @distributed (+) for i in eachindex(pmRm_inds_array)
+function getOSTopoMap(M::AbstractEquilibrium, E::Float64, pmRm_inds_array::Vector{Tuple{CartesianIndex{1}, CartesianIndex{1}}}, pm_array::AbstractVector, 
+                      Rm_array::AbstractVector; FI_species::String="D", wall::Union{Nothing,Boundary{Float64}}=nothing, distinguishLost::Bool=false, 
+                      distinguishIncomplete::Bool=false, show_progress::Bool=false, extra_kw_args=Dict(:toa => true))
+    topoMap = @showprogress enabled=show_progress dt=1 desc="Computing topoMap for E=$(E) keV... " @distributed (+) for i in eachindex(pmRm_inds_array)
         pmRm_inds = pmRm_inds_array[i]
         ipm = pmRm_inds[1]
         iRm = pmRm_inds[2]
@@ -3216,6 +3217,7 @@ The keyword arguments are:
 - psi_Rz - The poloidal flux at all (R,z) points, i.e. ψ(R,z). Computed internally, if not specified - AbstractMatrix
 - RBT_Rz - The poloidal current at all (R,z) points, i.e. R(R,z) .*Bϕ(R,z). Computed internally, if not specified - AbstractMatrix
 - FI_species - The particle species of the ion. Please see OWCF/misc/species_func.jl for a list of available particle species - String
+- show_progress - If set to true, a progress meter will be shown to indicate the computational progress - Bool
 - verbose - If set to true, the function will talk a lot! - Bool
 - vverbose - If set to true, the function will talk even more, and plot too! - Bool
 """
@@ -3223,7 +3225,7 @@ function getCOMTopoMap(M::AbstractEquilibrium, E::Real, Λ_array::AbstractVector
                        sigma::Int64=1, R_array::AbstractVector=nothing, z_array::AbstractVector=nothing, 
                        nR::Int64=100, nz::Int64=120, B_abs_Rz::Union{AbstractMatrix,Nothing}=nothing,
                        psi_Rz::Union{AbstractMatrix,Nothing}=nothing,RBT_Rz::Union{AbstractMatrix,Nothing}=nothing,
-                       FI_species::String="D", verbose::Bool=false, vverbose::Bool=false)
+                       FI_species::String="D", show_progress::Bool=false, verbose::Bool=false, vverbose::Bool=false)
     if !(sigma==1 || sigma==-1)
         error("Keyword 'sigma' must be specified as either +1 or -1. Please correct and re-try.")
     end
@@ -3276,7 +3278,7 @@ function getCOMTopoMap(M::AbstractEquilibrium, E::Real, Λ_array::AbstractVector
         return map(x-> (x > 0.0) ? x : 0.0, res)
     end
 
-    topoMap = @showprogress 1 "Computing topoMap for E=$(E) keV... " @distributed (+) for iPphi in eachindex(Pphi_array)
+    topoMap = @showprogress enabled=show_progress dt=1 desc="Computing topoMap for E=$(E) keV... " @distributed (+) for iPphi in eachindex(Pphi_array)
         Pphi = Pphi_array[iPphi]
         topoMap_i = zeros(Int64,(length(mu_array),length(Pphi_array))) # Initially assume all (E,mu,Pphi) triplets are invalid (9)
         mu_Rz = _mu_func(Pphi) # Mu as a function of (R,z), for a specific Pphi

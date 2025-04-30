@@ -160,21 +160,14 @@ VERY_VERBOSE = false # Should be set to false, unless developer debugging
 
 ############---------------------------------------------------------------------------------------###
 t_start = time() # Test script runtime start
+
+cd(folderpath_OWCF); using Pkg; Pkg.activate(".") # Navigate to the OWCF folder, activate the OWCF environment
 using Distributed # To enable test files of accessing the 'folderpath_OWCF' variable value correctly
+using Dates # To enable date and time functions use
+using JLD2 # To enable reading of test start files in .jld2 file format 
+plot_test_results && (using Plots) # If test results are to be plotted, the Plots.jl package needs to be loaded
 oldstd = stdout # To be able to suppress prints from the test scripts, but not warnings and errors
 SUPPRESS_SUBTEST_PRINT = !VERY_VERBOSE
-
-# Activating the OWCF environment, loading Julia packages
-@everywhere begin
-    folderpath_OWCF = $folderpath_OWCF
-    cd(folderpath_OWCF)
-    using Pkg
-    Pkg.activate(".")
-
-    using Dates
-    using JLD2
-    plot_test_results && (using Plots)
-end
 
 # Checking so that the OWCF/tests/outputs/ folder is empty
 if !isdir(folderpath_OWCF*"tests/outputs/")
