@@ -25,17 +25,30 @@ Since the OWCF can utilize the DRESS code [J. Eriksson *et al* 2016 Comp. Phys. 
 - For Mac, please follow the steps in howToInstallJuliaAndTheOWCF_Mac.pdf
 
 I recommend you read one of those .pdf documents before trying to install the OWCF.
+
+> PLEASE NOTE! For some scripts, the OWCF currently relies on the [PyCall.jl](https://github.com/JuliaPy/PyCall.jl) package. This package will **not** function correctly if the Python environment that you want to connect is a virtual environment created by `conda`. Therefore, as of the current version, if you are using the OWCF together with a Python environment created by `conda`, correct functionality **cannot** be guaranteed.
+
 If you want to install the OWCF in a quick way, do the following
 
-> *navigate to the OWCF folder using a terminal*  
-> julia    
-> using Pkg  
-> Pkg.activate(".")  
-> ENV["PYTHON"] = "...path to your Python executable..."  
-] instantiate  
-*wait for a long time*
-Done!  
+>*navigate to the OWCF folder using a terminal*  
+> `julia`    
+> `using Pkg`  
+> `Pkg.activate(".")`  
+> `ENV["PYTHON"] = "...path to your Python executable..."`  
+] `instantiate`  
+
+Then you grab a cup of coffee, take a nap or wait for a long time... Done!  
 ***
+## Prior to first use:
+Before using the OWCF for the first time after downloading and installing, make sure to run the `OWCF/tests/run_tests.jl` script. This script will run tests to check that the OWCF was installed correctly and can be expected to function correctly. Prior to running, please edit the `run_tests.jl` script and specify the input arguments at the top (e.g. the path to your OWCF folder). Then do the following:
+
+> *navigate to the OWCF folder using a terminal*  
+> `cd tests`  
+> `julia run_tests.jl`
+
+If the `run_tests.jl` script prints `0` errors upon completion, you are good to go!
+***
+## How to use:
 To use the OWCF, find out which script you need. Copy the template start file from the templates/ folder into the main OWCF/ folder. Specify the required inputs. Execute. Get your output results file. Visualze the results using any of the OWCF apps in apps/ or via a plot function in extra/gui.jl Or manually, by writing the necessary code in e.g. scratch.jl.
 
 Some scripts are executed without a template file. The input variables are then specified by modifying the script directly.

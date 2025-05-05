@@ -23,7 +23,7 @@
 #
 # Finally, please note that some functions in dependencies.jl might be under construction. Hence, the bad code.
 #
-# Written by H. Järleblad. Last updated 2025-04-11.
+# Written by H. Järleblad. Last updated 2025-05-05.
 ###################################################################################################
 
 println("Loading the Julia packages for the OWCF dependencies... ")
