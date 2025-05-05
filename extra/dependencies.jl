@@ -3002,16 +3002,16 @@ end
 
 """
 
-checkIfGoodSample(E_sample, p_sample, R_sample, z_sample, energy, pitch, R, z)
+checkIfGoodSample(E_sample, p_sample, R_sample, z_sample, E_array, p_array, R_array, z_array)
 
 The function checks if a sample is within bounds. Returns true if that is the case. Otherwise false.
 """
-function checkIfGoodSample(E_sample::Float64, p_sample::Float64, R_sample::Float64, z_sample::Float64, energy::AbstractVector, pitch::AbstractVector, R::AbstractVector, z::AbstractVector)
+function checkIfGoodSample(E_sample, p_sample, R_sample, z_sample, E_array, p_array, R_array, z_array)
     
-    if (E_sample < minimum(energy) || E_sample > maximum(energy) || 
-        p_sample < minimum(pitch)  || p_sample > maximum(pitch)  || 
-        R_sample < minimum(R)      || R_sample > maximum(R)      || 
-        z_sample < minimum(z)      || z_sample > maximum(z))
+    if (E_sample <= minimum(E_array) || E_sample >= maximum(E_array)  || 
+        p_sample <= minimum(p_array) || p_sample >= maximum(p_array)  || 
+        R_sample <= minimum(R_array) || R_sample >= maximum(R_array)  || 
+        z_sample <= minimum(z_array) || z_sample >= maximum(z_array))
         return false
     else
         return true
