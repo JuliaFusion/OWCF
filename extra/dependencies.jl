@@ -2121,7 +2121,7 @@ function toSampleReady(F_EpRz::Array{Float64,4}, E_array::Array{Float64,1}, p_ar
 
     dims = size(fr) # Tuple
     verbose && println("toSampleReady(): Computing cumulative sum vector... ")
-    frdvols_cumsum_vector = cumsum(Vector(fr .*dvols)) # Vector. Reaaally long vector
+    frdvols_cumsum_vector = cumsum(vec(fr .*dvols)) # Vector. Reaaally long vector
     subs = CartesianIndices(dims) # 4D matrix
 
     return frdvols_cumsum_vector, subs, E_array, p_array, R_array, z_array, dE_array, dp_array, dR_array, dz_array, nfast
@@ -2562,7 +2562,7 @@ function ps2os(M::AbstractEquilibrium, wall::Boundary, F_EpRz::Array{Float64,4},
     if performance
         verbose && println("Computing samples efficiently... ")
         dims = size(fr) # Tuple
-        frdvols_cumsum_vector = cumsum(Vector(fr .*dvols)) # Vector. Reaaally long vector.
+        frdvols_cumsum_vector = cumsum(vec(fr .*dvols)) # Vector. Reaaally long vector.
         subs = CartesianIndices(dims) # 4D matrix
         fr = nothing # Memory efficiency
         dvols = nothing # Memory efficiency
@@ -3002,19 +3002,16 @@ end
 
 """
 
-checkIfGoodSample(E_sample, p_sample, R_sample, z_sample, energy, pitch, R, z)
+checkIfGoodSample(E_sample, p_sample, R_sample, z_sample, E_array, p_array, R_array, z_array)
 
 The function checks if a sample is within bounds. Returns true if that is the case. Otherwise false.
 """
-function checkIfGoodSample(E_sample::Float64, p_sample::Float64, R_sample::Float64, z_sample::Float64, energy::AbstractVector, pitch::AbstractVector, R::AbstractVector, z::AbstractVector)
-
-    dp_1 = pitch[2]-pitch[1]
-    dp_end = pitch[end]-pitch[end-1]
-    dR_1 = R[2]-R[1]
-    dR_end = R[end]-R[end-1]
-    dz_1 = z[2]-z[1]
-    dz_end = z[end]-z[end-1]
-    if E_sample<0.0 || p_sample>(pitch[end]+dp_end/2) || p_sample<(pitch[1]-dp_1/2) || R_sample>(R[end]+dR_end/2) || R_sample<(R[1]-dR_1/2) || z_sample>(z[end]+dz_end/2) || z_sample<(z[1]-dz_1/2)
+function checkIfGoodSample(E_sample, p_sample, R_sample, z_sample, E_array, p_array, R_array, z_array)
+    
+    if (E_sample <= minimum(E_array) || E_sample >= maximum(E_array)  || 
+        p_sample <= minimum(p_array) || p_sample >= maximum(p_array)  || 
+        R_sample <= minimum(R_array) || R_sample >= maximum(R_array)  || 
+        z_sample <= minimum(z_array) || z_sample >= maximum(z_array))
         return false
     else
         return true
@@ -3302,7 +3299,7 @@ function getCOMTopoMap(M::AbstractEquilibrium, E::Real, Λ_array::AbstractVector
                 mu = mu_array[valid_mu_indices[j]] # The mu value for this particular orbit (closed line)
                 oi = orb_select_func(Rm_of_closed_lines) # Select the relevant one (co- or counter-current)
                 Ro, zo = Contour.coordinates(closed_lines[oi]) # Get the (R,z) points of the orbit
-                po = [sqrt(getSpeciesMass(FI_species)/(2*E_joule))*(Pphi-getSpeciesCharge(FI_species)*M(Ro[k],zo[k]))*norm(Vector(Equilibrium.Bfield(M,Ro[k],zo[k])))/(getSpeciesMass(FI_species)*Ro[k]*Vector(Equilibrium.Bfield(M,Ro[k],zo[k]))[2]) for k in eachindex(Ro)] # Compute the (classical) pitch (v_||/v) from Pphi and E. v_||/v = sqrt(m/(2*E))*(Pphi-q*ψ)*B/(m*R*B_phi)
+                po = [sqrt(getSpeciesMass(FI_species)/(2*E_joule))*(Pphi-getSpeciesCharge(FI_species)*M(Ro[k],zo[k]))*norm(vec(Equilibrium.Bfield(M,Ro[k],zo[k])))/(getSpeciesMass(FI_species)*Ro[k]*vec(Equilibrium.Bfield(M,Ro[k],zo[k]))[2]) for k in eachindex(Ro)] # Compute the (classical) pitch (v_||/v) from Pphi and E. v_||/v = sqrt(m/(2*E))*(Pphi-q*ψ)*B/(m*R*B_phi)
                 po = clamp.(po,-1.0,1.0) # Clamp the pitch between -1.0 and 1.0, to adress numerical inaccuracies
                 o_class = GuidingCenterOrbits.classify(Ro,zo,po,magnetic_axis(M)) # Deduce the orbit class from the (R,z), pitch and magnetic axis points
                 if vverbose 
@@ -3854,10 +3851,10 @@ function com2OS(M::AbstractEquilibrium, data::Array{Float64,4}, E_array::Abstrac
         nRm = length(Rm_array)
     else
         if !(wall===nothing)
-            Rm_array = Vector(range((4*magnetic_axis(M)[1]+minimum(wall.r))/5, stop=maximum(wall.r), length=nRm))
+            Rm_array = vec(range((4*magnetic_axis(M)[1]+minimum(wall.r))/5, stop=maximum(wall.r), length=nRm))
         else
             R_lims, z_lims = limits(M)
-            Rm_array = Vector(range((4*magnetic_axis(M)[1]+R_lims[1])/5, stop=R_lims[2], length=nRm))
+            Rm_array = vec(range((4*magnetic_axis(M)[1]+R_lims[1])/5, stop=R_lims[2], length=nRm))
         end
     end
 
@@ -4013,10 +4010,10 @@ function com2OS(M::AbstractEquilibrium, data::Array{Float64, 5}, E_array::Abstra
     end
     if Rm_array===nothing
         if !(wall===nothing)
-            Rm_array = Vector(range((4*magnetic_axis(M)[1]+minimum(wall.r))/5, stop=maximum(wall.r), length=nRm))
+            Rm_array = vec(range((4*magnetic_axis(M)[1]+minimum(wall.r))/5, stop=maximum(wall.r), length=nRm))
         else
             R_lims, z_lims = limits(M)
-            Rm_array = Vector(range((4*magnetic_axis(M)[1]+R_lims[1])/5, stop=R_lims[2], length=nRm))
+            Rm_array = vec(range((4*magnetic_axis(M)[1]+R_lims[1])/5, stop=R_lims[2], length=nRm))
         end
     end
 
