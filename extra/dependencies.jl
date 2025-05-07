@@ -2424,7 +2424,9 @@ distr_dim=[50,40,30,35] will lead to that f(E,p,R,z) has size 50x40x30x35. sign_
 equilibria. Most magnetic equilibria have their cylindrical coordinate phi-direction in the anti-clockwise direction, tokamak viewed from above. However, some don't. For these, 
 set clockwise_phi to true.
 """
-function ps2os_streamlined(F_EpRz::Array{Float64,4}, energy::AbstractVector, pitch::AbstractVector, R::AbstractVector, z::AbstractVector, filepath_equil::AbstractString, og::OrbitGrid; numOsamples::Int64, verbose::Bool=false, distr_dim = [], sign_o_pitch_wrt_B::Bool=false, clockwise_phi::Bool=false, kwargs...)
+function ps2os_streamlined(F_EpRz::Array{Float64,4}, energy::AbstractVector, pitch::AbstractVector, R::AbstractVector, z::AbstractVector, filepath_equil::AbstractString, 
+                           og::OrbitGrid; 
+                           numOsamples::Int64, verbose::Bool=false, distr_dim = [], sign_o_pitch_wrt_B::Bool=false, clockwise_phi::Bool=false, kwargs...)
 
     verbose && println("Loading the magnetic equilibrium... ")
     if ((split(filepath_equil,"."))[end] == "eqdsk") || ((split(filepath_equil,"."))[end] == "geqdsk")
@@ -2488,18 +2490,23 @@ end
 
 """
     ps2os(M, wall, F_EpRz, energy, pitch, R, z, og)
-    ps2os(-||-; numOsamples, verbose=false, FI_species = "D", distributed=true, nbatch=1_000_000, saveProgress=true, performance=true, kwargs...)
+    ps2os(-||-; distributed=true, FI_species = "D", nbatch=100_000, numOsamples=1_000_000, performance=true, progress_file_name="ps2os", saveProgress=true, verbose=false, kwargs...)
 
-Take the (E,p,R,z) fast-ion distribution and use Monte-Carlo sampling to transform it to (E,pm,Rm) orbit space.
-- The number of Monte-Carlo samples is defined by numOsamples
-- If verbose, the function will talk a lot!
-- FI_species defines the guiding-center particle species (please see OWCF/misc/species_func.jl for a list of available species)
-- distributed controls whether to use multi-core processing when Monte-Carlo sampling
-- The Monte-Carlo sampling will be saved every 'nbatch' number of samples. Good to use, in case something goes wrong and terminates early
-- if saveProgress, a progress bar will be displayed when sampling
-- If performance, then performance sampling will be used. Highly recommended! Normal sampling will be deprecated in later versions of the OWCF
+Take the (E,p,R,z) fast-ion distribution and use Monte-Carlo sampling to transform it to (E,pm,Rm) orbit space. The keyword arguments are as follows:
+- distributed - If true, multi-core processing will be used when MC sampling - Bool
+- FI_species - The fast-ion particle species. Please see OWCF/misc/species_func.jl for more info - String
+- nbatch - The size of the batch in which to perform MC sampling. Smaller batch, less RAM required but (likely) longer computational time - Int64
+- numOsamples - The number of Monte-Carlo samples - Int64
+- performance - If true, performance sampling will be used. Normal sampling will be deprecated in newer version of the OWCF - Bool
+- progress_file_name - If saveProgress is set to true (see below), a progress file named progress_[progress_file_name].jld2 is saved, to ensure a warm start if 
+                       the ps2os() progress is terminated prematurely. Defaults to "ps2os" - String
+- save_progress - If true, a file named "progress_[progress_file_name].jld2" will be saved to enable a warm start of the ps2os() progress, if the process is 
+                  terminated prematurely - Bool
+- verbose - If set to true, the function will talk a lot! - Bool
 """
-function ps2os(M::AbstractEquilibrium, wall::Boundary, F_EpRz::Array{Float64,4}, energy::AbstractVector, pitch::AbstractVector, R::AbstractVector, z::AbstractVector, og::OrbitGrid; numOsamples::Int64, verbose::Bool=false, FI_species = "D", distributed::Bool=true, nbatch::Int64 = 1_000_000, saveProgress::Bool=true, performance::Bool=true, kwargs...)
+function ps2os(M::AbstractEquilibrium, wall::Boundary, F_EpRz::Array{Float64,4}, energy::AbstractVector, pitch::AbstractVector, R::AbstractVector, z::AbstractVector, og::OrbitGrid; 
+               distributed::Bool=true, FI_species = "D", nbatch::Int64 = 100_000, numOsamples::Int64=1_000_000, performance::Bool=true, progress_file_name::String="ps2os",
+               saveProgress::Bool=true, verbose::Bool=false, kwargs...)
 
     if verbose
         println("Acquiring fr, dvols and nfast... ")
@@ -2538,9 +2545,9 @@ function ps2os(M::AbstractEquilibrium, wall::Boundary, F_EpRz::Array{Float64,4},
     end
 
     #################################################################################
-    # Handle re-start of ps2os-transformation process, if abruptly cancelled
-    if isfile("ps2os_progress.jld2")
-        myfile = jldopen("ps2os_progress.jld2",false,false,false,IOStream)
+    # Handle re-start of ps2os-transformation process, if terminated prematurely
+    if isfile("progress_$(progress_file_name).jld2")
+        myfile = jldopen("progress_$(progress_file_name).jld2",false,false,false,IOStream)
         numOsamples_sofar = deepcopy(myfile["numOsamples"])
         result_sofar = deepcopy(myfile["F_os"])
         class_distr_sofar = deepcopy(myfile["class_distr"])
@@ -2566,7 +2573,9 @@ function ps2os(M::AbstractEquilibrium, wall::Boundary, F_EpRz::Array{Float64,4},
         subs = CartesianIndices(dims) # 4D matrix
         fr = nothing # Memory efficiency
         dvols = nothing # Memory efficiency
-        return ps2os_performance(M, wall, frdvols_cumsum_vector, subs, nfast, energy, pitch, R, z, og; numOsamples=numOsamples, numOsamples_sofar=numOsamples_sofar, result_sofar=result_sofar, class_distr_sofar=class_distr_sofar, distributed=distributed, FI_species=FI_species, saveProgress=saveProgress, verbose=verbose, kwargs...)
+        return ps2os_performance(M, wall, frdvols_cumsum_vector, subs, nfast, energy, pitch, R, z, og; numOsamples=numOsamples, numOsamples_sofar=numOsamples_sofar, 
+                                 result_sofar=result_sofar, class_distr_sofar=class_distr_sofar, distributed=distributed, FI_species=FI_species, saveProgress=saveProgress, 
+                                 progress_file_name=progress_file_name, verbose=verbose, kwargs...)
     end
     verbose && println("Computing samples the old way... ")
     #################################################################################
@@ -2591,8 +2600,8 @@ function ps2os(M::AbstractEquilibrium, wall::Boundary, F_EpRz::Array{Float64,4},
             class_distr_sofar .+= class_distr_p
             numOsamples_sofar += nbatch
             if saveProgress
-                rm("ps2os_progress.jld2", force=true) #clear the previous file
-                myfile = jldopen("ps2os_progress.jld2",true,true,false,IOStream)
+                rm("progress_$(progress_file_name).jld2", force=true) #clear the previous file
+                myfile = jldopen("progress_$(progress_file_name).jld2",true,true,false,IOStream)
                 write(myfile,"F_os",result_sofar)
                 write(myfile,"class_distr",class_distr_sofar)
                 write(myfile,"numOsamples",numOsamples_sofar)
@@ -2646,8 +2655,8 @@ function ps2os(M::AbstractEquilibrium, wall::Boundary, F_EpRz::Array{Float64,4},
             class_distr_sofar .+= class_distr_i
 
             if (i%nbatch)==0 && saveProgress # Every nbatch sample, save
-                rm("ps2os_progress.jld2", force=true) #clear the previous file
-                myfile = jldopen("ps2os_progress.jld2",true,true,false,IOStream)
+                rm("progress_$(progress_file_name).jld2", force=true) #clear the previous file
+                myfile = jldopen("progress_$(progress_file_name).jld2",true,true,false,IOStream)
                 write(myfile,"F_os",result_sofar)
                 write(myfile,"class_distr",class_distr_sofar)
                 write(myfile,"numOsamples",i)
@@ -2661,58 +2670,45 @@ function ps2os(M::AbstractEquilibrium, wall::Boundary, F_EpRz::Array{Float64,4},
         println("Number of good samples/All samples: $(sum(result)/numOsamples)")
     end
 
-    rm("ps2os_progress.jld2", force=true) # Finally, remove the file that is no longer needed
+    rm("progress_$(progress_file_name).jld2", force=true) # Finally, remove the file that is no longer needed
 
     return result, class_distr, nfast
 end
 
 """
     ps2os_performance(M, wall, fr, dvols, nfast, energy, pitch, R, z, og)
-    ps2os_performance(-||-; numOsamples, numOsamples_sofar=0, result_sofar=zeros(size(og.counts))), distributed=true, FI_species="D", saveProgess=true, nbatch=1_000_000, verbose=false, kwargs...)
+    ps2os_performance(-||-; numOsamples, numOsamples_sofar=0, result_sofar=zeros(size(og.counts))), distributed=true, FI_species="D", 
+                            progress_file_name="ps2os", saveProgess=true, nbatch=1_000_000, verbose=false, kwargs...)
 
 The performance version of part of ps2os(). This function will likely completely replace ps2os() in the near future. It computes necessary quantities
 once instead of for every sample (as ps2os() does). Such as the element-wise product of fr and dvols, and its cumulative sum.
-M - The magnetic equilibrium struct
-wall - The tokamak first wall
-frdvols_cumsum_vector - A vector. The cumulative sum of the (E,p,R,z) fast-ion distribution
-subs - Cartesian indices with the corresponding (E,p,R,z) points for the elements in frdvols_cumsum_vector
-nfast - The total number of fast ions
-energy - The energy grid points
-pitch - The pitch grid points
-R - The major radius grid points
-z - The vertical grid points
-og - The orbit grid struct
-;
-numOsamples - The total number of Monte-Carlo samples (includes numOsamples_sofar)
-numOsamples_sofar - The number of Monte-Carlo samples sampled so far
-result_sofar - The (E,pm,Rm) fast-ion distribution in 1D compressed vector format. So far, having completed numOsamples_sofar number of samples
-distributed - If true, multi-core processing will be used
-FI_species - The fast-ion species. Please see OWCF/misc/species_func.jl
-saveProgress - If true, Monte-Carlo sampling process will be saved every nbatch samples
-nbatch - Compute the Monte-Carlo samples in batches, to optimize computation efficiency and enable subsequent progress saving
-verbose - If true, the function will talk a lot
-visualizeProgress - If true, a progress bar (or equivalent in the single-CPU core case) will be displayed during computations
+The input arguments are:
+    M - The magnetic equilibrium struct
+    wall - The tokamak first wall
+    frdvols_cumsum_vector - A vector. The cumulative sum of the (E,p,R,z) fast-ion distribution
+    subs - Cartesian indices with the corresponding (E,p,R,z) points for the elements in frdvols_cumsum_vector
+    nfast - The total number of fast ions
+    energy - The energy grid points
+    pitch - The pitch grid points
+    R - The major radius grid points
+    z - The vertical grid points
+    og - The orbit grid struct
+The keyword arguments are:
+    numOsamples - The total number of Monte-Carlo samples (includes numOsamples_sofar)
+    numOsamples_sofar - The number of Monte-Carlo samples sampled so far
+    result_sofar - The (E,pm,Rm) fast-ion distribution in 1D compressed vector format. So far, having completed numOsamples_sofar number of samples
+    distributed - If true, multi-core processing will be used
+    FI_species - The fast-ion species. Please see OWCF/misc/species_func.jl
+    progress_file_name - The name of the progress file will be "progress_[progress_file_name].jld2", if saveProgress is set to true
+    saveProgress - If true, Monte-Carlo sampling process will be saved every nbatch samples
+    nbatch - Compute the Monte-Carlo samples in batches, to optimize computation efficiency and enable subsequent progress saving
+    verbose - If true, the function will talk a lot
+    visualizeProgress - If true, a progress bar (or equivalent in the single-CPU core case) will be displayed during computations
 """
-function ps2os_performance(M::AbstractEquilibrium,
-                            wall::Boundary,
-                            frdvols_cumsum_vector::AbstractVector,
-                            subs::CartesianIndices{4,NTuple{4,Base.OneTo{Int64}}},
-                            nfast::Real,
-                            energy::AbstractVector,
-                            pitch::AbstractVector,
-                            R::AbstractVector,
-                            z::AbstractVector,
-                            og::OrbitGrid;
-                            numOsamples::Int64,
-                            numOsamples_sofar::Int64=0,
-                            result_sofar=zeros(size(og.counts)),
-                            class_distr_sofar=zeros(9),
-                            distributed::Bool=true,
-                            FI_species="D",
-                            saveProgress::Bool=true,
-                            nbatch::Int64 = 1_000_000,
-                            verbose::Bool=false,
-                            visualizeProgress::Bool=false,
+function ps2os_performance(M::AbstractEquilibrium, wall::Boundary, frdvols_cumsum_vector::AbstractVector, subs::CartesianIndices{4,NTuple{4,Base.OneTo{Int64}}},
+                            nfast::Real, energy::AbstractVector, pitch::AbstractVector, R::AbstractVector, z::AbstractVector, og::OrbitGrid;
+                            numOsamples::Int64, numOsamples_sofar::Int64=0, result_sofar=zeros(size(og.counts)), class_distr_sofar=zeros(9), distributed::Bool=true,
+                            FI_species="D", progress_file_name="ps2os", saveProgress::Bool=true, nbatch::Int64 = 1_000_000, verbose::Bool=false, visualizeProgress::Bool=false,
                             kwargs...)
     verbose && println("Pre-computing difference vectors... ")
     dE_vector = vcat(abs.(diff(energy)),abs(energy[end]-energy[end-1]))
@@ -2732,8 +2728,8 @@ function ps2os_performance(M::AbstractEquilibrium,
             class_distr_sofar .+= class_distr_p
             numOsamples_sofar += nbatch
             if saveProgress
-                rm("ps2os_progress.jld2", force=true) #clear the previous file
-                myfile = jldopen("ps2os_progress.jld2",true,true,false,IOStream)
+                rm("progress_$(progress_file_name).jld2", force=true) #clear the previous file
+                myfile = jldopen("progress_$(progress_file_name).jld2",true,true,false,IOStream)
                 write(myfile,"F_os",result_sofar)
                 write(myfile,"class_distr", class_distr_sofar)
                 write(myfile,"numOsamples",numOsamples_sofar)
@@ -2799,8 +2795,8 @@ function ps2os_performance(M::AbstractEquilibrium,
             class_distr_sofar .+= class_distr_i
 
             if (i%nbatch)==0 && saveProgress # Every nbatch sample, save
-                rm("ps2os_progress.jld2", force=true) #clear the previous file
-                myfile = jldopen("ps2os_progress.jld2",true,true,false,IOStream)
+                rm("progress_$(progress_file_name).jld2", force=true) #clear the previous file
+                myfile = jldopen("progress_$(progress_file_name).jld2",true,true,false,IOStream)
                 write(myfile,"F_os",result_sofar)
                 write(myfile,"class_distr", class_distr_sofar)
                 write(myfile,"numOsamples",i)
@@ -2813,7 +2809,7 @@ function ps2os_performance(M::AbstractEquilibrium,
     end
 
     verbose && println("Number of good samples/All samples: $(sum(result)/numOsamples)")
-    rm("ps2os_progress.jld2", force=true) # As in ps2os(), remove the progress file that is no longer needed
+    rm("progress_$(progress_file_name).jld2", force=true) # As in ps2os(), remove the progress file that is no longer needed
 
     return result, class_distr, nfast
 end
@@ -2908,7 +2904,10 @@ This is to enable the sampling process to be saved regularly when calculating a 
 If the sampling process is not saved, then progress will be lost when the super-user of the HPC terminates
 the sampling process early, due to misinterpretation of Julia's way of distributed computing.
 """
-function performance_helper(M::AbstractEquilibrium, numOsamples::Int64, frdvols_cumsum_vector::AbstractVector, subs::CartesianIndices{4,NTuple{4,Base.OneTo{Int64}}}, dE_vector::AbstractVector, dp_vector::AbstractVector, dR_vector::AbstractVector, dz_vector::AbstractVector, energy::AbstractVector, pitch::AbstractVector, R::AbstractVector, z::AbstractVector, og::OrbitGrid; wall::Union{Nothing,Boundary{Float64}}, FI_species="D", visualizeProgress::Bool=false, kwargs...)
+function performance_helper(M::AbstractEquilibrium, numOsamples::Int64, frdvols_cumsum_vector::AbstractVector, subs::CartesianIndices{4,NTuple{4,Base.OneTo{Int64}}}, 
+                            dE_vector::AbstractVector, dp_vector::AbstractVector, dR_vector::AbstractVector, dz_vector::AbstractVector, energy::AbstractVector, 
+                            pitch::AbstractVector, R::AbstractVector, z::AbstractVector, og::OrbitGrid; 
+                            wall::Union{Nothing,Boundary{Float64}}, FI_species="D", visualizeProgress::Bool=false, kwargs...)
 
     dE_os_end = abs((og.energy)[end]-(og.energy)[end-1])
     dE_os_1 = abs((og.energy)[2]-(og.energy)[1])
