@@ -94,8 +94,9 @@ end
 ## -----------------------------------------------------------------------------
 @everywhere begin
     include1Dto3D = false
-    filepath_EpRz = "" # for example "c12_2_FI_distribution_800x50x43x49(+1).h5" or "c15_3_FI_distribution_101x52x45x47.jld2" or "EpRzTopoMap_JET_99965K73_at48,4058s_D_100x50x51x54_wLost_wJac.jld2"
-    filepath_equil = "" #JET/g94701/g94701_0-50.7932.eqdsk  #JET/g96100/g96100_0-53.0012.eqdsk
+    filename_start = reduce(*,split(split(@__FILE__,"/")[end],".")[1:end-1]) # @__FILE__ returns the path and file name of the start file. Remove path and don't include the .jl file extension of the start file
+    filepath_EpRz = "" # For example "c12_2_FI_distribution_800x50x43x49(+1).h5" or "c15_3_FI_distribution_101x52x45x47.jld2" or "EpRzTopoMap_JET_99965K73_at48,4058s_D_100x50x51x54_wLost_wJac.jld2"
+    filepath_equil = "" #E.g. "equilibrium/JET/g94701/g94701_0-50.7932.eqdsk"  or "equilibrium/JET/g96100/g96100_0-53.0012.eqdsk"
     filepath_W = ""
     filepath_OG = ""
     folderpath_o = "../OWCF_results/template/" # Output folder path. Finish with '/'
