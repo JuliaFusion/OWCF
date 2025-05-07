@@ -63,6 +63,7 @@ println("Loading Julia packages... ")
     using LinearAlgebra
     using Equilibrium
     plot_LOS && (using Plots)
+    debug = false # This is always set to false, except when OWCF developers are debugging
 end
 
 ## ---------------------------------------------------------------------------------------------
@@ -107,9 +108,15 @@ if ((split(filepath_equil,"."))[end] == "eqdsk") || ((split(filepath_equil,"."))
 
     # Extract timepoint information from .eqdsk/.geqdsk file
     eqdsk_array = split(filepath_equil,".")
-    XX = (split(eqdsk_array[end-2],"-"))[end] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
-    YYYY = eqdsk_array[end-1] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
-    timepoint = XX*","*YYYY # Format XX,YYYY to avoid "." when including in filename of saved output
+    try
+        global timepoint # Declare global scope
+        XX = (split(eqdsk_array[end-2],"-"))[end] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
+        YYYY = eqdsk_array[end-1] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
+        timepoint = XX*","*YYYY # Format XX,YYYY to avoid "." when including in filename of saved output
+    catch
+        global timepoint # Declare global scope
+        timepoint = "TIMELESS"
+    end
 else # Otherwise, assume magnetic equilibrium is a saved .jld2 file
     myfile = jldopen(filepath_equil,false,false,false,IOStream)
     M = myfile["S"]
@@ -178,9 +185,10 @@ end
 
 ## ---------------------------------------------------------------------------------------------
 verbose && println("Creating uniform (R,phi,z) grid for storing LOS data... ")
-R_grid = collect(range(minimum(wall.r),stop=maximum(wall.r),length=nR))
-phi_grid = collect(range(-179,stop=180,length=nphi)).*(pi/180.0) # Toroidal angle
-z_grid = collect(range(minimum(wall.z),stop=maximum(wall.z),length=nz))
+R_grid = collect(range(minimum(wall.r),stop=maximum(wall.r),length=nR)) # Major radius in meters
+phi_grid = collect(range(-180,stop=180,length=nphi)).*(pi/180.0) # Toroidal angle in degrees
+phi_grid = phi_grid[1:end-1] # Remove phi=180 (since it is equivalent to phi=-180)
+z_grid = collect(range(minimum(wall.z),stop=maximum(wall.z),length=nz)) # Vertical coordinate in meters
 omega_3D_array = zeros(nR,nphi,nz) # A 3D array to store all solid angle values for each point on the uniform (R,phi,z) grid
 if case==1
     verbose && println("LOS vector and detector location specified in Cartesian coordinates. Taken as is...")
@@ -299,17 +307,44 @@ else
     end
 end
 
+# Debug plot for keeping track of LOS creation process. ONLY FOR OWCF DEVELOPERS
+if debug
+    R_hfs = minimum(wall.r) # R-coord of high-field side wall
+    R_lfs = maximum(wall.r) # R-coord of low-field side wall
+    wall_phi = collect(0:1:359).*(2*pi/180.0) # Toroidal angle
+    topview_R_hfs_x = (R_hfs).*cos.(wall_phi)
+    topview_R_hfs_y = (R_hfs).*sin.(wall_phi)
+    topview_R_lfs_x = (R_lfs).*cos.(wall_phi)
+    topview_R_lfs_y = (R_lfs).*sin.(wall_phi)
+
+    plt_top = Plots.plot(topview_R_hfs_x,topview_R_hfs_y,linewidth=2.5,color=:black,label="")
+    plt_top = Plots.plot!(topview_R_lfs_x,topview_R_lfs_y,linewidth=2.5,color=:black,label="")
+    plt_top = Plots.plot!(aspect_ratio=:equal,xlabel="x [m]",ylabel="y [m]")
+    plt_top = Plots.plot!(xtickfontsize=14,ytickfontsize=14,xguidefontsize=16,yguidefontsize=16)
+    plt_top = Plots.plot!(plt_top,title="LOS constructing... ",titlefontsize=20)
+end
+
 s = collect(range(0.0,stop=LOS_length,length=Int64(LOS_length_res))) # Create increments for walking the normalized LOS vector along LOS
 ds = s[2] # Since s[1] is zero
 prog_proc = []
 for is=2:Int64(LOS_length_res) # Skip first element, since that would result in an LOS element behind the detector
+    if debug
+        global plt_top
+        debug_plot = false
+    end
+    ss = s[is]
+    LOS_spine_point = detector_location - (ss-ds)*los_vec # LOS_vec is pointing towards detector. To go away from detector, use -, not +.
+    LOS_spine_point_R = sqrt(LOS_spine_point[1]*LOS_spine_point[1]+LOS_spine_point[2]*LOS_spine_point[2]) # R = sqrt(x^2 + y^2)
+    LOS_spine_point_z = LOS_spine_point[3] # z in (R,phi,z) is the same as in (x,y,z)
 
     if !(floor(100*is/LOS_length_res) in prog_proc)
         append!(prog_proc,floor(100*is/LOS_length_res))
         verbose && println("Creating diagnostic line-of-sight $(prog_proc[end]) %... ")
+        if debug
+            plt_top = Plots.scatter!(plt_top, [LOS_spine_point[1]],[LOS_spine_point[2]],label="",markercolor=:blue)
+            debug_plot = true
+        end
     end
-    ss = s[is]
-    LOS_spine_point = detector_location - (ss-ds)*los_vec # LOS_vec is pointing towards detector. To go away from detector, use -, not +.
     rminush = norm(s[is-1]*los_vec) # The distance from the detector to the center of the 'lid' of the voxel, where 'lid' is the voxel surface closest to the detector
     r = norm(detector_location - (LOS_spine_point+EDGEofLOS_vecs[1])) # The distance from the detector to the edge of the 'lid' of the voxel. Don't care which EDGEofLOS_vec. Just use the first.
     OMEGA_LOS_crs = 2*pi*(1-rminush/r) # See https://en.wikipedia.org/wiki/Solid_angle#Solid_angles_for_common_objects and pertaining figure for explanation
@@ -352,17 +387,30 @@ for is=2:Int64(LOS_length_res) # Skip first element, since that would result in 
 
         R_edge = sqrt(LOS_edge_point[1]*LOS_edge_point[1]+LOS_edge_point[2]*LOS_edge_point[2])
         phi_edge = getPhiFromXandY(LOS_edge_point[1],LOS_edge_point[2])
+
         if R_edge>LOS_edge_Rmax 
             LOS_edge_Rmax = R_edge
         end
         if R_edge<LOS_edge_Rmin
             LOS_edge_Rmin = R_edge
         end
-        if phi_edge>LOS_edge_phimax
-            LOS_edge_phimax = phi_edge
-        end
-        if phi_edge<LOS_edge_phimin
-            LOS_edge_phimin = phi_edge
+        # Check if the LOS covers the discontinuity in phi (jump from -pi to +pi) on the opposite side from where phi=0
+        if (LOS_edge_phimax-LOS_edge_phimin)>pi
+            # If so, we need to perform the (perhaps) unintuive procedure below
+            if phi_edge<LOS_edge_phimax && phi_edge>0
+                LOS_edge_phimax = phi_edge
+            end
+            if phi_edge>LOS_edge_phimin && phi_edge<0
+                LOS_edge_phimin = phi_edge
+            end
+        else
+            # If not, just find the phi range of the LOS as usual
+            if phi_edge>LOS_edge_phimax
+                LOS_edge_phimax = phi_edge
+            end
+            if phi_edge<LOS_edge_phimin
+                LOS_edge_phimin = phi_edge
+            end
         end
         if LOS_edge_point[3]>LOS_edge_zmax
             LOS_edge_zmax = LOS_edge_point[3]
@@ -371,12 +419,38 @@ for is=2:Int64(LOS_length_res) # Skip first element, since that would result in 
             LOS_edge_zmin = LOS_edge_point[3]
         end
     end
-    
-    edge_Rinds = findall(x-> x>=LOS_edge_Rmin && x<=LOS_edge_Rmax,R_grid)
-    edge_phiinds = findall(x-> x>=LOS_edge_phimin && x<=LOS_edge_phimax,phi_grid)
-    edge_zinds = findall(x-> x>=LOS_edge_zmin && x<=LOS_edge_zmax,z_grid)
+
+    edge_Rinds = findall(x-> x>=LOS_edge_Rmin && x<=LOS_edge_Rmax, R_grid)
+    edge_zinds = findall(x-> x>=LOS_edge_zmin && x<=LOS_edge_zmax, z_grid)
+    # Check if the LOS covers the discontinuity in phi (jump from -pi to +pi) on the opposite side from where phi=0
+    if (LOS_edge_phimax-LOS_edge_phimin)>pi
+        edge_phiinds_1 = findall(x-> x<LOS_edge_phimin, phi_grid) # The phi coordinates below the y=0 axis
+        edge_phiinds_2 = findall(x-> x>LOS_edge_phimax, phi_grid) # The phi coordinates above the y=0 axis
+        edge_phiinds = vcat(edge_phiinds_1, edge_phiinds_2)
+    else
+        # If not, just use the normal findall() approach
+        edge_phiinds = findall(x-> x>=LOS_edge_phimin && x<=LOS_edge_phimax, phi_grid)
+    end
     OMEGA_per_R_phi_z_voxel = OMEGA_LOS_crs/(length(edge_Rinds)*length(edge_phiinds)*length(edge_zinds)) # The solid angle of a single (R,phi,z) voxel is approximately the total solid angle for the whole circular cross section of the cylinder LOS, divided by the number of (R,phi,z) points within that circular cross section. This is an approximation, but hopefully good enough, if the resolution of R_grid, phi_grid and z_grid is high enough.
     omega_3D_array[edge_Rinds,edge_phiinds,edge_zinds] .= OMEGA_per_R_phi_z_voxel
+
+    if debug_plot
+        x1 = LOS_edge_Rmin*cos(LOS_edge_phimin); y1 = LOS_edge_Rmin*sin(LOS_edge_phimin)
+        x2 = LOS_edge_Rmax*cos(LOS_edge_phimin); y2 = LOS_edge_Rmax*sin(LOS_edge_phimin)
+        x3 = LOS_edge_Rmin*cos(LOS_edge_phimax); y3 = LOS_edge_Rmin*sin(LOS_edge_phimax)
+        x4 = LOS_edge_Rmax*cos(LOS_edge_phimax); y4 = LOS_edge_Rmax*sin(LOS_edge_phimax)
+
+        plt_top = Plots.scatter!(plt_top, [x1],[y1],label="",markercolor=:lightblue)
+        plt_top = Plots.scatter!(plt_top, [x2],[y2],label="",markercolor=:lightblue)
+        plt_top = Plots.scatter!(plt_top, [x3],[y3],label="",markercolor=:lightblue)
+        plt_top = Plots.scatter!(plt_top, [x4],[y4],label="",markercolor=:lightblue)
+        display(plt_top)
+    end
+end
+
+if debug
+    verbose && println("--- DEBUG ---> Saving .png file of debug plot as $(folderpath_o)LOS_name_debug_plot.png... ")
+    png(plt_top,folderpath_o*"$(LOS_name)_debug_plot")
 end
 
 ## ---------------------------------------------------------------------------------------------
