@@ -52,7 +52,7 @@
 # - The tenth column corresponds to toroidal phi angle points
 # - The eleventh column corresponds to solid angles OMEGA
 
-# Script written by Henrik Järleblad. Last maintained 2025-03-26.
+# Script written by Henrik Järleblad. Last maintained 2025-05-07.
 ###############################################################################################################
 
 ## ---------------------------------------------------------------------------------------------
@@ -64,6 +64,7 @@ println("Loading Julia packages... ")
     using Equilibrium
     plot_LOS && (using Plots)
     debug = false # This is always set to false, except when OWCF developers are debugging
+    debug && (using Plots)
 end
 
 ## ---------------------------------------------------------------------------------------------
@@ -160,14 +161,15 @@ function getRotationMatrix(u::Vector{Float64},theta::Float64; verbose=false)
 end
 
 ## ---------------------------------------------------------------------------------------------
-# Define a function that computes phi from x and y
-verbose && println("Defining (x,y)-(phi) helper function... ")
+# Define functions that help to model the diagnostic LOS
+verbose && println("Defining helper functions... ")
+
 """
     getPhiFromXandY(x,y)
 
 Compute the cylindrical coordinate system coordinate phi, from the Cartesian coordinate system coordinates x and y.
 """
-function getPhiFromXandY(x::Number,y::Number)
+function getPhiFromXandY(x::Number, y::Number)
     if x==0 && y==0
         return 0.0 # Just define atan(0/0)=:0, for functionality's sake
     elseif x==0 && !(y==0)
@@ -183,6 +185,43 @@ function getPhiFromXandY(x::Number,y::Number)
     end
 end
 
+"""
+    obscured_by_central_solenoid(wall::Boundary, point::AbstractVector, detector_location::AbstractVector)
+
+Given the tokamak wall 'wall', deduce if the point 'point' is visible by the detector 
+at the location 'detector_location'. That is, if the point is obscured by the central 
+solenoid or not. If it is, return true. Otherwise, return false.
+
+Keyword arguments include:
+    - verbose - If set to true, the function will talk a lot! - Bool
+
+The AbstractEquilibrium struct is the AbstractEquilibrium struct in the Equilibrium.jl package.
+The Boundary struct is the Boundary struct in the Equilibrium.jl package.
+"""
+function obscured_by_central_solenoid(M::AbstractEquilibrium, wall::Boundary, point::AbstractVector, detector_location::AbstractVector; verbose::Bool=false)
+    R_axis, z_axis = magnetic_axis(M) # The (R,z) coordinate of the magnetic axis
+    R_detector_location = sqrt(detector_location[1]*detector_location[1]+detector_location[2]*detector_location[2])
+    if R_detector_location<R_axis # If the detector is located on the high-field side (HFS)...
+        return false # ...then no LOS point can be obscured by the central solenoid
+    end
+    U = detector_location - point # A vector pointing from the point to the detector
+    distance_to_detector = norm(U) # The distance (in meters) from the point to the detector location
+    U = U ./distance_to_detector # Unit vector pointing from voxel to detector
+    R_point = sqrt(point[1]*point[1]+point[2]*point[2]) # R of point
+
+    for l in round.(cumsum(0.1 .*ones(length(0.0:0.1:distance_to_detector)-1)),digits=3) # For every decimeter from the point to the detector location...
+        point_to_check = point + (l .*U)
+        R = sqrt(point_to_check[1]*point_to_check[1] + point_to_check[2]*point_to_check[2])
+        if !in_boundary(wall, R, point_to_check[3]) && R<R_axis # If any part of that straight line is outside of the tokamak first wall and simultaneously on the HFS
+            verbose && print("R_axis: $(R_axis) m    ")
+            verbose && print("minimum(wall.r): $(minimum(wall.r)) m    ")
+            verbose && print("Origin point: (x0,y0,R0)=($(round(point[1],digits=3)),$(round(point[2],digits=3)),$(round(R_point,digits=3)))    ")
+            verbose && println("Obscured point: (x,y,R)=($(round(point_to_check[1],digits=3)),$(round(point_to_check[2],digits=3)),$(round(R,digits=3)))")
+            return true # The point is deemed obscured by the central solenoid
+        end
+    end
+    return false
+end
 ## ---------------------------------------------------------------------------------------------
 verbose && println("Creating uniform (R,phi,z) grid for storing LOS data... ")
 R_grid = collect(range(minimum(wall.r),stop=maximum(wall.r),length=nR)) # Major radius in meters
@@ -434,17 +473,19 @@ for is=2:Int64(LOS_length_res) # Skip first element, since that would result in 
     OMEGA_per_R_phi_z_voxel = OMEGA_LOS_crs/(length(edge_Rinds)*length(edge_phiinds)*length(edge_zinds)) # The solid angle of a single (R,phi,z) voxel is approximately the total solid angle for the whole circular cross section of the cylinder LOS, divided by the number of (R,phi,z) points within that circular cross section. This is an approximation, but hopefully good enough, if the resolution of R_grid, phi_grid and z_grid is high enough.
     omega_3D_array[edge_Rinds,edge_phiinds,edge_zinds] .= OMEGA_per_R_phi_z_voxel
 
-    if debug_plot
-        x1 = LOS_edge_Rmin*cos(LOS_edge_phimin); y1 = LOS_edge_Rmin*sin(LOS_edge_phimin)
-        x2 = LOS_edge_Rmax*cos(LOS_edge_phimin); y2 = LOS_edge_Rmax*sin(LOS_edge_phimin)
-        x3 = LOS_edge_Rmin*cos(LOS_edge_phimax); y3 = LOS_edge_Rmin*sin(LOS_edge_phimax)
-        x4 = LOS_edge_Rmax*cos(LOS_edge_phimax); y4 = LOS_edge_Rmax*sin(LOS_edge_phimax)
+    if debug
+        if debug_plot
+            x1 = LOS_edge_Rmin*cos(LOS_edge_phimin); y1 = LOS_edge_Rmin*sin(LOS_edge_phimin)
+            x2 = LOS_edge_Rmax*cos(LOS_edge_phimin); y2 = LOS_edge_Rmax*sin(LOS_edge_phimin)
+            x3 = LOS_edge_Rmin*cos(LOS_edge_phimax); y3 = LOS_edge_Rmin*sin(LOS_edge_phimax)
+            x4 = LOS_edge_Rmax*cos(LOS_edge_phimax); y4 = LOS_edge_Rmax*sin(LOS_edge_phimax)
 
-        plt_top = Plots.scatter!(plt_top, [x1],[y1],label="",markercolor=:lightblue)
-        plt_top = Plots.scatter!(plt_top, [x2],[y2],label="",markercolor=:lightblue)
-        plt_top = Plots.scatter!(plt_top, [x3],[y3],label="",markercolor=:lightblue)
-        plt_top = Plots.scatter!(plt_top, [x4],[y4],label="",markercolor=:lightblue)
-        display(plt_top)
+            plt_top = Plots.scatter!(plt_top, [x1],[y1],label="",markercolor=:lightblue)
+            plt_top = Plots.scatter!(plt_top, [x2],[y2],label="",markercolor=:lightblue)
+            plt_top = Plots.scatter!(plt_top, [x3],[y3],label="",markercolor=:lightblue)
+            plt_top = Plots.scatter!(plt_top, [x4],[y4],label="",markercolor=:lightblue)
+            display(plt_top)
+        end
     end
 end
 
@@ -457,12 +498,12 @@ end
 # Use non-zero elements of omega_3D_array to map out LOS on uniform (R,phi,z) grid
 # Compute x, y, V, UX, UY, and UZ for those points
 # Together with R, phi and OMEGA (and C, redundant), put in data structures to be saved in LINE21-like file
-# Filter out points that are inside the tokamak wall/plasma boundary
+# Filter out points that are inside the tokamak wall/plasma boundary and/or not obscured by the central solenoid
 verbose && println("Mapping out LOS data on uniform (R,phi,z) grid... ")
 
 # Find all non-zero omega_3D_array indices
 nz_coords = findall(x-> x>0.0, omega_3D_array)
-verbose && println("---> Number of non-zero solid angle indices: $(length(nz_coords))")
+verbose && println("---> Number of LOS voxels with eligible (R,phi,z) coordinates (inside grid boundaries): $(length(nz_coords))")
 
 # Instantiate arrays for x, y, z, ... etc
 dR = abs(R_grid[2]-R_grid[1]) # Need to be uniform grid because of LINE21
@@ -482,6 +523,7 @@ LOS_OMEGA = zeros(length(nz_coords))
 LOS_in = Array{Bool,1}(undef,length(nz_coords)) # To keep track of points inside tokamak wall/plasma boundary
 
 # Loop through non-zero indices
+prog_proc = []
 for (inz, nz_coord) in enumerate(nz_coords)
     local R
 
@@ -509,13 +551,18 @@ for (inz, nz_coord) in enumerate(nz_coords)
     LOS_R[inz] = R
     LOS_phi[inz] = phi
     LOS_OMEGA[inz] = OMEGA
-    LOS_in[inz] = in_boundary(wall,R,z) # Is the point inside the tokamak wall/boundary? If so, set bool element to true
+    LOS_in[inz] = (in_boundary(wall,R,z) && !obscured_by_central_solenoid(M, wall,[x,y,z],detector_location)) # Is the point inside the tokamak wall/boundary? And is it visible by the detector (not obscured by the central solenoid)?
+
+    if !(floor(100*inz/length(nz_coords)) in prog_proc)
+        append!(prog_proc,floor(100*inz/length(nz_coords)))
+        verbose && println("Removing LOS voxels outside tokamak first wall and/or obscured by central solenoid $(prog_proc[end]) %... ")
+        obscured_by_central_solenoid(M, wall,[x,y,z],detector_location; verbose=debug)
+    end
 end
-verbose && println("---> Number of LOS voxels inside the tokamak wall/boundary: $(sum(LOS_in))")
+verbose && println("---> Number of valid LOS voxels (not outside tokamak first wall and not obscured by central solenoid): $(sum(LOS_in))")
 
 ## ---------------------------------------------------------------------------------------------
 # Remove voxels outside of the tokamak wall/plasma boundary. Round to 9 significant digits (like the LINE21 code)
-verbose && println("Filtering out points outside of the tokamak wall/plasma boundary... ")
 LOS_x = round.(LOS_x[LOS_in],sigdigits=9)
 LOS_y = round.(LOS_y[LOS_in],sigdigits=9)
 LOS_z = round.(LOS_z[LOS_in],sigdigits=9)
