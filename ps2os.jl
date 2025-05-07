@@ -65,7 +65,7 @@
 # Please note that in future versions of the OWCF, the user may use a toggle input to select other transformation methods
 # than simply Monte-Carlo methods. This has, however, not yet been incorporated into the OWCF.
 #
-# Script written by Henrik Järleblad. Last maintained 2024-08-26.
+# Script written by Henrik Järleblad. Last maintained 2025-05-07.
 ##################################################################################################################################
 
 ## --------------------------------------------------------------------------------------
@@ -240,7 +240,7 @@ if include1Dto3D
     println("")
 end
 println("If you would like to change any settings, please edit the start_ps2os_template.jl file (or equivalent)")
-println("Written by Henrik Järleblad. Last maintained 2024-08-26.")
+println("Written by Henrik Järleblad. Last maintained 2025-05-07.")
 println("----------------------------------------------------------------------------------------")
 
 ## --------------------------------------------------------------------------------------
@@ -314,8 +314,8 @@ if trans_distr
     verbose && println("Going into ps2os_streamlined (performance=true manually set)... ")
     F_os_raw, class_distr, nfast = ps2os_streamlined(F_EpRz, E_array_ps, p_array, R_array, z_array, filepath_equil, og; numOsamples=numOsamples, 
                                                      verbose=verbose, distr_dim=distr_dim, visualizeProgress=visualizeProgress, nbatch=nbatch, 
-                                                     distributed=distributed, sign_o_pitch_wrt_B=sign_o_pitch_wrt_B, performance=true, FI_species=FI_species, 
-                                                     extra_kw_args... )
+                                                     distributed=distributed, sign_o_pitch_wrt_B=sign_o_pitch_wrt_B, performance=true, FI_species=FI_species,
+                                                     progress_file_name=filename_start, extra_kw_args... )
 else
     if (@isdefined jacobian)
         verbose && println("Transforming a non-distribution quantity from (E,p,R,z) to (E,pm,Rm)... ")
