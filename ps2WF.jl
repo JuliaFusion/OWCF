@@ -214,9 +214,9 @@ end
 
 ## ---------------------------------------------------------------------------------------------
 # Load the particle-space fast-ion distribution and corresponding grid arrays
-if fileext_FI=="h5"
-    verbose && println("Loading fast-ion distribution from .h5 file... ")
-    F_ps, energy, pitch, R, z = h5to4D(filepath_FI_distr, verbose = verbose)
+if fileext_FI=="h5" || fileext_FI=="hdf5"
+    verbose && println("Loading fast-ion distribution from .h5/.hdf5 file... ")
+    F_ps, energy, pitch, R, z = h5to4D(filepath_FI_distr; rowmajor=h5_is_rowmajor, verbose = verbose)
 elseif fileext_FI=="jld2"
     verbose && println("Loading fast-ion distribution from .jld2 file... ")
     myfile = jldopen(filepath_FI_distr,false,false,false,IOStream)

@@ -173,7 +173,6 @@ if !isnothing(filename_o)
         error("The 'filename_o' input variable was specified as $(filename_o). This is not 'nothing' nor a String type. Please correct and re-try.")
     end
 end
-filename_o_orig = deepcopy(filename_o) # Deep copy the output filename variable and value. To be able to re-use the 'filename_o' variable name
 
 ## ---------------------------------------------------------------------------------------------
 # Error checks
@@ -242,9 +241,15 @@ if ((split(filepath_equil,"."))[end] == "eqdsk") || ((split(filepath_equil,"."))
 
     # Extract timepoint information from .eqdsk/.geqdsk file
     eqdsk_array = split(filepath_equil,".")
-    XX = (split(eqdsk_array[end-2],"-"))[end] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
-    YYYY = eqdsk_array[end-1] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
-    timepoint = XX*","*YYYY # Format XX,YYYY to avoid "." when including in filename of saved output
+    try
+        global timepoint # Declare global scope
+        XX = (split(eqdsk_array[end-2],"-"))[end] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
+        YYYY = eqdsk_array[end-1] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
+        timepoint = XX*","*YYYY # Format XX,YYYY to avoid "." when including in filename of saved output
+    catch
+        global timepoint # Declare global scope
+        timepoint = "00,0000"
+    end
 else # Otherwise, assume magnetic equilibrium is a saved .jld2 file
     myfile = jldopen(filepath_equil,false,false,false,IOStream)
     M = myfile["S"]
@@ -414,7 +419,7 @@ else
     println("diagnostic_filepath not specified. Spherical emission will be assumed.")
 end
 if instrumental_response
-    println("Instrumental response filepath: "*instrumental_response_filepath)
+    println("Instrumental response filepath: " .*instrumental_response_filepath)
 else
     println("instrumental_response_filepath not specified. Diagnostic response not included.")
 end
@@ -500,7 +505,7 @@ println("Please remove previously saved files with the same file name (if any) p
 println("")
 println("If you would like to change any settings, please edit the start_calc2DW_template.jl file or similar.")
 println("")
-println("Written by Henrik Järleblad. Last maintained 2025-03-25.")
+println("Written by Henrik Järleblad. Last maintained 2025-05-09.")
 println("--------------------------------------------------------------------------------------------------")
 println("")
 
@@ -513,6 +518,7 @@ verbose && println("Loading Python modules... ")
     import os.path
     import numpy as np
     import forward
+    import spec
     import vcone
     """
 end
@@ -536,7 +542,7 @@ else
         py"""
         # The '$' in front of many Python variables means that the variable is defined in Julia, not in Python.
         reaction = $reaction
-        test_thermal_particle = Particle($thermal_species) # Check so that thermal species is available in DRESS code
+        test_thermal_particle = spec.Particle($thermal_species) # Check so that thermal species is available in DRESS code
         thermal_species = $thermal_species
         projVel = $projVel
         if $verbose:
@@ -561,7 +567,7 @@ end
 # Pre-processing thermal density and temperature data
 ψ_rz = M(R_of_interest,z_of_interest)
 psi_on_axis, psi_at_bdry = psi_limits(M)
-ρ_pol_rz = sqrt((ψ_rz-psi_on_axis)/(psi_at_bdry-psi_on_axis)) # The formula for the normalized flux coordinate ρ_pol = sqrt((ψ-ψ_axis)/(ψ_edge-ψ_axis))
+ρ_pol_rz = sqrt(max(0.0,(ψ_rz-psi_on_axis)/(psi_at_bdry-psi_on_axis))) # The formula for the normalized flux coordinate ρ_pol = sqrt((ψ-ψ_axis)/(ψ_edge-ψ_axis)). max(0.0,...) included for numerical inaccuracies
 
 if lowercase(fileext_thermal)=="jld2" && !projVel
     verbose && println("Setting thermal particle species temperature and density using data in $(filepath_thermal_distr)... ")
@@ -659,7 +665,14 @@ end
 # Transfer the thermal_temp and thermal_dens variables to external processes
 @everywhere thermal_temp = $thermal_temp
 @everywhere thermal_dens = $thermal_dens
-@everywhere thermal_dist = $thermal_dist
+if !analytic
+    @everywhere begin 
+        thermal_dist = $thermal_dist
+        py"""
+        thermal_dist = $thermal_dist
+        """
+    end
+end
 
 ## ---------------------------------------------------------------------------------------------
 E_iE_p_ip_array = zip(repeat(E_array,outer=length(p_array)),repeat(eachindex(E_array),outer=length(p_array)),repeat(p_array,inner=length(E_array)),repeat(eachindex(p_array),inner=length(E_array)))
@@ -804,7 +817,9 @@ for iii=1:iiimax
 
     if !debug
         verbose && println("Saving weight function matrix... ")
-        if iiimax==1 # If you intend to calculate only one weight matrix
+        if !isnothing(filename_o)
+            filepath_output_orig = folderpath_o*filename_o
+        elseif iiimax==1 # If you intend to calculate only one weight matrix
             global filepath_output_orig = folderpath_o*"velWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*"_$(length(range(Ed_min,stop=Ed_max,step=Ed_diff))-1)x$(nE)x$(np)"
         else # If you intend to calculate several (identical) weight matrices
             global filepath_output_orig = folderpath_o*"velWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*"_$(iii)"
@@ -821,14 +836,9 @@ for iii=1:iiimax
         write(myfile_s,"W",Wtot)
         write(myfile_s,"E_array",vec(E_array))
         write(myfile_s,"p_array",vec(p_array))
-        if instrumental_response
-            write(myfile_s,"Ed_array",instrumental_response_output)
-        else
-            write(myfile_s,"Ed_array",Ed_array)
-        end
         write(myfile_s,"reaction",reaction)
-        write(myfile_s,"R",R_of_interest)
-        write(myfile_s,"z",z_of_interest)
+        write(myfile_s,"R_of_interest",R_of_interest)
+        write(myfile_s,"z_of_interest",z_of_interest)
         if projVel
             write(myfile_s,"projVel",projVel)
         end
@@ -842,7 +852,7 @@ for iii=1:iiimax
             write(myfile_s,"Ed_array",instrumental_response_output)
             write(myfile_s,"Ed_array_units",instrumental_response_output_units)
             write(myfile_s,"Ed_array_raw",Ed_array)
-            write(myfile_s,"Ed_array_raw_units",analytical2DWs ? "m_s^-1" : "keV") # The raw output abscissa of calc2DWeights.jl is always in m/s or keV
+            write(myfile_s,"Ed_array_raw_units",projVel ? "m_s^-1" : "keV") # The raw output abscissa of calc2DWeights.jl is always in m/s or keV
             write(myfile_s,"instrumental_response_input",instrumental_response_input)
             write(myfile_s,"instrumental_response_output",instrumental_response_output)
             write(myfile_s,"instrumental_response_matrix",instrumental_response_matrix)
@@ -851,17 +861,14 @@ for iii=1:iiimax
             end
         else
             write(myfile_s,"Ed_array",Ed_array)
-            write(myfile_s,"Ed_array_units",analytical2DWs ? "m_s^-1" : "keV") # Otherwise, the output abscissa of calcSpec.jl is always in m/s or keV
+            write(myfile_s,"Ed_array_units",projVel ? "m_s^-1" : "keV") # Otherwise, the output abscissa of calcSpec.jl is always in m/s or keV
         end
-        if analytical2DWs
-            write(myfile_s,"analytical2DWs",analytical2DWs)
+        if analytic
+            write(myfile_s,"analytic","Weight functions computed using the equations in e.g. A. Valentini et al, 2025, Nucl. Fusion 65, 046031")
         end
         if plasma_rot
             write(myfile_s,"plasma_rot_at_Rz",plasma_rot_at_Rz)
         end
-        write(myfile_s,"reaction_full",reaction_full)
-        write(myfile_s,"R",R_of_interest)
-        write(myfile_s,"z",z_of_interest)
         write(myfile_s,"filepath_thermal_distr",filepath_thermal_distr)
         write(myfile_s,"filepath_start",filepath_start)
         close(myfile_s)
@@ -880,8 +887,8 @@ if iiimax>1 # If we were supposed to compute more than one weight matrix...
         p_array = myfile["p_array"]
         Ed_array = myfile["Ed_array"]
         reaction = myfile["reaction"]
-        R = myfile["R"]
-        z = myfile["z"]
+        R_of_interest = myfile["R_of_interest"]
+        z_of_interest = myfile["z_of_interest"]
         if projVel
             projVel = myfile["projVel"]
         end
@@ -902,15 +909,12 @@ if iiimax>1 # If we were supposed to compute more than one weight matrix...
                 W_vel_raw_total = zeros(size(myfile["W_vel_raw"]))
             end
         end
-        if analytical2DWs
-            analytical2DWs = myfile["analytical2DWs"]
+        if analytic
+            analytic = myfile["analytic"]
         end
         if plasma_rot
             plasma_rot_at_Rz = myfile["plasma_rot_at_Rz"]
         end
-        reaction_full = myfile["reaction_full"]
-        R = myfile["R"]
-        z = myfile["z"]
         filepath_thermal_distr = myfile["filepath_thermal_distr"]
         filepath_start = myfile["filepath_start"]
         close(myfile)
@@ -948,8 +952,8 @@ if iiimax>1 # If we were supposed to compute more than one weight matrix...
         write(myfile,"p_array",p_array)
         write(myfile,"Ed_array",Ed_array)
         write(myfile,"reaction",reaction)
-        write(myfile,"R",R)
-        write(myfile,"z",z)
+        write(myfile,"R_of_interest",R_of_interest)
+        write(myfile,"z_of_interest",z_of_interest)
         if projVel
             write(myfile,"projVel",projVel)
         end
@@ -970,15 +974,12 @@ if iiimax>1 # If we were supposed to compute more than one weight matrix...
                 write(myfile,"W_vel_raw",W_vel_raw_total)
             end
         end
-        if analytical2DWs
-            write(myfile,"analytical2DWs",analytical2DWs)
+        if analytic
+            write(myfile,"analytic",analytic)
         end
         if plasma_rot
             write(myfile,"plasma_rot_at_Rz",plasma_rot_at_Rz)
         end
-        write(myfile,"reaction_full",reaction_full)
-        write(myfile,"R",R)
-        write(myfile,"z",z)
         write(myfile,"filepath_thermal_distr",filepath_thermal_distr)
         write(myfile,"filepath_start",filepath_start)
         close(myfile)

@@ -116,7 +116,7 @@ if ((split(filepath_equil,"."))[end] == "eqdsk") || ((split(filepath_equil,"."))
         timepoint = XX*","*YYYY # Format XX,YYYY to avoid "." when including in filename of saved output
     catch
         global timepoint # Declare global scope
-        timepoint = "TIMELESS"
+        timepoint = "00,0000"
     end
 else # Otherwise, assume magnetic equilibrium is a saved .jld2 file
     myfile = jldopen(filepath_equil,false,false,false,IOStream)
@@ -128,7 +128,7 @@ else # Otherwise, assume magnetic equilibrium is a saved .jld2 file
     if typeof(timepoint)==String && length(split(timepoint,","))==2
         timepoint = timepoint
     else
-        timepoint = "TIMELESS" # Unknown timepoint for magnetic equilibrium
+        timepoint = "00,0000" # Unknown timepoint for magnetic equilibrium
     end
 end
 

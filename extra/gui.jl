@@ -27,7 +27,7 @@
 ###################################################################################################
 
 println("Loading the Julia packages for the grahpical user interfaces (GUI) of the OWCF... ")
-using Plots, FileIO, HDF5, JLD2, GuidingCenterOrbits, LaTeXStrings
+using Plots, LaTeXStrings
 include("dependencies.jl")
 
 """
@@ -49,24 +49,25 @@ end
 
 """
     plot_fE_comp(F_os_3D, E_array, pm_array, Rm_array, filepath_distr)
-    plot_fE_comp(-||-; verbose=false, logplot=true, os_equidistant=true)
+    plot_fE_comp(-||-; rowmajor=false, verbose=false, logplot=true, os_equidistant=true)
 
 Given a fast-ion orbit-space distribution and its grid points, defined by F_os_3D, E_array, pm_array and Rm_array, respectively, compute the
 integrated energy dependance f(E) and compare it with the energy dependence of the fast-ion (E,p,R,z) distribution given by the data in 
 filepath_distr.
 
 By default, assume
-- no verbose printing
-- log-y plot wanted
-- that the grid in orbit-space is equidistant
+- (rowmajor=false) that the 'filepath_distr' file, if it is an .h5/.hdf5 file, was saved using a column-major programming language (e.g. Julia)
+- (verbose=false) no verbose printing
+- (logplot=true) log-y plot wanted
+- (os_equidistant=true) that the grid in orbit-space is equidistant
 """
-function plot_fE_comp(F_os_3D::Array{Float64,3}, E_array::AbstractArray, pm_array::AbstractArray, Rm_array::AbstractArray, filepath_distr::String; verbose::Bool=false, logplot::Bool=true, os_equidistant::Bool=true)
+function plot_fE_comp(F_os_3D::Array{Float64,3}, E_array::AbstractArray, pm_array::AbstractArray, Rm_array::AbstractArray, filepath_distr::String; rowmajor::Bool=false, verbose::Bool=false, logplot::Bool=true, os_equidistant::Bool=true)
 
     # Determine filepath_distr file extension
     fileext_distr = (split(filepath_distr,"."))[end] # Assume last part after final '.' is the file extension
     if (lowercase(fileext_distr) == "h5") || (lowercase(fileext_distr) == "hdf5")
         verbose && println("Loading .h5 file and extracting f, E, p, R and z... ")
-        F_EpRz, energy, pitch, R, z = h5to4D(filepath_distr; verbose = verbose) # Load the (E,p,R,z) fast-ion distribution. For energy comparison.
+        F_EpRz, energy, pitch, R, z = h5to4D(filepath_distr; rowmajor=rowmajor, verbose = verbose) # Load the (E,p,R,z) fast-ion distribution. For energy comparison.
     elseif lowercase(fileext_distr) == "jld2"
         F_EpRz, energy, pitch, R, z = JLD2to4D(filepath_distr; verbose = verbose) # Load the (E,p,R,z) fast-ion distribution. For energy comparison.
     else
@@ -254,13 +255,15 @@ end
     plot_fEp(filepath_distr,verbose=true, kwargs... )
 
 Load the F_EpRz (E,p,R,z) fast-ion distribution from file (.h5/.hdf5/.jld2), integrate over (R,z) and plot the E,p-dependance, i.e. f(E,p).
+If input is an .h5/.hdf5 file and the file was saved using a row-major programming language (e.g. C/C++/NumPy in Python), set the 'rowmajor' 
+keyword argument to true.
 """
-function plot_F_Ep(filepath_distr::String; verbose::Bool=false, kwargs...)
+function plot_F_Ep(filepath_distr::String; rowmajor::Bool=false, verbose::Bool=false, kwargs...)
     # Determine filepath_distr file extension
     fileext_distr = (split(filepath_distr,"."))[end] # Assume last part after final '.' is the file extension
     if (lowercase(fileext_distr) == "h5") || (lowercase(fileext_distr) == "hdf5")
         verbose && println("Loading .h5 file and extracting f, E, p, R and z... ")
-        F_EpRz, energy, pitch, R, z = h5to4D(filepath_distr; verbose = verbose) # Load the (E,p,R,z) fast-ion distribution. For energy comparison.
+        F_EpRz, energy, pitch, R, z = h5to4D(filepath_distr; rowmajor=rowmajor, verbose = verbose) # Load the (E,p,R,z) fast-ion distribution. For energy comparison.
     elseif lowercase(fileext_distr) == "jld2"
         verbose && println("Loading .jld2 file and extracting f, E, p, R and z... ")
         F_EpRz, energy, pitch, R, z = JLD2to4D(filepath_distr; verbose = verbose) # Load the (E,p,R,z) fast-ion distribution. For energy comparison.
@@ -299,17 +302,18 @@ end
 
 """
     plot_F_Rz(filepath_distr)
-    plot_F_Rz(-||-, verbose=false, filepath_equil=nothing, clockwise_phi_false, kwargs... )
+    plot_F_Rz(-||-; rowmajor=false, verbose=false, filepath_equil=nothing, clockwise_phi_false, kwargs... )
 
 Load the (E,p,R,z) fast-ion distribution F_EpRz from file (.h5/.hdf5/.jld2), integrate over (E,p) and plot the R,z-dependance, i.e. f(R,z). 
-Also load and include the tokamak wall, if available.
+Also load and include the tokamak wall, if available. If input is an .h5/.hdf5 file, and it was saved using a row-major programming language 
+(e.g. C/C++/NumPy in Python), please set the 'rowmajor' keyword argument to true.
 """
-function plot_F_Rz(filepath_distr::String; verbose::Bool=false, filepath_equil::Bool=nothing, clockwise_phi::Bool=false, kwargs...)
+function plot_F_Rz(filepath_distr::String; rowmajor::Bool=false, verbose::Bool=false, filepath_equil::Bool=nothing, clockwise_phi::Bool=false, kwargs...)
     # Determine filepath_distr file extension
     fileext_distr = (split(filepath_distr,"."))[end] # Assume last part after final '.' is the file extension
     if (lowercase(fileext_distr) == "h5") || (lowercase(fileext_distr) == "hdf5")
         verbose && println("Loading .h5 file and extracting f, E, p, R and z... ")
-        F_EpRz, energy, pitch, R, z = h5to4D(filepath_distr; verbose = verbose) # Load the (E,p,R,z) fast-ion distribution. For energy comparison.
+        F_EpRz, energy, pitch, R, z = h5to4D(filepath_distr; rowmajor=rowmajor, verbose = verbose) # Load the (E,p,R,z) fast-ion distribution. For energy comparison.
     elseif lowercase(fileext_distr) == "jld2"
         verbose && println("Loading .jld2 file and extracting f, E, p, R and z... ")
         F_EpRz, energy, pitch, R, z = JLD2to4D(filepath_distr; verbose = verbose) # Load the (E,p,R,z) fast-ion distribution. For energy comparison.
