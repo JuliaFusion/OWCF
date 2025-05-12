@@ -241,8 +241,8 @@ function SetReaction(reaction)
     if !reactionIsAvailableAnalytically(reaction)
         error("Expected spectra from fusion reaction $(reaction) is currently not available for computation via analytic equations. Currently analytically available fusion reactions include: $(OWCF_AVAILABLE_FUSION_REACTIONS_FOR_ANALYTIC_COMPUTATION). Please correct and re-try.")
     end
-    reactants = getFusionReactants(reaction)
-    products = getFusionProducts(reaction)
+    reactants = getFusionReactants(reaction); reactants = [r for r in reactants] # Convert from Tuple to Vector, to match with code by A. Valentini below
+    products = getFusionProducts(reaction); products = [p for p in products] # ...
     nuclear_state = getEmittedParticleEnergyLevel(reaction)
 
     # Beware: fast and thermal reactants are re-mapped here according to a->t, b->b, c->d, d->r (see miscellaneous comments on top)
@@ -326,10 +326,6 @@ The inputs are as follows
 - bulk_dens - Number densities in m^-3 for target (thermal) particle species at the (E,p,R,z) points.
 """
 function forward_calc(viewing_cone, o_E, o_p, o_R, o_z, o_w, Ed_bin_centers, o_B; reaction="T(D,n)4He-GS", bulk_dens=ones(length(o_E)).*1.0e19) 
-    
-    if getReactionForm(reaction)==3
-        error("Fusion reaction specified as $(reaction). Spectrum computation via projected velocities assumed. This is not compatible with the analytic forward model. Please use fusion reaction form 1 or 2. Please see OWCF/misc/availReacts.jl for explanation. Please correct and re-try.")
-    end
 
     m_b,m_t,m_d,m_r,g_ray,dSigma_dcosCM = SetReaction(reaction) # Also checks whether reaction is analytically available in the OWCF
 
@@ -348,8 +344,8 @@ function forward_calc(viewing_cone, o_E, o_p, o_R, o_z, o_w, Ed_bin_centers, o_B
     B_vc = o_B[:,i_points] # Extract magnetic field vectors corresponding to R,z points within diagnostic viewing cone
     omega = viewing_cone.OMEGA[i_voxels] # Only specific solid angles, in steradian
     dphi = viewing_cone.dPHI # What is the incremental toroidal angle that one diagnostic viewing cone voxel occupies?
-    ud_norm = sqrt.(sum(vc.U[:,i_voxels].^2, dims=1))
-    ud = vc.U[:,i_voxels] ./ ud_norm # What is the emission direction of the viewing cone?
+    ud_norm = sqrt.(sum(viewing_cone.U[:,i_voxels].^2, dims=1))
+    ud = viewing_cone.U[:,i_voxels] ./ ud_norm # What is the emission direction of the viewing cone?
     
     mag_B_vc = sqrt.(sum(B_vc.^2, dims=1))
     lambda_d = vec( acos.( clamp.( sum(ud .* B_vc, dims=1)./mag_B_vc, -1, 1 ) ) )

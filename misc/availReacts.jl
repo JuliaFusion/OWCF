@@ -90,16 +90,18 @@ end
 
 function reactionIsAvailableAnalytically(fusion_reaction::String; verbose::Bool=false)
     if getReactionForm(fusion_reaction)==3
-        verbose && println("Expected diagnostic spectra analytically computed from projected velocity spectra is not possible.")
+        verbose && println("reactionIsAvailableAnalytically(): Expected diagnostic spectra analytically computed from projected velocity spectra is not possible.")
         return false
     end
 
     if getReactionForm(fusion_reaction)==1
-        verbose && println("Fusion reaction a(d,c)d input has form 1. Assuming ground state for particle c and adding '-GS' for check... ")
+        verbose && println("reactionIsAvailableAnalytically(): Fusion reaction a(d,c)d input has form 1. Assuming ground state for particle c and adding '-GS' for check... ")
         fusion_reaction *= "-GS"
     end
 
     if lowercase(fusion_reaction) in lowercase.(OWCF_AVAILABLE_FUSION_REACTIONS_FOR_ANALYTIC_COMPUTATION)
+        verbose && println("reactionIsAvailableAnalytically(): lowercase(fusion_reaction): $(lowercase(fusion_reaction))")
+        verbose && println("reactionIsAvailableAnalytically(): lowercase.(): $(lowercase.(OWCF_AVAILABLE_FUSION_REACTIONS_FOR_ANALYTIC_COMPUTATION))")
         return true
     else
         return false

@@ -1529,13 +1529,16 @@ end
 
 """
     h5to4D(filepath_distr)
-    h5to4D(filepath_distr, backwards=true, verbose=false)
+    h5to4D(filepath_distr, rowmajor=false, verbose=false)
 
 Load and read a .h5/.hdf5 file containing the data necessary to construct a 4D fast-ion distribution, with dimensions (E,p,R,z).
-Automatically assume that the data will be loaded backwards, because that seems to be the case when exporting 4D
-data from Python via .h5/.hdf5 files. Returns f, E, p, R, z.
+The keyword arguments include:
+    rowmajor - If the .h5/.hdf5 file was created and saved using a row-major ordering programming language (e.g. C/C++/NumPy in Python,
+               for more info please study https://en.wikipedia.org/wiki/Row-_and_column-major_order), the 'rowmajor' keyword argument 
+               should be set to true.
+    verbose - If set to true, the function will talk a lot!
 """
-function h5to4D(filepath_distr::AbstractString; backwards::Bool = true, verbose::Bool = false)
+function h5to4D(filepath_distr::AbstractString; rowmajor::Bool = false, verbose::Bool = false)
 
     if verbose
         println("Loading the 4D distribution from .hdf5 file... ")
@@ -1543,13 +1546,13 @@ function h5to4D(filepath_distr::AbstractString; backwards::Bool = true, verbose:
     myfile = h5open(filepath_distr,"r")
     if haskey(myfile,"F_ps")
         verbose && println("Found F_ps key in .hdf5 file.")
-        fbackwards = read(myfile["F_ps"])
+        f_data = read(myfile["F_ps"])
     elseif haskey(myfile,"f")
         verbose && println("Found f key in .hdf5 file.")
-        fbackwards = read(myfile["f"])
+        f_data = read(myfile["f"])
     elseif haskey(myfile,"F_EpRz")
         verbose && println("Found F_EpRz key in .hdf5 file.")
-        fbackwards = read(myfile["F_EpRz"])
+        f_data = read(myfile["F_EpRz"])
     else
         error("Fast-ion distribution .hdf5 file did not have any expected keys for the distribution (F_ps, f or F_EpRz).")
     end
@@ -1589,24 +1592,20 @@ function h5to4D(filepath_distr::AbstractString; backwards::Bool = true, verbose:
     end
     close(myfile)
 
-    if (size(fbackwards,1)==length(energy)) && (size(fbackwards,2)==length(pitch)) && (size(fbackwards,3)==length(R)) && (size(fbackwards,4)==length(z))
-        backwards = false
-    end
-
-    if backwards
+    if rowmajor
         verbose && println("Fast-ion distribution data is permutated. Solving... ")
-        f = zeros(size(fbackwards,4),size(fbackwards,3),size(fbackwards,2),size(fbackwards,1))
+        f = zeros(size(f_data,4),size(f_data,3),size(f_data,2),size(f_data,1))
         for i in axes(f,1)
             for j in axes(f,2)
                 for k in axes(f,3)
                     for l in axes(f,4)
-                        f[i,j,k,l] = fbackwards[l,k,j,i]
+                        f[i,j,k,l] = f_data[l,k,j,i]
                     end
                 end
             end
         end
     else
-        f = fbackwards
+        f = f_data # If .h5 file was not created with Python, the 4D array is not permutated
     end
 
     return f, energy, pitch, R, z
@@ -1999,18 +1998,21 @@ end
 
 """
     h5toSampleReady(filepath_distr, interp)
-    h5toSampleReady(-||-, backwards=true, verbose=false)
+    h5toSampleReady(-||-, verbose=false)
 
-Load the fast-ion distribution from a .h5 file and forward to function toSampleReady().
+Load the fast-ion distribution from a .h5/.hdf5 file and forward to function toSampleReady().
 
 --- Input:
 filepath_distr - The fast-ion distribution in .h5 file format - String
-backwards - If saved with Python, the .h5 file will have (z,R,p,E) orientation instead of (E,p,R,z). Set to false, if that is not that case - Bool
-verbose - If set to true, you will get a talkative function indeed - Bool
+The keyword arguments include: 
+    rowmajor - If the .h5/.hdf5 file was created and saved using a row-major ordering programming language (e.g. C/C++/NumPy in Python,
+               for more info please study https://en.wikipedia.org/wiki/Row-_and_column-major_order), the 'rowmajor' keyword argument 
+               should be set to true.
+    verbose - If set to true, you will get a talkative function! - Bool
 """
-function h5toSampleReady(filepath_distr::AbstractString; backwards::Bool = true, verbose::Bool = false, kwargs...)
+function h5toSampleReady(filepath_distr::AbstractString; rowmajor::Bool = false, verbose::Bool = false, kwargs...)
     verbose && println("Loading fast-ion distribution from .h5 file... ")
-    F_EpRz, E_array, p_array, R_array, z_array = h5to4D(filepath_distr, backwards=backwards, verbose=verbose)
+    F_EpRz, E_array, p_array, R_array, z_array = h5to4D(filepath_distr, rowmajor=rowmajor, verbose=verbose)
 
     return toSampleReady(F_EpRz, E_array, p_array, R_array, z_array; verbose=verbose, kwargs...)
 end
@@ -2400,13 +2402,13 @@ This function is a streamlined version of sampling particle-space (PS) and conve
 It allows transformation from (E,p,R,z) to (E,pm,Rm) directly from filepath_distr, using a magnetic equilibrium found in the filepath_equil file.
 numOsamples sets the number of Monte-Carlo samples for the transformation. Verbose switches function print statements on/off.
 """
-function ps2os_streamlined(filepath_distr::AbstractString, filepath_equil::AbstractString, og::OrbitGrid; numOsamples::Int64, verbose::Bool=false, kwargs...)
+function ps2os_streamlined(filepath_distr::AbstractString, filepath_equil::AbstractString, og::OrbitGrid; rowmajor::Bool=false, numOsamples::Int64, verbose::Bool=false, kwargs...)
 
     if verbose
         println("")
         println("Loading f, energy, pitch, R and z from file... ")
     end
-    f, energy, pitch, R, z = h5to4D(filepath_distr, verbose = verbose) # Load fast-ion distribution
+    f, energy, pitch, R, z = h5to4D(filepath_distr; rowmajor=rowmajor, verbose = verbose) # Load fast-ion distribution
 
     return ps2os_streamlined(f,energy,pitch,R,z,filepath_equil, og; numOsamples=numOsamples, verbose=verbose, kwargs...)
 end
@@ -4204,14 +4206,19 @@ The keyword arguments are:
     - E_tail_length: If specified (Float or Int), the slowing-down function will be dampened below (E0-E_tail_length) [keV]
     - sigma: If specified, (Float or Int), the slowing-down function will be dampened this quickly [keV]
 """
-function slowing_down_function(E_0::Real, p_0::Real, E_array::Vector{T} where {T<:Real}, p_array::Vector{T} where {T<:Real}, n_e::Real, T_e::Real, species_f::String, species_th_vec::Vector{String}, n_th_vec::Vector{T} where {T<:Real}, T_th_vec::Vector{T} where {T<:Real}; type::Symbol=:core, returnExtra::Bool=false, E_tail_length::Union{Nothing,Real}=nothing, sigma::Union{Nothing,Real}=nothing, kwargs...)
+function slowing_down_function(E_0::Real, p_0::Real, E_array::Vector{T} where {T<:Real}, p_array::Vector{T} where {T<:Real}, n_e::Real, T_e::Real, 
+                               species_f::String, species_th_vec::Vector{String}, n_th_vec::Vector{T} where {T<:Real}, T_th_vec::Vector{T} where {T<:Real}; 
+                               type::Symbol=:core, returnExtra::Bool=false, E_tail_length::Union{Nothing,Real}=nothing, sigma::Union{Nothing,Real}=nothing, 
+                               kwargs...)
     m_f = getSpeciesMass(species_f) # Beam (fast) particle mass, kg
     E2v_rel = (E-> (GuidingCenterOrbits.c0)*sqrt(1-(1/(((E*1000*GuidingCenterOrbits.e0)/(m_f*(GuidingCenterOrbits.c0)^2))+1)^2))) # A one-line function to transform from energy (keV) to relativistic speed (m/s)
     v2E_rel = (v-> inv(1000*GuidingCenterOrbits.e0)*m_f*((GuidingCenterOrbits.c0)^2)*(sqrt(1/(1-(v/(GuidingCenterOrbits.c0))^(2)))-1)) # A one-line function to transform from relativistic speed (m/s) to energy (keV)
 
     v_damp = nothing
+    dampen = false
     if !isnothing(E_tail_length)
         v_damp = E2v_rel(clamp(E_0 - E_tail_length,0,Inf))
+        dampen = true
     end
 
     v_sigma = nothing
@@ -4240,9 +4247,9 @@ function slowing_down_function(E_0::Real, p_0::Real, E_array::Vector{T} where {T
     v_0 =  E2v_rel(E_0) # Convert energy source point to velocity (relativistically)
     v_array = E2v_rel.(E_array) # Convert energy grid to velocity (relativistically)
     if returnExtra # If extra output is desired... 
-        f_SD_vp, v_c, v_L, τ_s, α_0 = my_SD_func(v_0, p_0, v_array, p_array, n_e, T_e, species_f, species_th_vec, n_th_vec, T_th_vec; returnExtra=returnExtra, v_damp=v_damp, sigma=v_sigma, kwargs...)
+        f_SD_vp, v_c, v_L, τ_s, α_0 = my_SD_func(v_0, p_0, v_array, p_array, n_e, T_e, species_f, species_th_vec, n_th_vec, T_th_vec; returnExtra=returnExtra, dampen=dampen, v_damp=v_damp, sigma=v_sigma, kwargs...)
     else # If not...
-        f_SD_vp = my_SD_func(v_0, p_0, v_array, p_array, n_e, T_e, species_f, species_th_vec, n_th_vec, T_th_vec; v_damp=v_damp, sigma=v_sigma, kwargs...)
+        f_SD_vp = my_SD_func(v_0, p_0, v_array, p_array, n_e, T_e, species_f, species_th_vec, n_th_vec, T_th_vec; dampen=dampen, v_damp=v_damp, sigma=v_sigma, kwargs...)
     end
     dvdE_array = [(1/sqrt(2*m_f*v2E_rel(v))) for v in v_array] # Compute Jacobian from v to E
     f_SD = reshape(dvdE_array,(length(dvdE_array),1)) .*f_SD_vp # Transform f(v,p) to f(E,p)

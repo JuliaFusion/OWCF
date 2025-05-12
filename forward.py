@@ -120,12 +120,12 @@ class Forward(object):
         elif reaction_form==2:
             fusion_reaction, energy_state = reaction.split('-')
             reactants, products = fusion_reaction.split(',')
-            thermal_ion, fast_ion = fusion_reaction.split('(')
+            thermal_ion, fast_ion = reactants.split('(')
             a = fast_ion
             b = thermal_ion
         else:
             energy_state = 'GS'
-            a = fast_ion
+            a = reaction
             b = 'proj'
         reaction_short = a+"-"+b # Only the reactants, on the form [fast ion]-[thermal ion]
 

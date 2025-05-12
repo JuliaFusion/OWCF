@@ -1,81 +1,53 @@
-#########################################  getEpRzFIdistrFromTRANSP.jl #########################################
-# This Julia script will read the TRANSP fast-ion (FI) .cdf-file, use read_nubeam() and output a 4D FI-distribution 
-# in particle-space coordinates (E,p,R,z), together with the E,p,R and z vectors.
-# It will save this data in .jld2 format.
+#########################################  TRANSP_fastion_data_to_EpRz.jl #########################################
+# This Julia script will read the TRANSP-NUBEAM fast-ion (FI) .cdf-file, use read_nubeam() and output a 4D FI
+# distribution in particle-space coordinates (E,p,R,z), together with the E,p,R and z vectors. It will save this 
+# data in .jld2 file format.
 #
 # For this to work, you need to manually specify the minimum and maximum values for major radius and vertical
 # positions R and z, respectively. You also need to specify how many grid points you want in R and z. These 
 # specifications are set via the input arguments below this script description.
 
 ### Inputs
-# filepath_distr - The path to the TRANSP fast-ion distribution in .cdf file format that you want to use - String
-# folderpath_OWCF - The path to the OWCF-folder. Remember to finish with '/' since it's a folder and not a file. - String
-# folderpath_out - The path to the folder in which you want your output. Remember to finish with '/'. - String
-# nR - The number of major radius position grid points that you would like your (E,p,R,z) distribution to have - Int64
-# nz - The number of vertical position grid points that you would like your (E,p,R,z) distribution to have - Int64
-# Rmin - The minimum value (lower boundary) for your major radius position grid points. In centimeters. - Float64
-# Rmax - The maximum value (lower boundary) for your major radius position grid points. In centimeters. - Float64
-# signOfJdotB - Should be set to 1 if sign(dot(J,B))>0. Else, set to -1.
-# zmin - The minimum value (lower boundary) for your vertical position grid points. In centimeters. - Float64
-# zmax - The maximum value (lower boundary) for your vertical position grid points. In centimeters. - Float64
+# Please see the OWCF/templates/start_TRANSPtoEpRz_template.jl file for info.
 
 ### Outputs
 # - 
 
 ### Saved file
 ## [TRANSP ID]_fi_[step].jld2 with the following keys
-# species - The fast-ion species of the fast-ion distribution. Saved as a String
-# timepoint - The timepoint of the tokamak shot of the TRANSP simulation. Saved as a Float64
-# ntot - The total number of fast ions. Saved as a Float64
-# F_EpRz - The (E,p,R,z) fast-ion distribution. Saved as a 4D matrix
-# F_Rz - The f(R,z). The energy and pitch dependence has been integrated out. Saved as a 2D array
-# energy - The energy grid points saved as a 1D array
-# pitch - The pitch grid points saved as a 1D array
-# R - The major radius position grid points saved as a 1D array. cm
-# z - The vertical position grid points saved as 1D array. cm
-# R_sep - The R coordinates of the separatrix saved as a 1D array. cm
-# z_sep - The z coordinates of the separatrix saved as a 1D array. cm
-# signOfJdotB - The signOfJdotB input saved as a scalar
-# orig_TRANSP_filepath - filepath_distr saved as a string
+#   species - The fast-ion species of the fast-ion distribution. Saved as a String
+#   timepoint - The timepoint of the tokamak shot of the TRANSP simulation. Saved as a Float64
+#   ntot - The total number of fast ions. Saved as a Float64
+#   F_EpRz - The (E,p,R,z) fast-ion distribution. Saved as a 4D matrix
+#   F_Rz - The f(R,z). The energy and pitch dependence has been integrated out. Saved as a 2D array
+#   energy - The energy grid points saved as a 1D array
+#   pitch - The pitch grid points saved as a 1D array
+#   R - The major radius position grid points saved as a 1D array. cm
+#   z - The vertical position grid points saved as 1D array. cm
+#   R_sep - The R coordinates of the separatrix saved as a 1D array. cm
+#   z_sep - The z coordinates of the separatrix saved as a 1D array. cm
+#   signOfJdotB - The signOfJdotB input saved as a scalar
+#   orig_TRANSP_filepath - filepath_distr saved as a string
 
-# Script written by Henrik Järleblad, last updated 2022-10-06.
-# The rz_grid() and read_nubeam() functions have been re-written in Julia; the original functions were written and developed in Python
-# as part of the FIDASIM code framework, by Luke Stagner.
+### Other
+# The rz_grid() and read_nubeam() functions have been re-written in Julia; the original functions were written 
+# and developed in Python as part of the FIDASIM code framework, by Luke Stagner et al.
+
+# Script written by Henrik Järleblad, last updated 2025-05-09.
 ################################################################################################################
 
-############################################################# Inputs
-filepath_distr = "" # for example '/Users/anna/TRANSP/JET/99500/V05/99500V05_fi_1.cdf'
-folderpath_OWCF = ""
-folderpath_out = ""
-nR = 64
-nz = 65
-Rmin = 1.83591998*100 # cm. Default value suitable for JET
-Rmax = 3.89143991*100 # cm. Default value suitable for JET
-zmin = -1.74594998*100 # cm. Default value suitable for JET
-zmax = 1.98403001*100 # cm. Default value suitable for JET
-e_range = nothing # Specified as (a,b). If all TRANSP energies are desired, leave as 'nothing'
-p_range = nothing # Specified as (a,b). If all TRANSP pitch values are desired, leave as 'nothing'
-species=1 # '1' means the first species of the TRANSP file (usually the main fast-ion species)
-btipsign=1 # '1' means that sign(J ⋅ B) > 0. '-1' means that sign(J ⋅ B) < 0
-verbose=true # If true, the script will speak a lot!
-plotting=true # If true, the script will plot results along the way. For safety checks.
-vverbose=false # If true, the script will speak a lot more! WARNING! You don't want this... It's just too much.
-save_plots = true
-
-############################################################# Activate OWCF environment and load packages
-using Pkg
-cd(folderpath_OWCF)
-Pkg.activate(".")
-
+############################################################# Load packages
+verbose && println("Loading packages... ")
 using JLD2
-using Plots
 using NetCDF
 using Statistics
 using LinearAlgebra
 using Interpolations
 using VoronoiDelaunay
 using NearestNeighbors
+plotting && (using Plots)
 ############################################################# Define the grid Struct, rz_grid() and read_nubeam() functions
+verbose && println("Defining necessary struct and functions to be able to load TRANSP fast-ion data... ")
 struct grid
     r2d::Matrix{Float64}
     z2d::Matrix{Float64}
@@ -454,7 +426,6 @@ function read_nubeam(filepath::String, mygrid::grid; e_range::Union{Nothing,Tupl
 end
 
 ############################################################# Execute the script
-# Change directory to the OWCF extra/ folder
 
 # Split filepath_distr by using '/' as delimeter
 verbose && println("Examining filepath_distr... ")
@@ -472,7 +443,7 @@ mygrid = rz_grid(Rmin, Rmax, nR, zmin, zmax, nz)
 
 # Read the TRANSP computed fast-ion distribution, and convert it to (E,p,R,z) format
 verbose && println("Converting fast-ion distribution from TRANSP .cdf-file spiral format to (E,p,R,z) format... ")
-F_EpRz_dict = read_nubeam(filepath_distr,mygrid; e_range=e_range, p_range=p_range, species=species, btipsign=btipsign, verbose=verbose, plotting=plotting, vverbose=vverbose, save_plots=save_plots)
+F_EpRz_dict = read_nubeam(filepath_distr, mygrid; e_range=e_range, p_range=p_range, species=species, btipsign=btipsign, verbose=verbose, plotting=plotting, vverbose=vverbose, save_plots=save_plots)
 
 # Save the results in .h5 file
 global filepath_output_orig = folderpath_out*filename_distr
@@ -500,4 +471,4 @@ jldopen(filepath_output, true, true, false, IOStream) do file
     write(file, "orig_TRANSP_filepath", F_EpRz_dict["data_source"])
 end
 
-verbose && println("~~~~~~ getEpRzFIdistrFromTRANSP.jl completed successfully! ~~~~~~")
+verbose && println("~~~~~~ TRANSP_fastion_data_to_EpRz.jl completed successfully! ~~~~~~")

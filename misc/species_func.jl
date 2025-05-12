@@ -128,13 +128,13 @@ dictionary above for a list of all available species. Example of valid inputs:
     - getGCP("4he") # Helium-4
     - getGCP("alpha") # Alpha particle (same as 4he)
     - getGCP("e") # Electron
-Example of non-valid (!!!) inputs:
-    - getGCP("p") # Proton
-DO NOT use "p" for a proton, as this may be confused with the lowercase chemical element 
+PLEASE DO NOT use "p" for a proton, as this may be confused with the lowercase chemical element 
 symbol for Phosphorus. Use "H" or "proton" instead. In addition, if a lowercase "N" is 
 provided as the 'species_identifier' input, i.e. "n", the function will assume that you mean 
 a neutron and return a guiding-centre particle struct with mass equal to the neutron mass 
-and zero charge. The keyword arguments are:
+and zero charge. A lowercase "G", i.e. "g", is assumed to be a gamma ray. 
+
+The keyword arguments are:
 - E: The particle energy in keV - Float64
 - p: The particle pitch (v_||/v) - Float64
 - R: The particle major radius coordinate in meters - Float64
@@ -143,12 +143,16 @@ and zero charge. The keyword arguments are:
 """
 function getGCP(species_identifier::AbstractString; E=0.0, p=0.0, R=0.0, z=0.0, verbose=false)
     if species_identifier=="n"
-        @warn "getGCP() input was $(species_identifier). Assuming a neutron."
+        verbose && println("getGCP() input was $(species_identifier). Assuming a neutron.")
         return (GuidingCenterOrbits.GCParticle(E,p,R,z,OWCF_NEUTRON_MASS_AMU*OWCF_AMU_TO_KG,0)) # Neutron mass, zero charge
     end
     if species_identifier=="g"
-        @warn "getGCP() input was $(species_identifier). Assuming a gamma photon."
+        verbose && println("getGCP() input was $(species_identifier). Assuming a gamma photon.")
         return (GuidingCenterOrbits.GCParticle(E,p,R,z,0.0,0)) # Zero mass, zero charge
+    end
+    if species_identifier=="p"
+        verbose && println("getGCP() input was $(species_identifier). Assuming a proton (please use \"H\" or \"proton\" next time)")
+        return (GuidingCenterOrbits.GCParticle(E,p,R,z,OWCF_PROTON_MASS_AMU*OWCF_AMU_TO_KG,1)) # Neutron mass, zero charge
     end
     species_identifier_lowercase = lowercase(species_identifier)
     species_A = match(number_pattern,species_identifier_lowercase) # The atomic mass number, e.g. RegexMatch("10") of "3he". nothing if only e.g. "he"
