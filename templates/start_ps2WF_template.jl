@@ -26,6 +26,9 @@
 # filepath_FI_TRANSP_shot - The path to the TRANSP .cdf fast-ion file, if filepath_thermal_distr is specified as a .cdf TRANSP file - String
 # filepath_thermal_distr - The path to the thermal species distribution file. Must be .cdf (TRANSP) or .jld2 file format. Otherwise "" - String
 # folderpath_o - The path to the folder where the results will be saved - String
+# h5_is_rowmajor - If the 'filepath_FI_distr' file is an .h5/.hdf5 file and it was saved using a row-major programming language (e.g. C/C++ or 
+#                  NumPy in Python, please see https://en.wikipedia.org/wiki/Row-_and_column-major_order for more info), this input variable 
+#                  should be set to true - Bool
 # inclPrideRockOrbs - If true, then pride-rock/pinch orbits will be included. Otherwise, minimum(Rm) = magnetic axis by default - Bool
 # nE - The number of fast-ion energy grid points in orbit space, if E_array is left unspecified - Int64
 # nEbatch - The batch size of your energy grid in orbit space. Must be <= nE - Int64
@@ -116,6 +119,7 @@ end
     filepath_thermal_distr = "" # for example "96100J01.cdf", "c21_3_thermal_profiles.jld2" or ""
     folderpath_o = "../OWCF_results/template/" # Output folder path. Finish with '/'
     folderpath_OWCF = $folderpath_OWCF # Set path to OWCF folder to same as main process (hence the '$')
+    h5_is_rowmajor = false # Set to true, if 'filepath_EpRz' is an .h5/.hdf5 and it was saved using a row-major programming language
     inclPrideRockOrbs = false # If true, then does what it says. Otherwise, magnetic axis will be used.
     nE = 0
     nEbatch = 2

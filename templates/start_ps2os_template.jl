@@ -17,6 +17,9 @@
 # filepath_W - The path to the weights file to use as blueprint for the orbit grid. If desired. - String
 # filepath_OG - The path to the output file from calcOrbGrid.jl. If specified, ps2os.jl will use that as the (E,pm,Rm) grid points - String
 # folderpath_o - Path to folder where you want your results. End with '/' (or '\' if Windows...) - String'
+# h5_is_rowmajor - If the 'filepath_EpRz' file is an .h5/.hdf5 file and it was saved using a row-major programming language (e.g. C/C++ or 
+#                  NumPy in Python, please see https://en.wikipedia.org/wiki/Row-_and_column-major_order for more info), this input variable 
+#                  should be set to true - Bool
 # numOsamples - The number of orbit samples you want. The more, the better the transform. But takes longer to compute! - Int64
 # nbatch - The algorithm will save the progress every nbatch sample. Useful if the sampling gets cancelled unexpectedly - Int64
 # os_equidistant - If true, script assumes equidistant orbit grid. False not supported yet - Boolean
@@ -101,6 +104,7 @@ end
     filepath_OG = ""
     folderpath_o = "../OWCF_results/template/" # Output folder path. Finish with '/'
     folderpath_OWCF = $folderpath_OWCF # Set path to OWCF folder to same as main process (hence the '$')
+    h5_is_rowmajor = false # Set to true, if 'filepath_EpRz' is an .h5/.hdf5 and it was saved using a row-major programming language
     numOsamples = 12_000_000 # The total number of monte-carlo samples for the fast-ion distribution, if that is the (E,p,R,z) quantity
     nbatch = 100_000 # The algorithm will save the sampling progress every nbatch sample
     os_equidistant = true # False is not possible yet.

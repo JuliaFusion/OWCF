@@ -210,9 +210,9 @@
 #
 # btipsign - The sign of the dot product between the magnetic field and the plasma current. Can be 1 or -1. - Int64
 # FI_species - If the reconstruction space is (vpara,vperp) or :COLLISIONS/:ICRF is included in regularization, the fast-ion species need to be specified. "D", "T", "alpha" etc - String
-# h5file_of_nonJulia_origin - If .h5 or .hdf5 files are specified as input, and they were not created with the Julia programming language, the 
-#                             h5file_of_nonJulia_origin input variable might need to be set to true. This is because some languages reverse the array 
-#                             dimension order when saved as a .h5 or .hdf5 file. E.g. (E,p,R,z) sometimes become (z,R,p,E) - Bool
+# h5_is_rowmajor - If some input files (e.g. the 'rescale_W_F_file_path' input variable) are an .h5/.hdf5 file and it was saved using a row-major programming language 
+#                  (e.g. C/C++ or NumPy in Python, please see https://en.wikipedia.org/wiki/Row-_and_column-major_order for more info), this input variable 
+#                  should be set to true - Bool
 
 ### Other
 # Some lines below are commented out. This is because the inverse problem solving algorithm is currently single-CPU.
@@ -317,7 +317,7 @@ Pkg.activate(".")
     ### Extra input arguments
     btipsign = 1 # The sign of the dot product between the magnetic field and the plasma current. Most likely not needed. But please specify, if known.
     FI_species = "" # If reconstruction is in (vpara,vperp) or the 'regularization' input variable contains :COLLISIONS or :ICRF, the fast-ion species might need to be specified. Please see OWCF/misc/species_func.jl for more info on species options.
-    h5file_of_nonJulia_origin = false # If rescale_W_F_file_path is an .h5 or .hdf5 file, and it was not created with the Julia programming language, this input variable should probably be set to true
+    h5_is_rowmajor = false # Set to true, if 'filepath_EpRz' is an .h5/.hdf5 and it was saved using a row-major programming language
 end
 
 ## -----------------------------------------------------------------------------

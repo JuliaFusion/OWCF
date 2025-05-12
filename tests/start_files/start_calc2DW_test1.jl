@@ -12,9 +12,9 @@
 # folderpath_OWCF - The path to the OWCF folder - String
 # numOcores - The number of CPU cores that will be used if distributed is set to true. - Int64
 #
-# analytic - If true, the 2D weight functions will be computed using the analytic equations in e.g. A. Valentini et al, 2025, Nucl. Fusion 65, 046031.
-#            Please note! This is an approximation, in which the thermal population is assumed to be at rest. However, using these analytic equations, 
-#            no Monte Carlo methods are necessary, i.e. massive speed-up of computations - Bool
+# analytic - If true, the 2D weight functions will be computed using the analytic equations in A. Valentini et al. Nucl. Fusion, Submitted (2025).
+#              Please note! This is an approximation, in which the thermal population is assumed to be at rest. However, using these analytic equations, 
+#              no Monte Carlo methods are necessary, i.e. massive speed-up of computations - Bool
 # debug - If true, then the script will run in debug-mode. Should almost always be set to false - Bool
 # diagnostic_filepath - The path to the LINE21 data diagnostic line-of-sight file. Leave as "" for assumed sperical emission - String
 # diagnostic_name - The name of the diagnostic. Purely for esthetic purposes - String
@@ -94,75 +94,75 @@
 
 ## First you have to set the system specifications
 using Distributed # Needed, even though distributed might be set to false. This is to export all inputs to all workers right away, if needed.
-batch_job = false
-distributed = true
-folderpath_OWCF = "" # OWCF folder path. Finish with '/'
-numOcores = 4 # When executing script via HPC cluster job, make sure you know how many cores you have requested for your batch job
+#batch_job = false
+distributed = false
+#folderpath_OWCF = "" # OWCF folder path. Finish with '/'
+#numOcores = 4 # When executing script via HPC cluster job, make sure you know how many cores you have requested for your batch job
 
 ## Navigate to the OWCF folder and activate the OWCF environment
-cd(folderpath_OWCF)
-using Pkg
-Pkg.activate(".")
+#cd(folderpath_OWCF)
+#using Pkg
+#Pkg.activate(".")
 
 ## If running as a batch job on a SLURM CPU cluster
-if batch_job && distributed
-    # Load the SLURM CPU cores
-    using ClusterManagers
-    addprocs(SlurmManager(numOcores))
-    hosts = []
-    pids = []
-    for i in workers()
-        host, pid = fetch(@spawnat i (gethostname(), getpid()))
-        push!(hosts, host)
-        push!(pids, pid)
-    end
-    @show hosts
-end
+#if batch_job && distributed
+#    # Load the SLURM CPU cores
+#    using ClusterManagers
+#    addprocs(SlurmManager(numOcores))
+#    hosts = []
+#    pids = []
+#    for i in workers()
+#        host, pid = fetch(@spawnat i (gethostname(), getpid()))
+#        push!(hosts, host)
+#        push!(pids, pid)
+#    end
+#    @show hosts
+#end
 
 ## If running locally and multi-threaded
-if !batch_job && distributed # Assume you are executing the script on a local laptop (/computer)
-    println("Adding processes... ")
-    addprocs(numOcores-(nprocs()-1)) # If you didn't execute this script as an HPC cluster job, then you need to add processors like this. Add all remaining available cores.
-    # The '-(nprocs()-1)' part is simply to ensure to extra processes are added, in case script needs to be restarted on a local computer
-end
+#if !batch_job && distributed # Assume you are executing the script on a local laptop (/computer)
+#    println("Adding processes... ")
+#    addprocs(numOcores-(nprocs()-1)) # If you didn't execute this script as an HPC cluster job, then you need to add processors like this. Add all remaining available cores.
+#    # The '-(nprocs()-1)' part is simply to ensure to extra processes are added, in case script needs to be restarted on a local computer
+#end
 
 ## -----------------------------------------------------------------------------
 @everywhere begin
     analytic = false
     debug = false
-    diagnostic_filepath = "" # Currently supported: "TOFOR", "AB" and ""
-    diagnostic_name = ""
-    instrumental_response_filepath = "" # Should be the filepath to three .txt-files or one .jld2-file. Otherwise, leave as ""
-    instrumental_response_output_units = "" # Should be specified as described in OWCF/misc/convert_units.jl. If instrumental_response_filepath=="", leave as ""
-    Ed_min = 0000.0 # keV (or m/s if 'reaction' input variable is specified on form (3) (please see OWCF/misc/availReacts.jl for explanation))
-    Ed_max = 0000.0 # keV (or m/s if 'reaction' input variable is specified on form (3) (please see OWCF/misc/availReacts.jl for explanation))
-    Ed_diff = 000.0 # keV (or m/s if 'reaction' input variable is specified on form (3) (please see OWCF/misc/availReacts.jl for explanation))
+    diagnostic_filepath = folderpath_OWCF*"vc_data/TOFOR/TOFOR.vc" # Currently supported: "TOFOR", "AB" and ""
+    diagnostic_name = "TOFOR"
+    instrumental_response_filepath = folderpath_OWCF*"vc_data/TOFOR/TOFOR_instrumental_response.jld2" # Should be the filepath to three .txt-files or one .jld2-file. Otherwise, leave as ""
+    instrumental_response_output_units = "ns" # Should be specified as described in OWCF/misc/convert_units.jl. If instrumental_response_filepath=="", leave as ""
+    Ed_min = 1000.0 # keV (or m/s if 'reaction' input variable is specified on form (3) (please see OWCF/misc/availReacts.jl for explanation))
+    Ed_max = 5000.0 # keV (or m/s if 'reaction' input variable is specified on form (3) (please see OWCF/misc/availReacts.jl for explanation))
+    Ed_diff = 50.0 # keV (or m/s if 'reaction' input variable is specified on form (3) (please see OWCF/misc/availReacts.jl for explanation))
     E_array = nothing # keV. Array can be specified manually. Otherwise, leave as 'nothing'
-    Emin = 0.0 # keV
-    Emax = 000.0 # keV
-    filename_o = nothing # If specified, output file will be saved in the "folderpath_o" folder with "filename_o" name. Do not include file extension!
-    filepath_equil = "" # for example "equilibrium/JET/g96100/g96100_0-53.0012.eqdsk" or "myOwnSolovev.jld2"
+    Emin = 5.0 # keV
+    Emax = 200.0 # keV
+    filename_o = "calc2DW_test1" # If specified, output file will be saved in the "folderpath_o" folder with "filename_o" name. Do not include file extension!
+    filepath_equil = folderpath_OWCF*"equilibrium/JET/g96100/g96100_0-53.0012.eqdsk" # for example "equilibrium/JET/g96100/g96100_0-53.0012.eqdsk" or "myOwnSolovev.jld2"
     filepath_FI_cdf = "" # If filepath_thermal_distr=="96100J01.cdf", then filepath_FI_cdf should be "96100J01_fi_1.cdf" for example
     filepath_thermal_distr = "" # for example "96100J01.cdf", "myOwnThermalDistr.jld2" or ""
     filepath_start = Base.source_path() # For saving in output file, for posterity and reproducibility
     flr_effects = false
-    folderpath_o = "../OWCF_results/template/" # Output folder path. Finish with '/'
+    folderpath_o = folderpath_OWCF*"tests/outputs/" # Output folder path. Finish with '/'
     folderpath_OWCF = $folderpath_OWCF # Set path to OWCF folder to same as main process (hence the '$')
     gyro_samples = 50 # 50 is the default discretization number for the gyro-motion
     iiimax = 1 # The script will calculate iiimax number of weight matrices. They can then be examined in terms of similarity (to determine MC noise influence etc).
     (iiimax > 1) && (iii_average = false) # If true, the average of all weight matrices will be computed and saved. Without the "_i" suffix.
-    nE = 0
-    np = 0
+    nE = 10
+    np = 11
     p_array = nothing # Array can be specified manually. Otherwise, leave as 'nothing'
     p_min = -1.0
     p_max = 1.0
-    plasma_rot = false # Set to true to include plasma rotation in the weight function computations
+    plasma_rot = true # Set to true to include plasma rotation in the weight function computations
     plasma_rot_speed_data_source_type = :MANUAL # :MANUAL or :TRANSP
     plasma_rot_speed_data_source = "" # /path/to/the/TRANSP/file.cdf
-    plasma_rot_speed = 0.0 # If plasma_rot_speed_data_source is set to :MANUAL, use this value (m/s)
+    plasma_rot_speed = 1.0e5 # If plasma_rot_speed_data_source is set to :MANUAL, use this value (m/s)
     plasma_rot_dir = :TOROIDAL # :TOROIDAL or :BFIELD
     R_of_interest = :r_mag # The major radius coordinate of interest. Specify in meters e.g. "3.0", "3.4" etc. Can also be specified as a symbol :r_mag, then the major radius coordinate of the magnetic axis will automatically be used
-    saveVparaVperpWeights = false # Set to true, and the weight functions will be saved in (vpara,vperp), in addition to (E,p)
+    saveVparaVperpWeights = true # Set to true, and the weight functions will be saved in (vpara,vperp), in addition to (E,p)
     ################################################################################
     # The 'reaction' input variable below should be specified using one of the following forms:
     # (1) "a(b,c)d" 
@@ -175,11 +175,11 @@ end
     # (2) The advanced fusion reaction form. The nuclear energy level 'l' of the fusion product particle of interest 'c' is taken to be 'l'.
     # (3) The projected velocity reaction form. No fusion reaction is computed. Instead, the orbit weight functions are computed from the velocity vectors of the ion 'b', projected onto the diagnostic line-of-sight (LOS), using the points of the (drift) orbits that are inside the LOS 
     # PLEASE NOTE! Specify alpha particles as '4he' or '4He' (NOT 'he4' or 'He4'). Same goes for helium-3 (specify as '3he', NOT 'he3'). Etc.
-    reaction = "9Be(4He,12C)n-1L"
+    reaction = "D(D,n)3He"
     ################################################################################
     timepoint = nothing # If unknown, just leave as nothing. The algorithm will try to figure it out automatically.
-    thermal_temp_axis = 0.0 # keV. Please specify this if filepath_thermal_distr and filepath_FI_cdf are not specified
-    thermal_dens_axis = 0.0e20 # m^-3. Please specify this if filepath_thermal_distr and filepath_FI_cdf are not specified
+    thermal_temp_axis = 5.0 # keV. Please specify this if filepath_thermal_distr and filepath_FI_cdf are not specified
+    thermal_dens_axis = 1.0e20 # m^-3. Please specify this if filepath_thermal_distr and filepath_FI_cdf are not specified
     thermal_profiles_type = :DEFAULT # Currently available options are :DEFAULT and :FLAT
     verbose = true # If true, then the program will be very talkative!
     visualizeProgress = false # If false, progress bar will not be displayed for computations
@@ -196,20 +196,20 @@ end
 # Change directory to OWCF-folder on all external processes. Activate the environment there to ensure correct package versions
 # as specified in the Project.toml and Manuscript.toml files. Do this for every 
 # CPU processor (@everywhere)
-@everywhere begin
-    using Pkg
-    cd(folderpath_OWCF)
-    Pkg.activate(".")
-end
+#@everywhere begin
+#    using Pkg
+#    cd(folderpath_OWCF)
+#    Pkg.activate(".")
+#end
 
 ## -----------------------------------------------------------------------------
 # Then you execute the script
-include("calc2DWeights.jl")
+include(folderpath_OWCF*"calc2DWeights.jl")
 
 ## -----------------------------------------------------------------------------
 # Then you clean up after yourself
-if batch_job && distributed
-    for i in workers()
-        rmprocs(i)
-    end
-end
+#if batch_job && distributed
+#    for i in workers()
+#        rmprocs(i)
+#    end
+#end

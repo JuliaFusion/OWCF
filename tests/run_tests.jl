@@ -28,6 +28,10 @@
 ### Inputs:
 # folderpath_OWCF - The path to the OWCF folder on your computer - String
 # plot_test_results - If true, test results will be plotted and saved in .png file format - Bool
+# terminate_when_first_error - If true, as soon as an error is encountered, the error and stacktrace 
+#                              will be printed and the run_tests.jl script will terminate. If there 
+#                              are parts of the OWCF that have not yet been tested, these will be 
+#                              ignored, i.e. not tested - Bool
 # clear_test_outputs_folder_when_done - If true, the OWCF/tests/outputs/ folder will be cleared when 
 #                                  the run_tests.jl script has finished all tests. 'false' can be useful
 #                                  if test results are to be manually inspected in detail - Bool
@@ -45,11 +49,12 @@
 # printed output should be included as a screenshot when creating a pull-request at the Github repo
 # https://github.com/JuliaFusion/OWCF/pulls.
 
-# Script written by Henrik Järleblad. Last mainted 2025-04-25.
+# Script written by Henrik Järleblad. Last mainted 2025-05-12.
 ###################################################################################################
 
 folderpath_OWCF = "/path/to/the/OWCF/" # The path to where the OWCF folder is saved on your computer. Remember to finish with '/'
 plot_test_results = false # If set to true, test results will be plotted and saved in .png file format in the OWCF/tests/outputs/ folder
+terminate_when_first_error = false # If set to true, the run_tests.jl script will print the first error it encounters and skip the rest of the testing process
 clear_test_outputs_folder_when_done = true # Should be set to true, be default
 VERY_VERBOSE = false # Should be set to false, unless developer debugging
 
@@ -214,7 +219,7 @@ println("-----------------------------------------------------------------------
 for test in test_list
     global test_prog
 
-    println("- Running $(test) (total run_tests.jl progress: $(round(100*test_prog/NUMBER_OF_TESTS,digits=3)) %)... ")
+    println("- Running $(test) (total run_tests.jl progress: $(round(100*test_prog/NUMBER_OF_TESTS)) %)... ")
     SUPPRESS_SUBTEST_PRINT && redirect_stdout(devnull)
 
     try
@@ -223,6 +228,7 @@ for test in test_list
         global err_dict
         @warn "The test $(test) unfortunately resulted in an error. Please examine error specification when test results are printed."
         err_dict["$(test)"] = "$(e)"
+        terminate_when_first_error && break
     end
 
     SUPPRESS_SUBTEST_PRINT && redirect_stdout(oldstd)
@@ -273,7 +279,7 @@ end
 ############---------------------------------------------------------------------------------------###
 t_end = time() # Test script runtime end
 println("-------------------------------------------------------------------------------- End of the OWCF tests")
-println("-------------------------------------------------------------------------------- Total runtime: $(round(t_end-t_start)) seconds")
+println("-------------------------------------------------------------------------------- Total runtime: $(Int64(divrem(t_end-t_start,60)[1])) minutes $(Int64(round(divrem(t_end-t_start,60)[2]))) seconds")
 println("-------------------------------------------------------------------------------- OWCF folder path: $(folderpath_OWCF)")
 println("-------------------------------------------------------------------------------- The OWCF tests --------------------------------------------------------------------------------")
 ###------------------------------------------------------------------------------------------------###
