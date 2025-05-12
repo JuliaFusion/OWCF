@@ -250,7 +250,7 @@ L1_ICRF = icrf_regularization_matrix(M, [test_E_array, test_Pphi_n_array, test_L
 
 ############---------------------------------------------------------------------------------------###
 filepath_hdf5 = jld2tohdf5(folderpath_OWCF*"tests/outputs/createCustomFIDistr_test1.jld2")
-if !(h5to4D(filepath_hdf5)==JLD2to4D(folderpath_OWCF*"tests/outputs/createCustomFIDistr_test1.jld2"))
+if !(h5to4D(filepath_hdf5; )==JLD2to4D(folderpath_OWCF*"tests/outputs/createCustomFIDistr_test1.jld2"))
     error("I/O discrepancy between h5to4D() and JLD2to4D functions.")
 end
 test_F_EpRz, test_E_array, test_p_array, test_R_array, test_z_array = h5to4D(filepath_hdf5)
@@ -412,10 +412,41 @@ end
 ###------------------------------------------------------------------------------------------------###
 
 ############---------------------------------------------------------------------------------------###
+filepath_jld2 = folderpath_OWCF*"tests/outputs/createCustomFIDistr_test2.jld2"
+test_F_EpRz, test_E_array, test_p_array, test_R_array, test_z_array = JLD2to4D(filepath_jld2)
+test_dR = diff(test_R_array)[1]; test_dz = diff(test_z_array)[1]
+test_F_Ep = inv(length(test_R_array)*length(test_z_array)) .*dropdims(sum(test_dR*test_dz*2*pi .*reshape(test_R_array,(1,1,length(test_R_array),1)) .*test_F_EpRz,dims=(3,4)),dims=(3,4))
+
+test_F_vpavpe, test_vpa_array, test_vpe_array = Ep2VparaVperp(test_E_array, test_p_array, test_F_Ep; my_gcp=getGCP(test_FI_species), needJac=true, isTopoMap=false, verbose=false, returnAbscissas=true)
+
+if plot_test_results
+    myplt1 = Plots.heatmap(test_E_array, test_p_array, transpose(test_F_Ep), xlabel="E [keV]", ylabel="p [-]", title="f(E,p)",legend=false,fillcolor=cgrad([:white, :yellow, :orange, :red, :black]))
+    myplt2 = Plots.heatmap(test_vpa_array, test_vpe_array, transpose(test_F_vpavpe), xlabel="vpa [m/s]",ylabel="vpe [m/s]",title="f(vpa,vpe)",legend=false,fillcolor=cgrad([:white, :yellow, :orange, :red, :black]))
+
+    myplt = Plots.plot(myplt1, myplt2, layout=(1,2),size=(1600,800),dpi=200)
+    display(myplt)
+    png(myplt,folderpath_OWCF*"tests/outputs/dependencies_test_Ep2VparaVperp")
+end
 ###------------------------------------------------------------------------------------------------###
 
 ############---------------------------------------------------------------------------------------###
-###------------------------------------------------------------------------------------------------###
+E_0 = 110.0 # keV
+p_0 = 0.7
+n_e = 1.0e20 # m^-3
+T_e = 5.0 # keV
+species_th_vec = ["D", "T"] # Thermal ion particle species
+n_th_vec = [0.15e20, 0.85e20] # m^-3
+T_th_vec = [10.0, 5.0] # keV
+F_SD_core, v_c, v_L, τ_s, α_0 = slowing_down_function(E_0, p_0, test_E_array, test_p_array, n_e, T_e, test_FI_species, species_th_vec, n_th_vec, T_th_vec; returnExtra=true, E_tail_length=90.0)
 
-############---------------------------------------------------------------------------------------###
+v2E_rel = (v-> inv(1000*GuidingCenterOrbits.e0)*getSpeciesMass(test_FI_species)*((GuidingCenterOrbits.c0)^2)*(sqrt(1/(1-(v/(GuidingCenterOrbits.c0))^(2)))-1)) # A one-line function to transform from relativistic speed (m/s) to energy (keV)
+E_c = v2E_rel(v_c); E_L = v2E_rel(v_L)
+
+if plot_test_results
+    myplt1 = Plots.heatmap(test_E_array, test_p_array, transpose(F_SD_core), xlabel="E [keV]", ylabel="p [-]", title="τ_s = $(round(τ_s,digits=3)) s",legend=false, fillcolor=cgrad([:white, :yellow, :orange, :red, :black]))
+
+    myplt = Plots.plot(myplt1,size=(800,800),dpi=200)
+    display(myplt)
+    png(myplt,folderpath_OWCF*"tests/outputs/dependencies_test_slowing_down_function_core")
+end
 ###------------------------------------------------------------------------------------------------###

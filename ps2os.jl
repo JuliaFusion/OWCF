@@ -253,7 +253,7 @@ end
 trans_distr = true # By default, assume that we would like to transform a distribution from (E,p,R,z) to (E,pm,Rm)
 verbose && println("Loading input data from file... ")
 if fileext_FI=="h5" || fileext_FI=="hdf5" # Must be a distribution (old format)
-    F_EpRz, E_array_ps, p_array, R_array, z_array = h5to4D(filepath_EpRz, verbose = verbose) # Load fast-ion distribution
+    F_EpRz, E_array_ps, p_array, R_array, z_array = h5to4D(filepath_EpRz; rowmajor=h5_is_rowmajor, verbose = verbose) # Load fast-ion distribution
 else # Else, assume .jld2 file format
     myfile = jldopen(filepath_EpRz,false,false,false,IOStream)
     if haskey(myfile,"F_ps")

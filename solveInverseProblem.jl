@@ -546,7 +546,7 @@ if rescale_W
         if file_ext=="jld2"
             F_ref, E_ref, p_ref, R_ref, z_ref = JLD2to4D(rescale_W_F_file_path)
         elseif file_ext=="hdf5" || file_ext=="h5"
-            F_ref, E_ref, p_ref, R_ref, z_ref = h5to4D(rescale_W_F_file_path;backwards=h5file_of_nonJulia_origin)
+            F_ref, E_ref, p_ref, R_ref, z_ref = h5to4D(rescale_W_F_file_path;rowmajor=h5_is_rowmajor)
         elseif file_ext=="cdf"
             F_ref, E_ref, p_ref, R_ref, z_ref = CDFto4D(rescale_W_F_file_path, R_of_interests, z_of_interests; btipsign=btipsign)
         else
