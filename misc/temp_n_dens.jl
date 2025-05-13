@@ -41,6 +41,7 @@
 
 using NetCDF
 using Interpolations
+using Equilibrium
 include("rewriteReacts.jl")
 include("load_TRANSP_interp_object.jl")
 
@@ -64,6 +65,15 @@ function getAnalyticalTemp(T_axis::T where {T<:Real}, ρ_pol::R where {R<:Real})
 end
 
 """
+    getAnalyticalTemp(M,T_axis,R,z)
+
+Input T_axis should be in keV. R and z in meters (or units matching the units in M)
+"""
+function getAnalyticalTemp(M::AbstractEquilibrium, T_axis::T where {T<:Real}, R::T where {T<:Real}, z::T where {T<:Real})
+    return getAnalyticalTemp(T_axis, Equilibrium.rho_p(M,R,z))
+end
+
+"""
     getAnalyticalDens(n_axis, ρ_pol)
 
 Input n_axis should be in m^-3. If input ρ_pol >= 1.0, then 0.0 will be retured (vacuum SOL assumed).
@@ -80,6 +90,15 @@ function getAnalyticalDens(n_axis::T where {T<:Real}, ρ_pol::R where {R<:Real})
     end
 
     return n_axis*(2-2/(2-ρ_pol*exp(8*(ρ_pol-1))))
+end
+
+"""
+    getAnalyticalDens(M,n_axis,R,z)
+
+Input n_axis should be in m^-3. R and z in meters (or units matching the units in M)
+"""
+function getAnalyticalDens(M::AbstractEquilibrium, n_axis::T where {T<:Real}, R::T where {T<:Real}, z::T where {T<:Real})
+    return getAnalyticalDens(n_axis, Equilibrium.rho_p(M,R,z))
 end
 
 """
