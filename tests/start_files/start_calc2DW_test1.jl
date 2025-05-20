@@ -138,8 +138,8 @@ distributed = false
     Ed_max = 5000.0 # keV (or m/s if 'reaction' input variable is specified on form (3) (please see OWCF/misc/availReacts.jl for explanation))
     Ed_diff = 50.0 # keV (or m/s if 'reaction' input variable is specified on form (3) (please see OWCF/misc/availReacts.jl for explanation))
     E_array = nothing # keV. Array can be specified manually. Otherwise, leave as 'nothing'
-    Emin = 5.0 # keV
-    Emax = 200.0 # keV
+    Emin = 10.0 # keV
+    Emax = 1000.0 # keV
     filename_o = "calc2DW_test1" # If specified, output file will be saved in the "folderpath_o" folder with "filename_o" name. Do not include file extension!
     filepath_equil = folderpath_OWCF*"equilibrium/JET/g96100/g96100_0-53.0012.eqdsk" # for example "equilibrium/JET/g96100/g96100_0-53.0012.eqdsk" or "myOwnSolovev.jld2"
     filepath_FI_cdf = "" # If filepath_thermal_distr=="96100J01.cdf", then filepath_FI_cdf should be "96100J01_fi_1.cdf" for example
@@ -161,6 +161,7 @@ distributed = false
     plasma_rot_speed_data_source = "" # /path/to/the/TRANSP/file.cdf
     plasma_rot_speed = 1.0e5 # If plasma_rot_speed_data_source is set to :MANUAL, use this value (m/s)
     plasma_rot_dir = :TOROIDAL # :TOROIDAL or :BFIELD
+    plot_results = $plot_test_results
     R_of_interest = :r_mag # The major radius coordinate of interest. Specify in meters e.g. "3.0", "3.4" etc. Can also be specified as a symbol :r_mag, then the major radius coordinate of the magnetic axis will automatically be used
     saveVparaVperpWeights = true # Set to true, and the weight functions will be saved in (vpara,vperp), in addition to (E,p)
     ################################################################################

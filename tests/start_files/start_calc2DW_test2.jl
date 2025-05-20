@@ -134,7 +134,7 @@ distributed = false
     diagnostic_name = "AB"
     instrumental_response_filepath = "" # Should be the filepath to three .txt-files or one .jld2-file. Otherwise, leave as ""
     instrumental_response_output_units = "" # Should be specified as described in OWCF/misc/convert_units.jl. If instrumental_response_filepath=="", leave as ""
-    Ed_min = 3000.0 # keV (or m/s if 'reaction' input variable is specified on form (3) (please see OWCF/misc/availReacts.jl for explanation))
+    Ed_min = 4000.0 # keV (or m/s if 'reaction' input variable is specified on form (3) (please see OWCF/misc/availReacts.jl for explanation))
     Ed_max = 5000.0 # keV (or m/s if 'reaction' input variable is specified on form (3) (please see OWCF/misc/availReacts.jl for explanation))
     Ed_diff = 50.0 # keV (or m/s if 'reaction' input variable is specified on form (3) (please see OWCF/misc/availReacts.jl for explanation))
     E_array = nothing # keV. Array can be specified manually. Otherwise, leave as 'nothing'
@@ -161,6 +161,7 @@ distributed = false
     plasma_rot_speed_data_source = "" # /path/to/the/TRANSP/file.cdf
     plasma_rot_speed = 0.0e0 # If plasma_rot_speed_data_source is set to :MANUAL, use this value (m/s)
     plasma_rot_dir = :TOROIDAL # :TOROIDAL or :BFIELD
+    plot_results = $plot_test_results
     R_of_interest = :r_mag # The major radius coordinate of interest. Specify in meters e.g. "3.0", "3.4" etc. Can also be specified as a symbol :r_mag, then the major radius coordinate of the magnetic axis will automatically be used
     saveVparaVperpWeights = true # Set to true, and the weight functions will be saved in (vpara,vperp), in addition to (E,p)
     ################################################################################

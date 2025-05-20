@@ -95,12 +95,15 @@ verbose && println("Loading Julia packages... ")
     using PyCall # For using Python code in Julia
     using EFIT # For calculating magn½etic equilibrium quantities
     using Equilibrium # For loading flux function data, tokamak geometry data etc.
+    using Printf # To be able to print specific formats
     using ProgressMeter # To display computational progress during parallel computations
     using JLD2 # To write/open .jld2 files (Julia files, basically)
     using FileIO # To write/open files in general
     using SparseArrays # To enable utilization of sparse matrices/vectors
     using NetCDF # To enable write/open .cdf files
     using Interpolations # To be able to interpolate, if no thermal distribution is specified
+    plot_results && (using Plots) # To be able to plot results, if requested in start file
+    include("misc/convert_units.jl") # To be able to work with units of measurement
     include("misc/species_func.jl") # To convert species labels to particle mass
     include("misc/availReacts.jl") # To examine fusion reaction and extract thermal and fast-ion species
     include("misc/rewriteReacts.jl") # To rewrite a fusion reaction from the A(b,c)D format to the A-b=c-D format
@@ -110,6 +113,7 @@ end
 
 if analytic
     verbose && println("'analytic' input variable set to true. Loading analytic equations for forward modelling in forward.jl... ")
+    thermal_temp_axis = 0.0 # keV. Just to be sure, since analytic equations require T_i = 0 keV
     @everywhere begin
         include("forward.jl")
         include("vcone.jl")
@@ -203,10 +207,10 @@ verbose && println("Loading thermal .jld2 file data or TRANSP info... ")
 if fileext_thermal=="jld2"
     myfile = jldopen(filepath_thermal_distr,false,false,false,IOStream)
     thermal_temp_array = myfile["thermal_temp"]
-    @everywhere thermal_temp_array = $thermal_temp_array # These are sent to external processes here, for efficiency
     thermal_dens_array = myfile["thermal_dens"]
-    @everywhere thermal_dens_array = $thermal_dens_array # These are sent to external processes here, for efficiency
     ρ_pol_array = myfile["rho_pol"]
+    @everywhere thermal_temp_array = $thermal_temp_array # These are sent to external processes here, for efficiency
+    @everywhere thermal_dens_array = $thermal_dens_array # These are sent to external processes here, for efficiency
     @everywhere ρ_pol_array = $ρ_pol_array # These are sent to external processes here, for efficiency
     close(myfile)
 end
@@ -442,12 +446,12 @@ else
     else
         if thermal_profiles_type==:FLAT
             println("Flat thermal plasma profiles will be assumed.")
-            println("Thermal ion ($(thermal_species)) temperature will be set to $(thermal_temp_axis) keV.")
-            println("Thermal ion ($(thermal_species)) density will be set to $(thermal_dens_axis) m^-3.")
+            println("Thermal ion ($(thermal_species)) temperature on-axis will be set to $(thermal_temp_axis) keV.")
+            println("Thermal ion ($(thermal_species)) density on-axis will be set to $(thermal_dens_axis) m^-3.")
         elseif thermal_profiles_type==:DEFAULT
             println("Default OWCF thermal plasma profiles will be used (OWCF/misc/default_temp_n_dens.png).")
             println("Thermal ion ($(thermal_species)) temperature on-axis will be set to $(thermal_temp_axis) keV.")
-            println("Thermal ion ($(thermal_species)) density on axis will be set to $(thermal_dens_axis) m^-3.")
+            println("Thermal ion ($(thermal_species)) density on-axis will be set to $(thermal_dens_axis) m^-3.")
         else
             error("The 'thermal_profiles_type' input variable was not correctly specified (available options are :FLAT and :DEFAULT). Please correct and re-try.")
         end
@@ -505,7 +509,7 @@ println("Please remove previously saved files with the same file name (if any) p
 println("")
 println("If you would like to change any settings, please edit the start_calc2DW_template.jl file or similar.")
 println("")
-println("Written by Henrik Järleblad. Last maintained 2025-05-09.")
+println("Written by Henrik Järleblad. Last maintained 2025-05-16.")
 println("--------------------------------------------------------------------------------------------------")
 println("")
 
@@ -816,7 +820,7 @@ for iii=1:iiimax
     end
 
     if !debug
-        verbose && println("Saving weight function matrix... ")
+        # Set the output file name 'filepath_out'
         if !isnothing(filename_o)
             filepath_output_orig = folderpath_o*filename_o
         elseif iiimax==1 # If you intend to calculate only one weight matrix
@@ -830,6 +834,108 @@ for iii=1:iiimax
             global filepath_output = filepath_output_orig*"_($(Int64(count)))"
             global count += 1 # global scope, to surpress warnings
         end
+
+        if plot_results
+            plot_font = "Computer Modern"
+            Plots.default(fontfamily=plot_font)
+            verbose && println("Plotting weight function data... ")
+
+            if instrumental_response
+                W_raw_plt = Wtot_raw # Bad variable names...
+                W_plt = Wtot # Bad variable names...
+                if saveVparaVperpWeights
+                    W_vel_raw_plt = W_vel_raw # Bad variable names...
+                    W_vel_plt = W_vel # Bad variables names...
+                end
+            else
+                W_raw_plt = Wtot
+                if saveVparaVperpWeights
+                    W_vel_raw_plt = W_vel
+                end
+            end
+
+            # Without instrumental response (raw)
+            N_bins = length(Ed_array)
+            if N_bins>=5
+                plt_raw_inds = Int64.(round.(collect(range(1,length(Ed_array); length=5))[2:4]))
+            elseif N_bins==4
+                plt_raw_inds = [2,3,4]
+            elseif N_bins==3
+                plt_raw_inds = [1,2,3]
+            elseif N_bins==2
+                plt_raw_inds = [1,1,2]
+            else # N_bins==1
+                plt_raw_inds = [1,1,1]
+            end
+
+            Ed_low = @sprintf "%.2E" Ed_array[plt_raw_inds[1]]; W_raw_max_low = @sprintf "%.2E" maximum(W_raw_plt[plt_raw_inds[1],:,:])
+            Ed_mid = @sprintf "%.2E" Ed_array[plt_raw_inds[2]]; W_raw_max_mid = @sprintf "%.2E" maximum(W_raw_plt[plt_raw_inds[2],:,:])
+            Ed_hi = @sprintf "%.2E" Ed_array[plt_raw_inds[3]]; W_raw_max_hi = @sprintf "%.2E" maximum(W_raw_plt[plt_raw_inds[3],:,:])
+            plt_Ep_raw_low = Plots.heatmap(E_array, p_array, transpose(W_raw_plt[plt_raw_inds[1],:,:]),title="w($(Ed_low),E,p), max(w): $(W_raw_max_low) keV^-1")
+            plt_Ep_raw_mid = Plots.heatmap(E_array, p_array, transpose(W_raw_plt[plt_raw_inds[2],:,:]),title="w($(Ed_mid),E,p), max(w): $(W_raw_max_mid) keV^-1")
+            plt_Ep_raw_hi = Plots.heatmap(E_array, p_array, transpose(W_raw_plt[plt_raw_inds[3],:,:]),title="w($(Ed_hi),E,p), max(w): $(W_raw_max_hi) keV^-1")
+            plt_Ep_raw = Plots.plot(plt_Ep_raw_low, plt_Ep_raw_mid, plt_Ep_raw_hi, layout=(1,3), size=(1200,400), dpi=200, xlabel="Energy [keV]", ylabel="Pitch [-]", 
+                                fillcolor=cgrad([:white, :yellow, :orange, :red, :black]), titlefontsize=10, colorbar=false, bottom_margin=6Plots.mm,
+                                left_margin=6Plots.mm)
+            png(plt_Ep_raw,filepath_output*"_Ep_raw")
+
+            if saveVparaVperpWeights
+                W_vel_raw_max_low = @sprintf "%.2E" maximum(W_vel_raw_plt[plt_raw_inds[1],:,:])
+                W_vel_raw_max_mid = @sprintf "%.2E" maximum(W_vel_raw_plt[plt_raw_inds[2],:,:])
+                W_vel_raw_max_hi = @sprintf "%.2E" maximum(W_vel_raw_plt[plt_raw_inds[3],:,:])
+                plt_VpaVpe_raw_low = Plots.heatmap(vpara_array, vperp_array, transpose(W_vel_raw_plt[plt_raw_inds[1],:,:]),title="w($(Ed_low),E,p), max(w): $(W_vel_raw_max_low) keV^-1")
+                plt_VpaVpe_raw_mid = Plots.heatmap(vpara_array, vperp_array, transpose(W_vel_raw_plt[plt_raw_inds[2],:,:]),title="w($(Ed_mid),E,p), max(w): $(W_vel_raw_max_mid) keV^-1")
+                plt_VpaVpe_raw_hi = Plots.heatmap(vpara_array, vperp_array, transpose(W_vel_raw_plt[plt_raw_inds[3],:,:]),title="w($(Ed_hi),E,p), max(w): $(W_vel_raw_max_hi) keV^-1")
+                plt_VpaVpe_raw = Plots.plot(plt_VpaVpe_raw_low, plt_VpaVpe_raw_mid, plt_VpaVpe_raw_hi, layout=(1,3), size=(1200,400), dpi=200, xlabel="vpara [m/s]", ylabel="vperp [m/s]", 
+                                    fillcolor=cgrad([:white, :yellow, :orange, :red, :black]), titlefontsize=10, colorbar=false, bottom_margin=6Plots.mm,
+                                    left_margin=6Plots.mm)
+                png(plt_VpaVpe_raw,filepath_output*"_VpaVpe_raw")
+            end
+
+
+
+            if instrumental_response
+                # With instrumental response
+                N_bins = length(instrumental_response_output)
+                if N_bins>=5
+                    plt_inds = Int64.(round.(collect(range(1,length(instrumental_response_output); length=5))[2:4]))
+                elseif N_bins==4
+                    plt_inds = [2,3,4]
+                elseif N_bins==3
+                    plt_inds = [1,2,3]
+                elseif N_bins==2
+                    plt_inds = [1,1,2]
+                else # N_bins==1
+                    plt_inds = [1,1,1]
+                end
+
+                Ed_low = @sprintf "%.2E" instrumental_response_output[plt_inds[1]]; W_max_low = @sprintf "%.2E" maximum(W_plt[plt_inds[1],:,:])
+                Ed_mid = @sprintf "%.2E" instrumental_response_output[plt_inds[2]]; W_max_mid = @sprintf "%.2E" maximum(W_plt[plt_inds[2],:,:])
+                Ed_hi = @sprintf "%.2E" instrumental_response_output[plt_inds[3]]; W_max_hi = @sprintf "%.2E" maximum(W_plt[plt_inds[3],:,:])
+                plt_Ep_low = Plots.heatmap(E_array, p_array, transpose(W_plt[plt_inds[1],:,:]),title="w($(Ed_low),E,p), max(w): $(W_max_low) $(units_inverse(instrumental_response_output_units))")
+                plt_Ep_mid = Plots.heatmap(E_array, p_array, transpose(W_plt[plt_inds[2],:,:]),title="w($(Ed_mid),E,p), max(w): $(W_max_mid) $(units_inverse(instrumental_response_output_units))")
+                plt_Ep_hi = Plots.heatmap(E_array, p_array, transpose(W_plt[plt_inds[3],:,:]),title="w($(Ed_hi),E,p), max(w): $(W_max_hi) $(units_inverse(instrumental_response_output_units))")
+                plt_Ep = Plots.plot(plt_Ep_low, plt_Ep_mid, plt_Ep_hi, layout=(1,3), size=(1200,400), dpi=200, xlabel="Energy [keV]", ylabel="Pitch [-]", 
+                                    fillcolor=cgrad([:white, :yellow, :orange, :red, :black]), titlefontsize=10, colorbar=false, bottom_margin=6Plots.mm,
+                                    left_margin=6Plots.mm)
+                png(plt_Ep,filepath_output*"_Ep")
+
+                if saveVparaVperpWeights
+                    W_vel_max_low = @sprintf "%.2E" maximum(W_vel_plt[plt_inds[1],:,:])
+                    W_vel_max_mid = @sprintf "%.2E" maximum(W_vel_plt[plt_inds[2],:,:])
+                    W_vel_max_hi = @sprintf "%.2E" maximum(W_vel_plt[plt_inds[3],:,:])
+                    plt_VpaVpe_low = Plots.heatmap(vpara_array, vperp_array, transpose(W_vel_plt[plt_inds[1],:,:]),title="w($(Ed_low),E,p), max(w): $(W_vel_max_low) $(units_inverse(instrumental_response_output_units))")
+                    plt_VpaVpe_mid = Plots.heatmap(vpara_array, vperp_array, transpose(W_vel_plt[plt_inds[2],:,:]),title="w($(Ed_mid),E,p), max(w): $(W_vel_max_mid) $(units_inverse(instrumental_response_output_units))")
+                    plt_VpaVpe_hi = Plots.heatmap(vpara_array, vperp_array, transpose(W_vel_plt[plt_inds[3],:,:]),title="w($(Ed_hi),E,p), max(w): $(W_vel_max_hi) $(units_inverse(instrumental_response_output_units))")
+                    plt_VpaVpe = Plots.plot(plt_VpaVpe_low, plt_VpaVpe_mid, plt_VpaVpe_hi, layout=(1,3), size=(1200,400), dpi=200, xlabel="vpara [m/s]", ylabel="vperp [m/s]", 
+                                        fillcolor=cgrad([:white, :yellow, :orange, :red, :black]), titlefontsize=10, colorbar=false, bottom_margin=6Plots.mm,
+                                        left_margin=6Plots.mm)
+                    png(plt_VpaVpe,filepath_output*"_VpaVpe")
+                end
+            end
+        end
+
+        verbose && println("Saving weight function data to file... ")
         global filepath_output = filepath_output*".jld2"
         list_o_saved_filepaths[iii] = filepath_output # Store a record of the saved file
         myfile_s = jldopen(filepath_output,true,true,false,IOStream)
