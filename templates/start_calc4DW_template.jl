@@ -43,7 +43,8 @@
 # Emax - The upper boundary for the fast-ion energy in orbit space - Float64
 # filepath_equil - The path to the file with the tokamak magnetic equilibrium and geometry - String
 # filepath_FI_cdf - To be specified, if filepath_thermal_distr is a TRANSP .cdf shot file. See below for specifications - String
-# filepath_thermal_distr - The path to the thermal distribution file to extract thermal species data from. Must be TRANSP .cdf, .jld2 file format or "" - String
+# filepath_thermal_distr - The path to the thermal distribution file to extract thermal species data from. Must be a valid TRANSP .cdf file, a valid .jld2 file or "".
+#                          Please see the file description of the OWCF/calc4DWeights.jl script for more info - String
 # folderpath_o - The path to the folder where the results will be saved - String
 # gyro_samples - The number of points to discretize the gyro-motion for computation of synthetic spectra - Int64
 # iiimax - If specified to be greater than 1, several copies of weight functions will be calculated. For comparison. - Int64
@@ -55,6 +56,8 @@
 # p_array - The fast-ion pitch grid points of your (E,p,R,z) grid. If set to 'nothing': np, p_min and p_max must be specified - Vector
 # p_min - The lower boundary for the (E,p,R,z) grid p values - Float64
 # p_max - THe upper boundary for the (E,p,R,z) grid p values - Float64
+# plot_results - If true, the weight functions will be plotted upon completion of computation. The figure(s) will be saved as .png files in the 
+#                folderpath_o folder - Bool
 # R_array - The major radius grid points of your (E,p,R,z) grid. If set to 'nothing': nR, R_min and R_max must be specified - Vector
 # R_min - The lower boundary for the (E,p,R,z) grid R values - Float64
 # R_max - The upper boundary for the (E,p,R,z) grid R values - Float64
@@ -62,10 +65,14 @@
 # saveOnlyNonZeroWeights - If set to true, only the non-zero weight will be saved, as values and (E,p,R,z) indices - Bool
 # saveVparaVperpWeights - If set to true, the weight functions will be saved on a (vpara,vperp) grid, in addition to (E,p) - Bool
 # timepoint - The timepoint of the tokamak shot for the magnetic equilibrium. Format XX,YYYY where XX are seconds and YYYY are decimals - String
-# thermal_temp - The temperature of the thermal species distribution at the (R,z) point of interest - Float64
 # thermal_temp_axis - The temperature of the thermal species distribution on axis, if filepath_thermal_distr is not specified - Float64
-# thermal_dens - The density of the thermal species distribution at the (R,z) point of interest - Float64
+# thermal_temp_profile_type - Specifies the thermal ion temperature profile type, if filepath_thermal_distr is not specified. 
+#                             Currently supported options include :DEFAULT and :FLAT. Please see the OWCF/misc/temp_n_dens.jl file 
+#                             for more info on the :DEFAULT profile - Symbol
 # thermal_dens_axis - The density of the thermal species distribution on axis, if filepath_thermal_distr is not specified - Float64
+# thermal_dens_profile_type - Specifies the thermal ion density profile type, if filepath_thermal_distr is not specified. 
+#                             Currently supported options include :DEFAULT and :FLAT. Please see the OWCF/misc/temp_n_dens.jl file 
+#                             for more info on the :DEFAULT profile - Symbol
 # verbose - If true, lots of information will be printed during execution - Bool
 # visualizeProgress - If false, progress bar will not be displayed during computations - Bool
 # z_array - The vertical grid points of your (E,p,R,z) grid. If set to 'nothing': nz, z_min and z_max must be specified - Vector
@@ -118,7 +125,7 @@ end
 ## -----------------------------------------------------------------------------
 @everywhere begin
     debug = false
-    diagnostic_filepath = "" # Currently supported: "TOFOR", "AB" and ""
+    diagnostic_filepath = "" # In addition to a file path, the following Strings also supported: "TOFOR", "AB" and ""
     diagnostic_name = ""
     instrumental_response_filepath = "" # Should be the filepath to three .txt-files or one .jld2-file. Otherwise, leave as ""
     instrumental_response_output_units = "" # Should be specified as described in OWCF/misc/convert_units.jl. If instrumental_response_filepath=="", leave as ""
@@ -143,9 +150,10 @@ end
     p_array = nothing # Array can be specified manually. Otherwise, leave as 'nothing'
     p_min = -1.0
     p_max = 1.0
+    plot_results = false # If true, results will be plotted and figures saved as .png files
     R_array = nothing # Major radius grid points in meters
-    R_min = :r_mag # The major radius lower boundary, if R_array is set to nothing. Specify in meters e.g. "3.0", "3.4" etc. Can also be specified as a symbol :r_mag, then the major radius coordinate of the magnetic axis will automatically be used
-    R_max = :r_mag # The major radius upper boundary, if R_array is set to nothing. Specify in meters e.g. "3.0", "3.4" etc. Can also be specified as a symbol :r_mag, then the major radius coordinate of the magnetic axis will automatically be used
+    R_min = :HFSwall # The major radius lower boundary, if R_array is set to nothing. Specify in meters e.g. "3.0", "3.4" etc. Can also be specified as the symbols :r_mag or :HFSwall, then the major radius coordinate of the magnetic axis or (the minimum of) the HFS wall will automatically be used, respectively
+    R_max = :LFSwall # The major radius upper boundary, if R_array is set to nothing. Specify in meters e.g. "3.0", "3.4" etc. Can also be specified as the symbols :r_mag or :LFSwall, then the major radius coordinate of the magnetic axis or (the maximum of) the LFS wall will automatically be used, respectively
     saveVparaVperpWeights = false # Set to true, and the weight functions will be saved in (vpara,vperp), in addition to (E,p)
     ################################################################################
     # The 'reaction' input variable below should be specified using one of the following forms:
@@ -163,10 +171,10 @@ end
     ################################################################################
     # PLEASE NOTE! Specify alpha particles as '4he' or '4He' (NOT 'he4' or 'He4'). Same goes for helium-3 (specify as '3he', NOT 'he3')
     timepoint = nothing # If unknown, just leave as nothing. The algorithm will try to figure it out automatically.
-    thermal_temp = nothing # The thermal species temperature for the (R,z) point of interest. If filepath_thermal_distr is provided, leave as nothing
-    thermal_temp_axis = 0.0 # keV. Please specify this if filepath_thermal_distr, filepath_FI_cdf and thermal_temp are not specified
-    thermal_dens = nothing # The thermal species density for the (R,z) point of interest. If filepath_thermal_distr is provided, leave as nothing
+    thermal_temp_axis = 0.0 # keV. Please specify this if filepath_thermal_distr, filepath_FI_cdf are not specified
+    thermal_temp_profile_type = :DEFAULT # Currently supported values are :DEFAULT and :FLAT
     thermal_dens_axis = 0.0e20 # m^-3. Please specify this if filepath_thermal_distr and filepath_FI_cdf are not specified
+    thermal_dens_profile_type = :DEFAULT # Currently supported values are :DEFAULT and :FLAT
 
     verbose = true # If true, then the program will be very talkative!
     visualizeProgress = false # If false, progress bar will not be displayed for computations
@@ -175,8 +183,8 @@ end
     tokamak = "JET"
 
     z_array = nothing # Vertical grid points in meters
-    z_min = :z_mag # The vertical lower boundary. Specify in meters e.g. "0.3", "0.4" etc. Can also be specified as a symbol :z_mag, then the vertical coordinate of the magnetic axis will automatically be used
-    z_max = :z_mag # The vertical upper boundary. Specify in meters e.g. "0.3", "0.4" etc. Can also be specified as a symbol :z_mag, then the vertical coordinate of the magnetic axis will automatically be used
+    z_min = :floor # The vertical lower boundary. Specify in meters e.g. "0.3", "0.4" etc. Can also be specified as the symbols :z_mag or :floor, then the vertical coordinate of the magnetic axis or the vertical minimum of the first wall will automatically be used, respectively
+    z_max = :ceil # The vertical upper boundary. Specify in meters e.g. "0.3", "0.4" etc. Can also be specified as the symbols :z_mag or :ceil, then the vertical coordinate of the magnetic axis or the vertical minimum of the first wall will automatically be used, respectively
 end
 
 ## -----------------------------------------------------------------------------

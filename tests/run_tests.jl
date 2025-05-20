@@ -1,8 +1,8 @@
 ######################################## run_tests.jl #############################################
 #
-# PLEASE NOTE!! THIS SCRIPTS AND RELATED SCRIPTS ARE CURRENTLY UNDER DEVELOPMENT!!!
-# PLEASE NOTE!! THIS SCRIPTS AND RELATED SCRIPTS ARE CURRENTLY UNDER DEVELOPMENT!!!
-# PLEASE NOTE!! THIS SCRIPTS AND RELATED SCRIPTS ARE CURRENTLY UNDER DEVELOPMENT!!!
+# PLEASE NOTE!! THIS SCRIPT AND RELATED SCRIPTS ARE CURRENTLY UNDER DEVELOPMENT!!!
+# PLEASE NOTE!! THIS SCRIPT AND RELATED SCRIPTS ARE CURRENTLY UNDER DEVELOPMENT!!!
+# PLEASE NOTE!! THIS SCRIPT AND RELATED SCRIPTS ARE CURRENTLY UNDER DEVELOPMENT!!!
 #
 ### Description:
 # This script will run all the tests of the OWCF, to ensure correct functionality. 
@@ -228,6 +228,7 @@ for test in test_list
         global err_dict
         @warn "The test $(test) unfortunately resulted in an error. Please examine error specification when test results are printed."
         err_dict["$(test)"] = "$(e)"
+        terminate_when_first_error && (@warn "'terminate_when_first_error' set to true. The error: $(e)")
         terminate_when_first_error && break
     end
 

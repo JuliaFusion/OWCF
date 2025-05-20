@@ -122,7 +122,7 @@ def sigma_tot(E, reaction='d-d'):
         S[I_h] = (A1_h + Eh*(A2_h + Eh*(A3_h + Eh*(A4_h + Eh*A5_h))))/\
                 (1.0 + Eh*(B1_h + Eh*(B2_h + Eh*(B3_h + Eh*B4_h))))
 
-    elif all(p in [a,b] for p in ['p','t']):
+    elif all(p in [a,b] for p in ['p','t']) or all(p in [a,b] for p in ['h','t']):
         # T(p,g)4He reaction. Parameterization provided by Massimo Nocente.
 
         # Convert to LAB energies in MeV

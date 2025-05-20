@@ -127,7 +127,7 @@ end
 # Then you load the script inputs
 @everywhere begin
     addNoise = false # If true, then the algorithm will automatically add noiseLevel % noise to your synthetic diagnostic signal
-    diagnostic_filepath = "" # Currently supported: "TOFOR", "AB" and ""
+    diagnostic_filepath = "" # In addition to a file path, the following Strings also supported: "TOFOR", "AB" and ""
     diagnostic_name = ""
     instrumental_response_filepath = "" # Should be the filepaths to three .txt-files or one .jld2-file. Otherwise, leave as ""
     instrumental_response_output_units = "" # Should be specified as described in OWCF/misc/convert_units.jl. If instrumental_response_filepath=="", leave as ""

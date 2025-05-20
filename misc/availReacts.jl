@@ -137,11 +137,13 @@ function getThermalParticleSpecies(fusion_reaction::String)
     return getFusionReactants(fusion_reaction)[1]
 end
 getSlowParticleSpecies = getThermalParticleSpecies
+getThermalParticle = getSlowParticleSpecies
 
 function getFastParticleSpecies(fusion_reaction::String)
     return getFusionReactants(fusion_reaction)[2]
 end
 getEnergeticParticleSpecies = getFastParticleSpecies
+getFastParticle = getEnergeticParticleSpecies
 
 function full2reactsOnly(fusion_reaction::String)
     thermal_species, FI_species = getFusionReactants(fusion_reaction)

@@ -537,8 +537,12 @@ for (inz, nz_coord) in enumerate(nz_coords)
     x = R * cos(phi)
     y = R * sin(phi)
     V = R*dphi*dR*dz # Volume of cylindrical voxel
-    U = detector_location - [x,y,z]
-    U = U ./norm(U) # Unit vector pointing from voxel to detector
+    if !LOS_vec_for_all
+        U = detector_location - [x,y,z]
+        U = U ./norm(U) # Unit vector pointing from voxel to detector
+    else
+        U = los_vec # Approximate all voxels as having the same vector pointing towards the detector
+    end
     OMEGA = omega_3D_array[nz_coord]
 
     LOS_x[inz] = x
@@ -590,38 +594,60 @@ end
 # Plot LOS, if requested
 date_and_time = split("$(Dates.now())","T")[1]*"at"*split("$(Dates.now())","T")[2][1:5] # Might be needed immidiately below, and definitely when saving output data
 if plot_LOS
-    flux_r = range(extrema(wall.r)...,length=100)
-    flux_z = range(extrema(wall.z)...,length=100)
-    inds = CartesianIndices((length(flux_r),length(flux_z)))
-    psi_rz = [M(flux_r[ind[1]], flux_z[ind[2]]) for ind in inds]
+    LOS_heatmap_res = 100
+    flux_R = range(extrema(wall.r)...,length=LOS_heatmap_res); dR = diff(flux_R)[1]
+    flux_z = range(extrema(wall.z)...,length=LOS_heatmap_res); dz = diff(flux_z)[1]
+    inds = CartesianIndices((length(flux_R),length(flux_z)))
+    psi_rz = [M(flux_R[ind[1]], flux_z[ind[2]]) for ind in inds]
     psi_mag, psi_bdry = psi_limits(M)
-
-    wall_dR = maximum(wall.r)-minimum(wall.r)
-    plot_font = "Computer Modern"
-    Plots.default(fontfamily=plot_font)
-    plt_crs = Plots.contour(flux_r,flux_z,psi_rz',levels=collect(range(psi_mag,stop=psi_bdry,length=5)),color=:gray, α=0.75, linewidth=1.5, label="",colorbar=false)
-    plt_crs = Plots.plot!(wall.r,wall.z,label="Tokamak first wall",linewidth=2.5,color=:black)
-    plt_crs = Plots.plot!(LOS_R,LOS_z,label="$(LOS_name) LOS",linewidth=2.0,color=:gray)
-    plt_crs = Plots.scatter!([magnetic_axis(M)[1]],[magnetic_axis(M)[2]],label="Mag. axis",markershape=:xcross,markercolor=:black,markerstrokewidth=4)
-    plt_crs = Plots.plot!(aspect_ratio=:equal,xlabel="R [m]",ylabel="z [m]", xlims=(minimum(wall.r)-0.1*wall_dR,maximum(wall.r)+wall_dR))
-    plt_crs = Plots.plot!(xtickfontsize=14,ytickfontsize=14,xguidefontsize=16,yguidefontsize=16)
-    plt_crs = Plots.plot!(legend=:bottomright,legendfontsize=13)
-    plt_crs = Plots.plot!(plt_crs,title="Poloidal proj.",titlefontsize=20)
 
     R_hfs = minimum(wall.r) # R-coord of high-field side wall
     R_lfs = maximum(wall.r) # R-coord of low-field side wall
-    wall_phi = collect(0:1:359).*(2*pi/180.0) # Toroidal angle
+    wall_phi = collect(0:1:359).*(pi/180.0) # Toroidal angle
     topview_R_hfs_x = (R_hfs).*cos.(wall_phi)
     topview_R_hfs_y = (R_hfs).*sin.(wall_phi)
     topview_R_lfs_x = (R_lfs).*cos.(wall_phi)
     topview_R_lfs_y = (R_lfs).*sin.(wall_phi)
 
-    plt_top = Plots.plot(topview_R_hfs_x,topview_R_hfs_y,linewidth=2.5,color=:black,label="")
+    flux_x = range(extrema(topview_R_lfs_x)...,length=LOS_heatmap_res); dx = diff(flux_x)[1]
+    flux_y = range(extrema(topview_R_lfs_y)...,length=LOS_heatmap_res); dy = diff(flux_y)[1]
+
+    LOS_Rz_proj = psi_mag .*ones(LOS_heatmap_res,LOS_heatmap_res) # Multiplying with psi_mag, psy_bdry purely for plotting reasons (use heatmap and contour in same figure)
+    LOS_xy_proj = psi_mag .*ones(LOS_heatmap_res,LOS_heatmap_res)
+    for i in eachindex(LOS_R)
+        iR = Int64(round(inv(dR)*(LOS_R[i]-flux_R[1])+1))
+        iz = Int64(round(inv(dz)*(LOS_z[i]-flux_z[1])+1))
+        ix = Int64(round(inv(dx)*(LOS_x[i]-flux_x[1])+1))
+        iy = Int64(round(inv(dy)*(LOS_y[i]-flux_y[1])+1))
+        if iR>0 && iR<=LOS_heatmap_res && iz>0 && iz<=LOS_heatmap_res
+            LOS_Rz_proj[iR,iz] = psi_bdry
+        end
+        if ix>0 && ix<=LOS_heatmap_res && iy>0 && iy<=LOS_heatmap_res
+            LOS_xy_proj[ix,iy] = psi_bdry
+        end
+    end
+
+    wall_dR = maximum(wall.r)-minimum(wall.r)
+    plot_font = "Computer Modern"
+    Plots.default(fontfamily=plot_font)
+    
+    plt_crs = Plots.heatmap(flux_R, flux_z, transpose(LOS_Rz_proj), title="Poloidal proj. $(LOS_name) LOS", fillcolor=cgrad([:white, :green], categorical=true), colorbar=false)
+    plt_crs = Plots.contour!(flux_R, flux_z, transpose(psi_rz), levels=collect(range(psi_mag,stop=psi_bdry,length=5)), color=:gray, linewidth=2.5, label="", colorbar=false)
+    plt_crs = Plots.plot!(wall.r,wall.z,label="Tokamak first wall",linewidth=2.5,color=:black)
+    #plt_crs = Plots.plot!(LOS_R,LOS_z,label="$(LOS_name) LOS",linewidth=2.0,color=:gray)
+    plt_crs = Plots.scatter!([magnetic_axis(M)[1]],[magnetic_axis(M)[2]],label="Mag. axis",markershape=:xcross,markercolor=:black,markerstrokewidth=4)
+    plt_crs = Plots.plot!(aspect_ratio=:equal,xlabel="R [m]",ylabel="z [m]", xlims=(minimum(wall.r)-0.1*wall_dR,maximum(wall.r)+wall_dR))
+    plt_crs = Plots.plot!(xtickfontsize=14,ytickfontsize=14,xguidefontsize=16,yguidefontsize=16)
+    plt_crs = Plots.plot!(legend=:bottomright,legendfontsize=13)
+    #plt_crs = Plots.plot!(plt_crs,title="Poloidal proj.",titlefontsize=20)
+
+    plt_top = Plots.heatmap(flux_x, flux_y, transpose(LOS_xy_proj), title="Top view $(date_and_time)", fillcolor=cgrad([:white, :green], categorical=true), colorbar=false)
+    plt_top = Plots.plot!(topview_R_hfs_x,topview_R_hfs_y,linewidth=2.5,color=:black,label="")
     plt_top = Plots.plot!(topview_R_lfs_x,topview_R_lfs_y,linewidth=2.5,color=:black,label="")
-    plt_top = Plots.plot!(LOS_x,LOS_y,linewidth=2.0,color=:gray,label="")
+    #plt_top = Plots.plot!(LOS_x,LOS_y,linewidth=2.0,color=:gray,label="")
     plt_top = Plots.plot!(aspect_ratio=:equal,xlabel="x [m]",ylabel="y [m]")
     plt_top = Plots.plot!(xtickfontsize=14,ytickfontsize=14,xguidefontsize=16,yguidefontsize=16)
-    plt_top = Plots.plot!(plt_top,title="Top view $(date_and_time)",titlefontsize=20)
+    #plt_top = Plots.plot!(plt_top,title="Top view $(date_and_time)",titlefontsize=20)
 
     myplt = Plots.plot(plt_top,plt_crs,layout=(1,2),left_margin=5Plots.mm,bottom_margin=5Plots.mm, size=(1000,500))
     myplt = Plots.plot!(dpi=200)

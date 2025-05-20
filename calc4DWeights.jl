@@ -2,12 +2,12 @@
 
 #### Description:
 # This script computes 4D weight functions in (E,p,R,z). They can also be saved in (vpara, vperp, R, z)
-# should the user wish to do so. In the current version of the OWCF, the calc4DWeights.jl script is taylored 
+# should the user wish. In the current version of the OWCF, the calc4DWeights.jl script is taylored 
 # to utilize the DRESS code (J. Eriksson et al, CPC, 199, 40-46, 2016) to compute the weight functions. 
 # In future versions, it can be easily modified to instead save the weighted (E,p,R,z) points in a file 
 # readable by e.g. FIDASIM. The calc4DWeights.jl script computes the weight functions on a grid in 
 # (E,p,R,z) space. The weights on the corresponding (vpara, vperp, R, z) grid will be computed and
-# saved if the user has set the saveVparaVperpWeights input variable to true.
+# saved if the user has set the 'saveVparaVperpWeights' input variable to true.
 # 
 # The DRESS code is written in Python and calc4DWeights.jl utilizes the DRESS code via the Julia-Python
 # interface package PyCall.jl
@@ -35,6 +35,9 @@
 ## Finally, you could also choose not to specify a thermal species distribution. The thermal
 # species temperature and density profiles will then be set to default profiles with specified
 # thermal_temp_axis and thermal_dens_axis temperature and density on-axis values, respectively.
+# The 'thermal_temp_profile_type' and 'thermal_dens_profile_type' input variables can be used 
+# to specify a flat or OWCF default profile. Please see OWCF/templates/start_calc4DW_template.jl and 
+# OWCF/misc/temp_n_dens.jl for more info.
 #
 # Please see the start_calc4DW_template.jl file for further input information.
 
@@ -117,9 +120,9 @@
 # That is, the first diagnostic energy grid value will be (Ed_min+Ed_diff/2) and so on.
 #
 # WARNING! Please note that the output files of calc4DWeights.jl will be LARGE. This is due to the relatively high dimensionality
-# of the weight functions. WARNING!
+# of the weight functions.
 
-# Script written by Henrik Järleblad. Last maintained 2025-03-25.
+# Script written by Henrik Järleblad. Last maintained 2025-05-14.
 ################################################################################################
 
 ## ---------------------------------------------------------------------------------------------
@@ -127,21 +130,10 @@ verbose && println("Loading Julia packages... ")
 @everywhere begin
     cd(folderpath_OWCF) # Necessary to move all the workers to the correct folder
     using PyCall # For using Python code in Julia
-    using EFIT # For calculating magn½etic equilibrium quantities
-    using Equilibrium # For loading flux function data, tokamak geometry data etc.
-    using GuidingCenterOrbits # For calculating guiding-center orbits
-    using OrbitTomography # This is what all this is about!
-    using ProgressMeter # To display computational progress during parallel computations
-    using JLD2 # To write/open .jld2 files (Julia files, basically)
-    using FileIO # To write/open files in general
-    using SparseArrays # To enable utilization of sparse matrices/vectors
-    using NetCDF # To enable write/open .cdf files
-    using Interpolations # To be able to interpolate, if no thermal distribution is specified
-    using Base.Iterators
-    include("misc/species_func.jl") # To convert species labels to particle mass
+    include("misc/species_func.jl") # To map particle species labels to particle mass etc
     include("misc/availReacts.jl") # To examine fusion reaction and extract thermal and fast-ion species
     include("misc/rewriteReacts.jl") # To rewrite a fusion reaction from e.g. the a(b,c)d format to the a-b=c-d format
-    include("extra/dependencies.jl")
+    include("extra/dependencies.jl") # To enable usage of OWCF functions library
     pushfirst!(PyVector(pyimport("sys")."path"), "") # To add the forward, transp_dists, transp_output and vcone modules (scripts in current path)
 end
 
@@ -181,7 +173,7 @@ if !(lowercase(getEmittedParticleEnergyLevel(reaction))=="gs")
 end
 
 ## ---------------------------------------------------------------------------------------------
-# Determine filepath_thermal_distr file extension
+# Extract filepath_thermal_distr file extension
 fileext_thermal = (split(filepath_thermal_distr,"."))[end] # Assume last part after final '.' is the file extension
 fileext_thermal = lowercase(fileext_thermal)
 fileext_FI_cdf = (split(filepath_FI_cdf,"."))[end] # Assume last part after final '.' is the file extension
@@ -217,16 +209,16 @@ if getReactionForm(reaction)==3 # If fusion reaction is specified as a single pa
     projVel = true # ...weight functions will be computed using projected velocities!
 end
 ## ---------------------------------------------------------------------------------------------
-# Loading tokamak information and TRANSP RUN-ID
-verbose && println("Loading thermal .jld2 file data or TRANSP info... ")
+# Loading thermal data and/or TRANSP RUN-ID
+verbose && println("Loading thermal .jld2 file data and/or TRANSP info... ")
 
 if fileext_thermal=="jld2"
     myfile = jldopen(filepath_thermal_distr,false,false,false,IOStream)
     thermal_temp_array = myfile["thermal_temp"]
-    @everywhere thermal_temp_array = $thermal_temp_array # These are sent to external processes here, for efficiency
     thermal_dens_array = myfile["thermal_dens"]
-    @everywhere thermal_dens_array = $thermal_dens_array # These are sent to external processes here, for efficiency
     ρ_pol_array = myfile["rho_pol"]
+    @everywhere thermal_temp_array = $thermal_temp_array # These are sent to external processes here, for efficiency
+    @everywhere thermal_dens_array = $thermal_dens_array # These are sent to external processes here, for efficiency
     @everywhere ρ_pol_array = $ρ_pol_array # These are sent to external processes here, for efficiency
     close(myfile)
 
@@ -235,7 +227,7 @@ if fileext_thermal=="jld2"
         using Interpolations
     end
 end
-# Loading tokamak information and TRANSP RUN-ID from thermal .cdf file
+# Loading TRANSP RUN-ID from thermal .cdf file
 if fileext_thermal=="cdf"
     verbose && println("Loading TRANSP id information... ")
     TRANSP_id = (split((split(filepath_thermal_distr,"."))[1],"/"))[end] # Assume part between last '/' and '.' is the TRANSP id
@@ -265,9 +257,15 @@ if ((split(filepath_equil,"."))[end] == "eqdsk") || ((split(filepath_equil,"."))
 
     # Extract timepoint information from .eqdsk/.geqdsk file
     eqdsk_array = split(filepath_equil,".")
-    XX = (split(eqdsk_array[end-2],"-"))[end] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
-    YYYY = eqdsk_array[end-1] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
-    timepoint = XX*","*YYYY # Format XX,YYYY to avoid "." when including in filename of saved output
+    try
+        global timepoint # Declare global scope
+        XX = (split(eqdsk_array[end-2],"-"))[end] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
+        YYYY = eqdsk_array[end-1] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
+        timepoint = XX*","*YYYY # Format XX,YYYY to avoid "." when including in filename of saved output
+    catch
+        global timepoint # Declare global scope
+        timepoint = "00,0000" # Unknown timepoint for magnetic equilibrium
+    end
 else # Otherwise, assume magnetic equilibrium is a saved .jld2 file
     myfile = jldopen(filepath_equil,false,false,false,IOStream)
     M = myfile["S"]
@@ -295,32 +293,64 @@ end
 ## ---------------------------------------------------------------------------------------------
 # Defining (E,p,R,z) grid vectors
 verbose && println("Defining (E,p,R,z) grid vectors... ")
-if !(E_array == nothing)
+if !isnothing(E_array)
     Emin = minimum(E_array)
     Emax = maximum(E_array)
     nE = length(E_array)
 else
     E_array = collect(range(Emin,stop=Emax,length=nE))
 end
-if !(p_array == nothing)
+if !isnothing(p_array)
     p_min = minimum(p_array)
     p_max = maximum(p_array)
     np = length(p_array)
 else
     p_array = collect(range(p_min, stop=p_max, length=np))
 end
-if !(R_array == nothing)
+if !isnothing(R_array)
     R_min = minimum(R_array)
     R_max = maximum(R_array)
     nR = length(R_array)
 else
+    if R_min==:r_mag
+        R_min = magnetic_axis(M)[1]
+    elseif R_min==:HFSwall
+        R_min = minimum(wall.r)
+    elseif typeof(R_min) <: Real
+    else
+        error("R_min wrongly specified. Should be either :r_mag, :HFSwall or an Int64/Float64. Please correct and re-try.")
+    end
+    if R_max==:r_mag
+        R_max = magnetic_axis(M)[1]
+    elseif R_max==:LFSwall
+        R_max = maximum(wall.r)
+    elseif typeof(R_max) <: Real
+    else
+        error("R_max wrongly specified. Should be either :r_mag, :LFSwall or an Int64/Float64. Please correct and re-try.")
+    end
     R_array = collect(range(R_min, stop=R_max, length=nR))
 end
-if !(z_array == nothing)
+if !isnothing(z_array)
     z_min = minimum(z_array)
     z_max = maximum(z_array)
     nz = length(z_array)
 else
+    if z_min==:z_mag
+        z_min = magnetic_axis(M)[2]
+    elseif z_min==:floor
+        z_min = minimum(wall.z)
+    elseif typeof(z_min) <: Real
+    else
+        error("z_min wrongly specified. Should be either :z_mag, :floor or an Int64/Float64. Please correct and re-try.")
+    end
+    if z_max==:z_mag
+        z_max = magnetic_axis(M)[1]
+    elseif z_max==:ceil
+        z_max = maximum(wall.z)
+    elseif typeof(z_max) <: Real
+    else
+        error("z_max wrongly specified. Should be either :z_mag, :ceil or an Int64/Float64. Please correct and re-try.")
+    end
     z_array = collect(range(z_min, stop=z_max, length=nz))
 end
 
@@ -358,45 +388,53 @@ end
 println("")
 println("----------------------------------------calc4DWeights.jl----------------------------------------")
 if !(tokamak=="")
-    print("Tokamak specified: "*tokamak*"      ")
+    print("Tokamak: "*tokamak*"    ")
 else
-    print("Tokamak not specified.         ")
+    print("Tokamak not specified.    ")
 end
 if !(TRANSP_id=="")
-    println("TRANSP ID specified: "*TRANSP_id)
+    print("TRANSP ID: "*TRANSP_id*"    ")
 else
-    println("TRANSP ID not specified.")
+    print("TRANSP ID not specified.     ")
 end
 if !(diagnostic_name=="")
-    println("Diagnostic name specified: "*diagnostic_name)
+    println("Diagnostic name: "*diagnostic_name)
 end
+println("")
 if !(diagnostic_filepath=="")
-    println("Diagnostic filepath specified: "*diagnostic_filepath)
+    println("Diagnostic line-of-sight file: "*diagnostic_filepath)
 else
-    println("diagnostic_filepath not specified. Spherical emission will be assumed.")
+    println("Diagnostic line-of-sight file not specified. Spherical emission will be assumed.")
 end
 if instrumental_response
-    println("Instrumental response filepath: "*instrumental_response_filepath)
+    println("Instrumental response file: "*instrumental_response_filepath)
 else
-    println("instrumental_response_filepath not specified. Diagnostic response not included.")
+    println("Instrumental response file not specified. Instrumental response will not be included.")
 end
+println("")
 if !(filepath_thermal_distr=="")
-    println("Thermal distribution file specified: "*filepath_thermal_distr)
+    println("Thermal ion distribution file: "*filepath_thermal_distr)
 elseif (filepath_thermal_distr=="") && !projVel
-    println("Thermal distribution file not specified.")
-    println("Thermal ion ($((split(reaction,"-"))[1])) temperature on axis will be set to $(thermal_temp_axis) keV.")
-    println("Thermal ion ($((split(reaction,"-"))[1])) density on axis will be set to $(thermal_dens_axis) m^-3.")
+    println("Thermal ion distribution file not specified.")
+    println("Thermal ion ($(getThermalParticle(reaction))) temperature on-axis will be set to $(thermal_temp_axis) keV.")
+    (thermal_temp_profile_type==:DEFAULT) && println("---> Default OWCF temperature profile will be used (see OWCF/misc/default_temp_n_dens.png)") 
+    (thermal_temp_profile_type==:FLAT) && println("---> Flat temperature profile will be assumed.")
+    println("Thermal ion ($(getThermalParticle(reaction))) density on-axis will be set to $(thermal_dens_axis) m^-3.")
+    (thermal_dens_profile_type==:DEFAULT) && println("---> Default OWCF density profile will be used (see OWCF/misc/default_temp_n_dens.png)") 
+    (thermal_dens_profile_type==:FLAT) && println("---> Flat density profile will be assumed.")
 else
     println("4D weight functions will be computed using the projected velocity (u) of the fast ions.")
 end
-println("Magnetic equilibrium file specified: "*filepath_equil)
+println("")
+println("Magnetic equilibrium file: "*filepath_equil)
+println("Magnetic field strength on-axis is $(round(norm(Equilibrium.Bfield(M,magnetic_axis(M)...)),digits=2)) T")
 println("")
 if !projVel
-    println("Fusion reaction specified: "*reaction)
+    println("Fusion reaction: "*reaction)
 else
     println("4D weight functions will be computed using the projected velocity (u) of fast $(getEmittedParticle(reaction)) ions for all relevant (E,p,R,z) points.")
 end
-println("Fast-ion species specified: "*FI_species)
+println("---> Fast-ion species: "*FI_species)
 if emittedParticleHasCharge && !projVel
     println("The emitted "*getEmittedParticle(reaction)*" particle of the "*reaction*" reaction has non-zero charge!")
     println("The resulting energy distribution for "*getEmittedParticle(reaction)*" from the plasma as a whole will be computed.")
@@ -431,15 +469,16 @@ if saveVparaVperpWeights
     println("")
 end
 println("Results will be saved to: ")
+t = isnothing(tokamak) ? "" : tokamak; T = isnothing(TRANSP_id) ? "" : TRANSP_id; ti = isnothing(timepoint) ? "" : timepoint; d = isnothing(diagnostic_name) ? "" : diagnostic_name
 if iiimax == 1
-    println(folderpath_o*"EpRzWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*"_$(length(range(Ed_min,stop=Ed_max,step=Ed_diff))-1)x$(nE)x$(np)x$(nR)x$(nz).jld2")
+    println(folderpath_o*"EpRzWeights_"*t*"_"*T*"_at"*ti*"s_"*d*"_"*pretty2scpok(reaction; projVel = projVel)*"_$(length(range(Ed_min,stop=Ed_max,step=Ed_diff))-1)x$(nE)x$(np)x$(nR)x$(nz).jld2")
 else
-    println(folderpath_o*"EpRzWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*"_1.jld2")
+    println(folderpath_o*"EpRzWeights_"*t*"_"*T*"_at"*ti*"s_"*d*"_"*pretty2scpok(reaction; projVel = projVel)*"_1.jld2")
     println("... ")
-    println(folderpath_o*"EpRzWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*"_$(iiimax).jld2")
+    println(folderpath_o*"EpRzWeights_"*t*"_"*T*"_at"*ti*"s_"*d*"_"*pretty2scpok(reaction; projVel = projVel)*"_$(iiimax).jld2")
     if iii_average
         println("---> Average of all files will be computed and saved to: ")
-        println("---> "*folderpath_o*"EpRzWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*".jld2")
+        println("---> "*folderpath_o*"EpRzWeights_"*t*"_"*T*"_at"*ti*"s_"*d*"_"*pretty2scpok(reaction; projVel = projVel)*".jld2")
     end
 end
 if debug
@@ -450,7 +489,7 @@ end
 println("")
 println("If you would like to change any settings, please edit the start_calc4DW_template.jl file or similar.")
 println("")
-println("Written by Henrik Järleblad. Last maintained 2025-03-25.")
+println("Written by Henrik Järleblad. Last maintained 2025-05-14.")
 println("--------------------------------------------------------------------------------------------------")
 println("")
 
@@ -463,12 +502,13 @@ verbose && println("Loading Python modules... ")
     import numpy as np
     import forward
     import vcone
+    import spec
     """
 end
 
 ## ---------------------------------------------------------------------------------------------
 ## If no thermal distribution has been specified, we are going to need the OWCF default temp. and dens. profiles
-if filepath_thermal_distr==""
+if !isfile(filepath_thermal_distr)
     @everywhere begin
         include("misc/temp_n_dens.jl")
     end
@@ -480,9 +520,7 @@ verbose && println("Setting all Python variables and structures on all distribut
 @everywhere begin
     py"""
     # The '$' in front of many Python variables means that the variable is defined in Julia, not in Python.
-    reaction = $reaction
-    test_thermal_particle = Particle($thermal_species) # Check so that thermal species is available in DRESS code
-    thermal_species = $thermal_species
+    test_thermal_particle = spec.Particle($thermal_species) # Check so that thermal species is available in DRESS code
     projVel = $projVel
     if $verbose:
         print("From Python: Loading forward model with diagnostic... ") 
@@ -498,7 +536,7 @@ verbose && println("Setting all Python variables and structures on all distribut
             tr_out = transp_output.TranspOutput($TRANSP_id, step=1, out_file=$filepath_thermal_distr,fbm_files=[$filepath_FI_cdf]) # Load the TRANSP shot file. Assume first step. This is likely to be patched in the future.
             if $verbose:
                 print("From Python: Setting thermal distribution... ")
-            thermal_dist = transp_dists.Thermal(tr_out, ion=thermal_species) # Then load the thermal ion distribution from that .cdf file
+            thermal_dist = transp_dists.Thermal(tr_out, ion=$thermal_species) # Then load the thermal ion distribution from that .cdf file
         else:
             raise ValueError('From Python: TRANSP_id was specified, but filepath_thermal_distr was not (this should be impossible). Please correct and re-try.')
     else:
@@ -516,80 +554,80 @@ nEd = py"nEd"
 global Ed_array = vec(py"Ed_vals")
 
 ## ---------------------------------------------------------------------------------------------
-# Pre-processing thermal density and temperature data
-if !isnothing(thermal_dens) && (typeof(thermal_dens)==Float64 || typeof(thermal_dens)==Int64)
-    thermal_dens = [thermal_dens]
+# Pre-processing thermal ion density and temperature data
+verbose && println("Preparing thermal ion density and temperature data... ")
+if !(py"thermal_dist"=="") || projVel
+    # Nothing has to be done.
+    # If py"thermal_dist"=="", thermal ion density and temperature data will be loaded from TRANSP file
+    # If projVel, no thermal ion density and temperature data is needed (weights to be computed from projected velocities)
+    (verbose && projVel) && println("---> No thermal ion temperature and density data included (weights to be computed from projected velocities)")
+    (verbose && !(py"thermal_dist"=="")) && println("---> Thermal ion temperature and density data loaded from TRANSP file ($(filepath_thermal_distr))")
 else
-    if fileext_thermal=="jld2"
-        verbose && println("Creating thermal density interpolations object... ")
-        thermal_dens_itp = Interpolations.interpolate((ρ_pol_array,), thermal_dens_array, Gridded(Linear()))
-        thermal_dens_etp = Interpolations.extrapolate(thermal_dens_itp,0) # Add what happens in extrapolation scenario. 0 means we assume vacuum scrape-off layer (SOL)
-        ψ_rz = M(R_of_interest,z_of_interest)
-        psi_on_axis, psi_at_bdry = psi_limits(M)
-        ρ_pol_rz = sqrt((ψ_rz-psi_on_axis)/(psi_at_bdry-psi_on_axis)) # The formula for the normalized flux coordinate ρ_pol = sqrt((ψ-ψ_axis)/(ψ_edge-ψ_axis))
-        thermal_dens = [thermal_dens_etp(ρ_pol_rz)]
+    if isfile(filepath_thermal_distr) 
+        # If a thermal ion data file was specified
+        if fileext_thermal=="jld2"
+            # And the thermal ion data file was a file with a .jld2 file extension
+            thermal_temp_itp = Interpolations.interpolate((ρ_pol_array,), thermal_temp_array, Gridded(Linear()))
+            thermal_dens_itp = Interpolations.interpolate((ρ_pol_array,), thermal_dens_array, Gridded(Linear()))
+            thermal_temp_etp = Interpolations.extrapolate(thermal_temp_itp,0) # Add what happens in extrapolation scenario. 0 means we assume vacuum scrape-off layer (SOL)
+            thermal_dens_etp = Interpolations.extrapolate(thermal_dens_itp,0) # Add what happens in extrapolation scenario. 0 means we assume vacuum scrape-off layer (SOL)
+            verbose && println("---> Thermal ion temperature and density data loaded from $(filepath_thermal_distr)")
+        else
+            error("This error should be impossible to reach. Please post an issue at www.github.com/JuliaFusion/OWCF")
+        end
+    else
+        if thermal_temp_profile_type==:DEFAULT
+            thermal_temp_etp = x-> getAnalyticalTemp(thermal_temp_axis,x)
+            verbose && println("---> Default OWCF temperature profile with T_axis=$(thermal_temp_axis) keV will be used as thermal ion temperature data (more info in OWCF/misc/ folder)")
+        elseif thermal_temp_profile_type==:FLAT
+            thermal_temp_etp = x-> thermal_temp_axis
+            verbose && println("---> Flat thermal ion temperature ($(thermal_temp_axis) keV) profile assumed")
+        else
+            error("The 'thermal_temp_profile_type' input variable was set to $(thermal_temp_profile_type). Currently supported values include :DEFAULT and :FLAT. Please correct and re-try.")
+        end
+        if thermal_dens_profile_type==:DEFAULT
+            thermal_dens_etp = x-> getAnalyticalDens(thermal_dens_axis,x)
+            verbose && println("---> Default OWCF density profile with n_axis=$(thermal_dens_axis) m^-3 will be used as thermal ion density data (more info in OWCF/misc/ folder)")
+        elseif thermal_dens_profile_type==:FLAT
+            thermal_dens_etp = x-> thermal_dens_axis
+            verbose && println("---> Flat thermal ion density ($(thermal_dens_axis) m^-3) profile assumed")
+        else
+            error("The 'thermal_dens_profile_type' input variable was set to $(thermal_dens_profile_type). Currently supported values include :DEFAULT and :FLAT. Please correct and re-try.")
+        end
     end
-
-    # If a thermal species distribution has not been specified, we simply need the thermal species temperature on axis
-    if !isfile(filepath_thermal_distr)
-        ψ_rz = M(R_of_interest,z_of_interest)
-        psi_on_axis, psi_at_bdry = psi_limits(M)
-        ρ_pol_rz = sqrt((ψ_rz-psi_on_axis)/(psi_at_bdry-psi_on_axis)) # The formula for the normalized flux coordinate ρ_pol = sqrt((ψ-ψ_axis)/(ψ_edge-ψ_axis))
-        thermal_dens = [getAnalyticalDens(thermal_dens_axis,ρ_pol_rz)] # Use the default OWCF density profile
-    end
-
-    # If a TRANSP .cdf file has been specified for the thermal species distribution, we have everything we need in the Python thermal_dist variable
-    if lowercase(fileext_thermal)=="cdf"
-        thermal_dens = ""
-    end
-
-    # Transfer the thermal_dens variables to external processes
-    @everywhere thermal_dens = $thermal_dens
-end
-
-if !isnothing(thermal_temp) && (typeof(thermal_temp)==Float64 || typeof(thermal_temp)==Int64)
-    thermal_temp = [thermal_temp]
-else
-    if fileext_thermal=="jld2"
-        verbose && println("Creating thermal temperature interpolations object... ")
-        thermal_temp_itp = Interpolations.interpolate((ρ_pol_array,), thermal_temp_array, Gridded(Linear()))
-        thermal_temp_etp = Interpolations.extrapolate(thermal_temp_itp,0) # Add what happens in extrapolation scenario. 0 means we assume vacuum scrape-off layer (SOL)
-        ψ_rz = M(R_of_interest,z_of_interest)
-        psi_on_axis, psi_at_bdry = psi_limits(M)
-        ρ_pol_rz = sqrt((ψ_rz-psi_on_axis)/(psi_at_bdry-psi_on_axis)) # The formula for the normalized flux coordinate ρ_pol = sqrt((ψ-ψ_axis)/(ψ_edge-ψ_axis))
-        thermal_temp = [thermal_temp_etp(ρ_pol_rz)]
-    end
-
-    # If a thermal species distribution has not been specified, we simply need the thermal species temperature on axis
-    if !isfile(filepath_thermal_distr)
-        ψ_rz = M(R_of_interest,z_of_interest)
-        psi_on_axis, psi_at_bdry = psi_limits(M)
-        ρ_pol_rz = sqrt((ψ_rz-psi_on_axis)/(psi_at_bdry-psi_on_axis)) # The formula for the normalized flux coordinate ρ_pol = sqrt((ψ-ψ_axis)/(ψ_edge-ψ_axis))
-        thermal_temp = [getAnalyticalTemp(thermal_temp_axis,ρ_pol_rz)] # Use the default OWCF temperature profile
-    end
-
-    # If a TRANSP .cdf file has been specified for the thermal species distribution, we have everything we need in the Python thermal_dist variable
-    if lowercase(fileext_thermal)=="cdf"
-        thermal_temp = ""
-    end
-
-    # Transfer the thermal_temp variables to external processes
-    @everywhere thermal_temp = $thermal_temp
 end
 
 ## ---------------------------------------------------------------------------------------------
+# Preparing (E,p,R,z) points. Pre-computing magnetic field vectors and thermal ion temperature and density data
+verbose && print("Preparing (E,p,R,z) grid... ")
 E_zip = zip(eachindex(E_array),E_array)
 p_zip = zip(eachindex(p_array),p_array)
 R_zip = zip(eachindex(R_array),R_array)
 z_zip = zip(eachindex(z_array),z_array)
 EpRz_zip_itr = Iterators.product(E_zip,p_zip,R_zip,z_zip) # An iterable with all possible combinations of (E,p,R,z) coordinate-index pairs
-B_Rz = map(x-> reshape(Vector(Equilibrium.Bfield(M,x[1][1],x[2][1])),(3,1)),Iterators.product(R_zip,z_zip)) # Pre-compute the B-field at every (R,z) point. Reshape it at every point to fit Python format requirement
-@everywhere B_Rz = $B_Rz
-npoints = length(EpRz_zip_itr)
-list_o_saved_filepaths = Vector{String}(undef,iiimax) # Create a list to keep track of all saved files (needed for averaging)
-EpRz_zip_array = collect(EpRz_zip_itr)
-@everywhere EpRz_zip_array = $EpRz_zip_array
+EpRz_zip_array = collect(EpRz_zip_itr); npoints = length(EpRz_zip_itr)
 
+# Pre-compute the B-field at every (R,z) point. Reshape it at every point to fit Python format requirement
+B_Rz = map(x-> reshape(Vector(Equilibrium.Bfield(M,x[1][2],x[2][2])),(3,1)),Iterators.product(R_zip,z_zip))
+
+if !(py"thermal_dist"=="") || projVel # If thermal ion temperature and density data has been extracted from a TRANSP file, or weights are to be computed from projected velocities...
+    thermal_dens_Rz = ["" for R in R_array, z in z_array] # The 'thermal_dens_Rz' variable doesn't matter
+    thermal_temp_Rz = ["" for R in R_array, z in z_array] # The 'thermal_temp_Rz' variable doesn't matter
+else
+    thermal_dens_Rz = map(x-> [thermal_dens_etp(Equilibrium.rho_p(M,x[1][2],x[2][2]))], Iterators.product(R_zip, z_zip))
+    thermal_temp_Rz = map(x-> [thermal_temp_etp(Equilibrium.rho_p(M,x[1][2],x[2][2]))], Iterators.product(R_zip, z_zip))
+end
+
+# Send variables to external processes, for efficiency when using multi-CPU computations
+@everywhere EpRz_zip_array = $EpRz_zip_array
+@everywhere B_Rz = $B_Rz
+@everywhere thermal_dens_Rz = $thermal_dens_Rz
+@everywhere thermal_temp_Rz = $thermal_temp_Rz
+
+# Create a list to keep track of all saved files (needed for averaging)
+list_o_saved_filepaths = Vector{String}(undef,iiimax)
+verbose && println("Done!")
+## ---------------------------------------------------------------------------------------------
 # Calculating the weights
 verbose && println("Starting the "*diagnostic_name*" weights calculations... ")
 for iii=1:iiimax
@@ -605,19 +643,15 @@ for iii=1:iiimax
                 @async begin
                     W = @distributed (+) for i=1:npoints
                         EpRz_zip = EpRz_zip_array[i]
-                        E = EpRz_zip[1][2]
-                        iE = EpRz_zip[1][1]
-                        p = EpRz_zip[2][2]
-                        ip = EpRz_zip[2][1]
-                        R = EpRz_zip[3][2]
-                        iR = EpRz_zip[3][1]
-                        z = EpRz_zip[4][2]
-                        iz = EpRz_zip[4][1]
+                        iE = EpRz_zip[1][1]; E = EpRz_zip[1][2]
+                        ip = EpRz_zip[2][1]; p = EpRz_zip[2][2]
+                        iR = EpRz_zip[3][1]; R = EpRz_zip[3][2]
+                        iz = EpRz_zip[4][1]; z = EpRz_zip[4][2]
 
                         py"""
                         #forwardmodel = $forwardmodel # Convert the Forward Python object from Julia to Python.
                         # Please note, the '$' symbol is used below to convert objects from Julia to Python. Even Julia PyObjects
-                        spec = forwardmodel.calc($([E]), $([p]), $([R]), $([z]), $([1.0]), thermal_dist, Ed_bin_edges, $(B_Rz[iR,iz]), n_repeat=$gyro_samples, reaction=$reaction, bulk_temp=$thermal_temp, bulk_dens=$thermal_dens) # Please see the forward.py script, for further specifications
+                        spec = forwardmodel.calc($([E]), $([p]), $([R]), $([z]), $([1.0]), thermal_dist, Ed_bin_edges, $(B_Rz[iR,iz]), n_repeat=$gyro_samples, reaction=$reaction, bulk_temp=$(thermal_temp_Rz[iR,iz]), bulk_dens=$(thermal_dens_Rz[iR,iz])) # Please see the forward.py script, for more info
                         """
                         spec = Vector(py"spec")
                         rows = append!(collect(1:length(spec)),length(spec)) # To be able to tell the sparse framework about the real size of the weight matrix
@@ -637,19 +671,15 @@ for iii=1:iiimax
         else
             Wtot = @distributed (+) for i=1:npoints
                 EpRz_zip = EpRz_zip_array[i]
-                E = EpRz_zip[1][2]
-                iE = EpRz_zip[1][1]
-                p = EpRz_zip[2][2]
-                ip = EpRz_zip[2][1]
-                R = EpRz_zip[3][2]
-                iR = EpRz_zip[3][1]
-                z = EpRz_zip[4][2]
-                iz = EpRz_zip[4][1]
+                iE = EpRz_zip[1][1]; E = EpRz_zip[1][2]
+                ip = EpRz_zip[2][1]; p = EpRz_zip[2][2]
+                iR = EpRz_zip[3][1]; R = EpRz_zip[3][2]
+                iz = EpRz_zip[4][1]; z = EpRz_zip[4][2]
 
                 py"""
                 #forwardmodel = $forwardmodel # Convert the Forward Python object from Julia to Python.
                 # Please note, the '$' symbol is used below to convert objects from Julia to Python. Even Julia PyObjects
-                spec = forwardmodel.calc($([E]), $([p]), $([R]), $([z]), $([1.0]), thermal_dist, Ed_bin_edges, $(B_Rz[iR,iz]), n_repeat=$gyro_samples, reaction=$reaction, bulk_temp=$thermal_temp, bulk_dens=$thermal_dens) # Please see the forward.py script, for further specifications
+                spec = forwardmodel.calc($([E]), $([p]), $([R]), $([z]), $([1.0]), thermal_dist, Ed_bin_edges, $(B_Rz[iR,iz]), n_repeat=$gyro_samples, reaction=$reaction, bulk_temp=$(thermal_temp_Rz[iR,iz]), bulk_dens=$(thermal_dens_Rz[iR,iz])) # Please see the forward.py script, for more info
                 """
                 spec = Vector(py"spec")
                 rows = append!(collect(1:length(spec)),length(spec)) # Please see similar line earlier in the script
@@ -667,20 +697,17 @@ for iii=1:iiimax
             # WRITE CODE TO DEBUG QUANTITIES OF INTEREST
 
         else
+            verbose && println("Calculating spectra for (E,p,R,z) point 1 of $(length(EpRz_zip_array))... ")
             EpRz_zip = EpRz_zip_array[1]
-            E = EpRz_zip[1][2]
-            iE = EpRz_zip[1][1]
-            p = EpRz_zip[2][2]
-            ip = EpRz_zip[2][1]
-            R = EpRz_zip[3][2]
-            iR = EpRz_zip[3][1]
-            z = EpRz_zip[4][2]
-            iz = EpRz_zip[4][1]
+            iE = EpRz_zip[1][1]; E = EpRz_zip[1][2]
+            ip = EpRz_zip[2][1]; p = EpRz_zip[2][2]
+            iR = EpRz_zip[3][1]; R = EpRz_zip[3][2]
+            iz = EpRz_zip[4][1]; z = EpRz_zip[4][2]
 
             py"""
             #forwardmodel = $forwardmodel # Convert the Forward Python object from Julia to Python.
             # Please note, the '$' symbol is used below to convert objects from Julia to Python. Even Julia PyObjects
-            spec = forwardmodel.calc($([E]), $([p]), $([R]), $([z]), $([1.0]), thermal_dist, Ed_bin_edges, $(B_Rz[iR,iz]), n_repeat=$gyro_samples, reaction=$reaction, bulk_temp=$thermal_temp, bulk_dens=$thermal_dens) # Please see the forward.py script, for further specifications
+            spec = forwardmodel.calc($([E]), $([p]), $([R]), $([z]), $([1.0]), thermal_dist, Ed_bin_edges, $(B_Rz[iR,iz]), n_repeat=$gyro_samples, reaction=$reaction, bulk_temp=$(thermal_temp_Rz[iR,iz]), bulk_dens=$(thermal_dens_Rz[iR,iz])) # Please see the forward.py script, for more info
             """
             spec = Vector(py"spec")
             rows = append!(collect(1:length(spec)),length(spec)) # # Please see similar line earlier in the script
@@ -691,7 +718,7 @@ for iii=1:iiimax
             Wtot = dropzeros(sparse(rows,cols,spec)) # Pre-allocate a sparse matrix
         end
 
-        for i=2:length(EpRz_zip_array)
+        for i in eachindex(EpRz_zip_array)[2:end]
             if debug
                 verbose && println("Debugging (E,p) point $(i) of $(length(E_iE_p_ip_array))... ")
                 # WRITE CODE TO DEBUG QUANTITIES OF INTEREST
@@ -699,19 +726,15 @@ for iii=1:iiimax
             else
                 verbose && println("Calculating spectra for (E,p,R,z) point $(i) of $(length(EpRz_zip_itr))... ")
                 EpRz_zip = EpRz_zip_array[i]
-                E = EpRz_zip[1][2]
-                iE = EpRz_zip[1][1]
-                p = EpRz_zip[2][2]
-                ip = EpRz_zip[2][1]
-                R = EpRz_zip[3][2]
-                iR = EpRz_zip[3][1]
-                z = EpRz_zip[4][2]
-                iz = EpRz_zip[4][1]
+                iE = EpRz_zip[1][1]; E = EpRz_zip[1][2]
+                ip = EpRz_zip[2][1]; p = EpRz_zip[2][2]
+                iR = EpRz_zip[3][1]; R = EpRz_zip[3][2]
+                iz = EpRz_zip[4][1]; z = EpRz_zip[4][2]
 
                 py"""
                 #forwardmodel = $forwardmodel # Convert the Forward Python object from Julia to Python.
                 # Please note, the '$' symbol is used below to convert objects from Julia to Python. Even Julia PyObjects
-                spec = forwardmodel.calc($([E]), $([p]), $([R]), $([z]), $([1.0]), thermal_dist, Ed_bin_edges, $(B_Rz[iR,iz]), n_repeat=$gyro_samples, reaction=$reaction, bulk_temp=$thermal_temp, bulk_dens=$thermal_dens) # Please see the forward.py script, for further specifications
+                spec = forwardmodel.calc($([E]), $([p]), $([R]), $([z]), $([1.0]), thermal_dist, Ed_bin_edges, $(B_Rz[iR,iz]), n_repeat=$gyro_samples, reaction=$reaction, bulk_temp=$(thermal_temp_Rz[iR,iz]), bulk_dens=$(thermal_dens_Rz[iR,iz])) # Please see the forward.py script, for more info
                 """
                 spec = Vector(py"spec")
                 local rows = append!(collect(1:length(spec)),length(spec)) # Please see similar line earlier in the script
@@ -743,6 +766,7 @@ for iii=1:iiimax
         Rz_inds = collect(Iterators.product(1:nR,1:nz))
         # Do the first case separately, first weight matrix row and first (R,z) point, to avoid having to re-assign vpara_array, vperp_array all the time
         verbose && println("---> Transforming w(E,p) for (R,z) point 1 of $(length(Rz_inds))... ")
+        ### DEBUG PRINT ### println(""); println(Wtot); println("")
         iR = Rz_inds[1][1]
         iz = Rz_inds[1][2]
         W_Ep = zeros(nE,np)
@@ -751,8 +775,11 @@ for iii=1:iiimax
                 W_Ep[EpRz_zip[1][1], EpRz_zip[2][1]] = Wtot[1, i] # Build w(E,p) from the first row of the weight matrix Wtot
             end
         end
-        vpara_array, vperp_array, W_vel = Ep2VparaVperp(E_array, p_array, W_Ep; returnAbscissas=true) # Transform w(E,p) to w(vpara,vperp)
-        # Now we have to take the elements of W_vel (w(vpara,vperp)) and put them in the right place in the sparse weight matrix Wtot_vel
+        global vpara_array; global vperp_array
+        ### DEBUG ### println(W_Ep); println("")
+        W_vel, vpara_array, vperp_array = Ep2VparaVperp(E_array, p_array, W_Ep; returnAbscissas=true) # Transform w(E,p) to w(vpara,vperp)
+        ### DEBUG ### println(W_vel); println("")
+        ### Now we have to take the elements of W_vel (w(vpara,vperp)) and put them in the right place in the sparse weight matrix Wtot_vel
         cinds_wvel = CartesianIndices(W_vel)
         ROW = append!(1 .*ones(Int64,length(cinds_wvel)),size(Wtot,1)) # Here, we are only doing the first row of the sparse weight matrix Wtot_vel. Append dummy element, to create correct size
         COL = append!(zeros(Int64,length(cinds_wvel)),nvpara*nvperp*nR*nz) # But many different columns. Append dummy element, to create correct size
@@ -932,19 +959,26 @@ for iii=1:iiimax
     end
 
     if !debug
+        # CURRENTLY UNDER DEVELOPMENT!!!
+        # CURRENTLY UNDER DEVELOPMENT!!!
+        # CODE PLOTTING FUNCTIONALITY USING 'plot_results' INPUT VARIABLE!!!
+        # CURRENTLY UNDER DEVELOPMENT!!!
+        # CURRENTLY UNDER DEVELOPMENT!!!
         verbose && println("Saving weight function matrix... ")
+        global filepath_output_orig # To avoid annoying warnings about global/local scope
         if iiimax==1 # If you intend to calculate only one weight matrix
-            global filepath_output_orig = folderpath_o*"EpRzWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*"_$(length(range(Ed_min,stop=Ed_max,step=Ed_diff))-1)x$(nE)x$(np)x$(nR)x$(nz)"
+            filepath_output_orig = folderpath_o*"EpRzWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*"_$(length(range(Ed_min,stop=Ed_max,step=Ed_diff))-1)x$(nE)x$(np)x$(nR)x$(nz)"
         else # If you intend to calculate several (identical) weight matrices
-            global filepath_output_orig = folderpath_o*"EpRzWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*"_$(iii)"
+            filepath_output_orig = folderpath_o*"EpRzWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*"_$(iii)"
         end
-        global filepath_output = deepcopy(filepath_output_orig)
-        global count = 1
+        global filepath_output; filepath_output = deepcopy(filepath_output_orig)
+        global count; count = 1
         while isfile(filepath_output*".jld2") # To take care of not overwriting files. Add _(1), _(2) etc
-            global filepath_output = filepath_output_orig*"_($(Int64(count)))"
-            global count += 1 # global scope, to surpress warnings
+            global filepath_output; global count
+            filepath_output = filepath_output_orig*"_($(Int64(count)))"
+            count += 1 # global scope, to surpress warnings
         end
-        global filepath_output = filepath_output*".jld2"
+        filepath_output = filepath_output*".jld2"
         list_o_saved_filepaths[iii] = filepath_output # Store a record of the saved file
         myfile_s = jldopen(filepath_output,true,true,false,IOStream)
         ROW, COL, VAL = findnz(Wtot) # Extract rows, columns and values of non-zero indices of (E,p,R,z) weight matrix
@@ -958,11 +992,6 @@ for iii=1:iiimax
         write(myfile_s, "p_array", vec(p_array))
         write(myfile_s, "R_array", vec(R_array))
         write(myfile_s, "z_array", vec(z_array))
-        if instrumental_response
-            write(myfile_s, "Ed_array", instrumental_response_output)
-        else
-            write(myfile_s, "Ed_array", Ed_array)
-        end
         write(myfile_s, "reaction", reaction)
         if projVel
             write(myfile_s, "projVel", projVel)
@@ -988,7 +1017,7 @@ for iii=1:iiimax
             write(myfile_s, "Ed_array", instrumental_response_output)
             write(myfile_s, "Ed_array_units", instrumental_response_output_units)
             write(myfile_s, "Ed_array_raw", Ed_array)
-            write(myfile_s, "Ed_array_raw_units", analytical4DWs ? "m_s^-1" : "keV")
+            write(myfile_s, "Ed_array_raw_units", projVel ? "m_s^-1" : "keV")
             write(myfile_s, "instrumental_response_input", instrumental_response_input)
             write(myfile_s, "instrumental_response_output", instrumental_response_output)
             write(myfile_s, "instrumental_response_matrix", instrumental_response_matrix)
@@ -1002,12 +1031,8 @@ for iii=1:iiimax
             end
         else
             write(myfile_s, "Ed_array", Ed_array)
-            write(myfile_s, "Ed_array_units", analytical4DWs ? "m_s^-1" : "keV") # Otherwise, the output abscissa of calc4DWeights.jl is always in m/s or keV
+            write(myfile_s, "Ed_array_units", projVel ? "m_s^-1" : "keV") # Otherwise, the output abscissa of calc4DWeights.jl is always in m/s or keV
         end
-        if analytical4DWs
-            write(myfile_s, "analytical4DWs", analytical4DWs)
-        end
-        write(myfile_s, "reaction", reaction)
         write(myfile_s, "filepath_thermal_distr", filepath_thermal_distr)
         close(myfile_s)
     else
@@ -1025,8 +1050,7 @@ if iiimax>1 # If we were supposed to compute more than one weight matrix...
         COL = myfile["COL"] # Vector containing the corresponding column elements
         m_W = myfile["m_W"] # Total number of rows (including zero elements not included in R and C) of the (E,p,R,z) weight matrix
         n_W = myfile["n_W"] # Total number of columns (including zero elements not included in R and C) of the (E,p,R,z) weight matrix
-        W_total = dropzeros(sparse(append!(ROW,m_W),append!(COL,n_W),append!(VAL_total,0.0))) # Make the corresponding sparse matrix (to be able to use addition on several matrices effectively). Add one dummy element to re-create correct size. Don't store it though, only the total matrix size.
-        global W_total
+        global W_total; W_total = dropzeros(sparse(append!(ROW,m_W),append!(COL,n_W),append!(VAL_total,0.0))) # Make the corresponding sparse matrix (to be able to use addition on several matrices effectively). Add one dummy element to re-create correct size. Don't store it though, only the total matrix size.
         E_array = myfile["E_array"]
         p_array = myfile["p_array"]
         R_array = myfile["R_array"]
@@ -1044,10 +1068,9 @@ if iiimax>1 # If we were supposed to compute more than one weight matrix...
             COL_vel = myfile["COL_vel"] # Vector containing the corresponding column elements
             m_W_vel = myfile["m_W_vel"] # Total number of rows (including zero elements not included in R and C) of the (vpara,vperp,R,z) weight matrix
             n_W_vel = myfile["n_W_vel"] # Total number of columns (including zero elements not included in R and C) of the (vpara,vperp,R,z) weight matrix
-            W_vel_total = dropzeros(sparse(append!(ROW_vel,m_W_vel),append!(COL_vel,n_W_vel),append!(VAL_vel_total,0.0))) # Make the corresponding sparse matrix (to be able to use addition on several matrices effectively). Add one dummy element to re-create correct size. Don't store it though, only the total matrix size.
-            global W_vel_total
-            vpara_array = myfile["vpara_array"]
-            vperp_array = myfile["vperp_array"]
+            global W_vel_total; W_vel_total = dropzeros(sparse(append!(ROW_vel,m_W_vel),append!(COL_vel,n_W_vel),append!(VAL_vel_total,0.0))) # Make the corresponding sparse matrix (to be able to use addition on several matrices effectively). Add one dummy element to re-create correct size. Don't store it though, only the total matrix size.
+            global vpara_array; vpara_array = myfile["vpara_array"]
+            global vperp_array; vperp_array = myfile["vperp_array"]
             VparVperRz_coords = myfile["VparVperRz_coords"] # The indices and (vpara,vperp,R,z) coordinates for all the columns of the (vpara,vperp,R,z) weight matrix
         end
         if instrumental_response
@@ -1056,8 +1079,7 @@ if iiimax>1 # If we were supposed to compute more than one weight matrix...
             COL_raw = myfile["COL_raw"] # Vector containing the corresponding column elements
             m_W_raw = myfile["m_W_raw"] # Total number of rows (including zero elements not included in R and C) of the raw (without instrumental response) (E,p,R,z) weight matrix
             n_W_raw = myfile["n_W_raw"] # Total number of columns (including zero elements not included in R and C) of the raw (without instrumental response) (E,p,R,z) weight matrix
-            W_raw_total = dropzeros(sparse(append!(ROW_raw,m_W_raw),append!(COL_raw,n_W_raw),append!(VAL_raw_total,0.0))) # Make the corresponding sparse matrix (to be able to use addition on several matrices effectively). Add one dummy element to re-create correct size. Don't store it though, only the total matrix size.
-            global W_raw_total
+            global W_raw_total; W_raw_total = dropzeros(sparse(append!(ROW_raw,m_W_raw),append!(COL_raw,n_W_raw),append!(VAL_raw_total,0.0))) # Make the corresponding sparse matrix (to be able to use addition on several matrices effectively). Add one dummy element to re-create correct size. Don't store it though, only the total matrix size.
             Ed_array_raw = myfile["Ed_array_raw"]
             Ed_array_raw_units = myfile["Ed_array_raw_units"]
             instrumental_response_input = myfile["instrumental_response_input"]
@@ -1069,8 +1091,7 @@ if iiimax>1 # If we were supposed to compute more than one weight matrix...
                 COL_vel_raw = myfile["COL_vel_raw"] # Vector containing the corresponding column elements
                 m_W_vel_raw = myfile["m_W_vel_raw"] # Total number of rows (including zero elements not included in R and C) of the raw (without instrumental response) (vpara,vperp,R,z) weight matrix
                 n_W_vel_raw = myfile["n_W_vel_raw"] # Total number of columns (including zero elements not included in R and C) of the raw (without instrumental response) (vpara,vperp,R,z) weight matrix
-                W_vel_raw_total = dropzeros(sparse(append!(ROW_vel_raw,m_W_vel_raw),append!(COL_vel_raw,n_W_vel_raw),append!(VAL_vel_raw_total,0.0))) # Make the corresponding sparse matrix (to be able to use addition on several matrices effectively). Add one dummy element to re-create correct size. Don't store it though, only the total matrix size.
-                global W_vel_raw_total
+                global W_vel_raw_total; W_vel_raw_total = dropzeros(sparse(append!(ROW_vel_raw,m_W_vel_raw),append!(COL_vel_raw,n_W_vel_raw),append!(VAL_vel_raw_total,0.0))) # Make the corresponding sparse matrix (to be able to use addition on several matrices effectively). Add one dummy element to re-create correct size. Don't store it though, only the total matrix size.
             end
         end
         filepath_thermal_distr = myfile["filepath_thermal_distr"]
