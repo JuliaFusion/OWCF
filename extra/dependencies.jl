@@ -31,20 +31,20 @@ using Base.Iterators
 using Contour
 using Distributed
 using Distributions
-using EFIT
-using Equilibrium
-using FileIO
+using EFIT # For calculating magn½etic equilibrium quantities
+using Equilibrium # For loading flux function data, tokamak geometry data etc.
+using FileIO # To write/open files in general
 using ForwardDiff
-using GuidingCenterOrbits
+using GuidingCenterOrbits # For computing guiding-center orbit trajectories
 using HDF5
-using Interpolations
-using JLD2
+using Interpolations # To be able to interpolate
+using JLD2 # To write/open .jld2 files (Julia data files, basically)
 using LinearAlgebra
 using NearestNeighbors
-using NetCDF
-using OrbitTomography
-using ProgressMeter
-using SparseArrays
+using NetCDF # To enable write/open .cdf files
+using OrbitTomography # This is what all this is about!
+using ProgressMeter # To display computational progress during parallel computations
+using SparseArrays # To enable utilization of sparse matrices/vectors
 using VoronoiDelaunay
 include("../misc/convert_units.jl") # Some functions in dependencies.jl need units functions
 include("../misc/species_func.jl") # Some functions in dependencies.jl need species functions (including OWCF/extra/constants.jl)

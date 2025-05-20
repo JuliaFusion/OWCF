@@ -31,7 +31,7 @@ class Particle:
             self.long_name = 'neutron'
             self.u = constants.mn
             self.q = 0.0
-        elif name == 'h':
+        elif (name == 'h') or (name == 'p'):
             self.long_name = 'proton'
             self.u = constants.mp
             self.q = constants.e
@@ -284,7 +284,7 @@ class SpectrumCalculator:
             self.product_1 = 'n'
             self.product_2 = '3he'
 
-        elif all(p in [a,b] for p in ['h','t']):
+        elif all(p in [a,b] for p in ['h','t']) or all(p in [a,b] for p in ['p','t']):
             # T(h,g)4He
             self.product_1 = 'g'
             self.product_2 = '4he'
