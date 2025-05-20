@@ -163,10 +163,8 @@ class Forward(object):
         if not (np.sum(v_rot) == 0.0):
             v = v + v_rot # Add plasma rotation to fast-ion velocities
 
-        # Map orbit points to viewing cone voxels, if viewing cone has been specified
+        # Map (E,p,R,z) points to viewing cone voxels, if viewing cone has been specified
         if self.viewing_cone == "":
-            #E_vc = E # No viewing cone specified. All energy points are accepted (/inside the universe)
-            #p_vc = p # No viewing cone specified. All pitch points are accepted (/inside the universe)
             R_vc = R # No viewing cone specified. All R points are accepted (/inside the universe)
             z_vc = z # No viewing cone specified. All z points are accepted (/inside the universe)
             v_vc = v # No viewing cone specified. All v vectors are accepted (/inside the universe)
@@ -182,9 +180,6 @@ class Forward(object):
             if len(i_points) == 0:
                 #print('No points inside viewing cone!')
                 return np.zeros(len(Ed_bins)-1)
-            
-            #E_vc = E[i_points] # Extract energy points within diagnostic viewing cone
-            #p_vc = p[i_points] # Extract pitch points within diagnostic viewing cone
             R_vc = R[i_points] # Extract R points within diagnostic viewing cone
             z_vc = z[i_points] # Extract z points within diagnostic viewing cone
             v_vc = v[:,i_points] # Extract v vectors with origins within diagnostic viewing cone
@@ -211,7 +206,6 @@ class Forward(object):
                 if u1.ndim == 1:
                     u1 = np.array(u1).reshape(3,1)   # same direction towards the detector for all samples (could be the case for a really small stagnation orbits for example)
                 u1_norm = np.linalg.norm(u1,axis=0)
-                #proj_speeds = np.linalg.norm((u1*v)/u1_norm,axis=0) # The magnitude of the projection of the ion velocities onto the vector parallel to the diagnostic sightline
                 proj_speeds = np.einsum("ij,ij->j",u1/u1_norm,v_vc) # Compute the projected velocities
                 return np.histogram(proj_speeds, bins=Ed_bins, weights=spec_weights)[0] # Bin all projected velocities
 

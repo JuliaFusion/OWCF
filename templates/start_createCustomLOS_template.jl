@@ -60,6 +60,9 @@
 #           of 2 elements, θ_x and θ_z (explained above). For case 4, specify as an array of 2
 #           elements, θ_R and θ_phi (explained above). For case 5, specify as an array of 1 element,
 #           θ_u (explained above). - Vector{Float64}
+# LOS_vec_for_all - If set to true, all points within the LOS will be approximated to have the same vector (LOS_vec) pointing 
+#            towards the detector. Good approximation if LOS is e.g. very thin/narrow. Should be set to true if e.g. Case 5 is 
+#            used to create a CTS measurement volume LOS - Bool
 # LOS_width - The width of the LOS. In meters. - Float64
 # plot_LOS - If set to true, the LOS will be plotted (top and poloidal projection view) when created - Bool
 # save_LOS_plot - If set to true, the LOS plot will be saved in .png file format after plotted - Bool
@@ -99,6 +102,7 @@ Pkg.activate(".")
     LOS_length = 0.0 # Length of line-of-sight. From detector to desired end. Meters. When coordinate_system==:magrel, assume (R,z) point of interest is at half the LOS length
     LOS_name = "test_detector"
     LOS_vec = [] # TOFOR (proxy) cartesian: [0.005,-0.001,0.9999] /// NE213 (proxy) cartesian: [0.995902688, 0.293844478e-2, -0.903836320e-1]
+    LOS_vec_for_all = false # Should be set to true if e.g. Case 5 is used to create a small measurement volume LOS for CTS (Collective Thomson Scattering)
     LOS_width = 0.0 # TOFOR (proxy): 0.27 /// NE213 (proxy): 0.25
     plot_LOS = false # If set to true, the LOS will be plotted (top view and poloidal projection) after creation. For validation purposes.
     plot_LOS && (save_LOS_plot = true) # If set to true, the LOS plot will be saved in .png file format

@@ -92,6 +92,7 @@ using Distributed # Needed to be loaded, even though multi-core computations are
     LOS_length = 22.0 # Length of line-of-sight. From detector to desired end. Meters. When coordinate_system==:magrel, assume (R,z) point of interest is at half the LOS length
     LOS_name = "createCustomLOS_test2"
     LOS_vec = [0.005,0.0,0.9999] # TOFOR (proxy) cartesian: [0.005,-0.001,0.9999] /// NE213 (proxy) cartesian: [0.995902688, 0.293844478e-2, -0.903836320e-1]
+    LOS_vec_for_all = false
     LOS_width = 0.27 # TOFOR (proxy): 0.27 /// NE213 (proxy): 0.25
     plot_LOS = $plot_test_results # SET TO TRUE, VIA THE plot_test_results INPUT VARIABLE IN THE OWCF/tests/run_tests.jl SCRIPT
     plot_LOS && (save_LOS_plot = true) # If set to true, the LOS plot will be saved in .png file format

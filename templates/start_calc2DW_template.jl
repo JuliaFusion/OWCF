@@ -63,6 +63,8 @@
 # plasma_rot_speed_data_source - The filepath to a TRANSP file containing the "OMEGA" variable, i.e. the plasma rotation data - String
 # plasma_rot_speed - If plasma_rot_speed_data_source is set to :MANUAL, use this value - Float64 or Int64
 # plasma_rot_dir - The direction of plasma rotation. Either :TOROIDAL (with same sign as plasma current) or along B-field lines with :BFIELD - Symbol
+# plot_results - If true, the weight functions will be plotted upon completion of computation. The figure(s) will be saved as .png files in the 
+#                folderpath_o folder - Bool
 # R_of_interest - The major radius coordinate of interest, for the (E,p) weight functions. Specified in meters or symbol (see below) - Float64 or symbol
 # reaction - Fusion reaction, on any of the forms described in the OWCF/misc/availReacts.jl script - String
 # saveVparaVperpWeights - If set to true, the weight functions will be saved on a (vpara,vperp) grid, in addition to (E,p) - Bool
@@ -130,7 +132,7 @@ end
 @everywhere begin
     analytic = false
     debug = false
-    diagnostic_filepath = "" # Currently supported: "TOFOR", "AB" and ""
+    diagnostic_filepath = "" # In addition to a file path, the following Strings also supported: "TOFOR", "AB" and ""
     diagnostic_name = ""
     instrumental_response_filepath = "" # Should be the filepath to three .txt-files or one .jld2-file. Otherwise, leave as ""
     instrumental_response_output_units = "" # Should be specified as described in OWCF/misc/convert_units.jl. If instrumental_response_filepath=="", leave as ""
@@ -161,6 +163,7 @@ end
     plasma_rot_speed_data_source = "" # /path/to/the/TRANSP/file.cdf
     plasma_rot_speed = 0.0 # If plasma_rot_speed_data_source is set to :MANUAL, use this value (m/s)
     plasma_rot_dir = :TOROIDAL # :TOROIDAL or :BFIELD
+    plot_results = false # If true, results will be plotted and figures saved as .png files
     R_of_interest = :r_mag # The major radius coordinate of interest. Specify in meters e.g. "3.0", "3.4" etc. Can also be specified as a symbol :r_mag, then the major radius coordinate of the magnetic axis will automatically be used
     saveVparaVperpWeights = false # Set to true, and the weight functions will be saved in (vpara,vperp), in addition to (E,p)
     ################################################################################
