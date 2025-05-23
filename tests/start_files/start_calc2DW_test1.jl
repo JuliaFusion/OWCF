@@ -135,7 +135,7 @@ distributed = false
     instrumental_response_filepath = folderpath_OWCF*"vc_data/TOFOR/TOFOR_instrumental_response.jld2" # Should be the filepath to three .txt-files or one .jld2-file. Otherwise, leave as ""
     instrumental_response_output_units = "ns" # Should be specified as described in OWCF/misc/convert_units.jl. If instrumental_response_filepath=="", leave as ""
     Ed_min = 1000.0 # keV (or m/s if 'reaction' input variable is specified on form (3) (please see OWCF/misc/availReacts.jl for explanation))
-    Ed_max = 5000.0 # keV (or m/s if 'reaction' input variable is specified on form (3) (please see OWCF/misc/availReacts.jl for explanation))
+    Ed_max = 4000.0 # keV (or m/s if 'reaction' input variable is specified on form (3) (please see OWCF/misc/availReacts.jl for explanation))
     Ed_diff = 50.0 # keV (or m/s if 'reaction' input variable is specified on form (3) (please see OWCF/misc/availReacts.jl for explanation))
     E_array = nothing # keV. Array can be specified manually. Otherwise, leave as 'nothing'
     Emin = 10.0 # keV

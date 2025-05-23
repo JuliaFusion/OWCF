@@ -122,7 +122,7 @@
 # WARNING! Please note that the output files of calc4DWeights.jl will be LARGE. This is due to the relatively high dimensionality
 # of the weight functions.
 
-# Script written by Henrik Järleblad. Last maintained 2025-05-14.
+# Script written by Henrik Järleblad. Last maintained 2025-05-23.
 ################################################################################################
 
 ## ---------------------------------------------------------------------------------------------
@@ -180,6 +180,11 @@ fileext_FI_cdf = (split(filepath_FI_cdf,"."))[end] # Assume last part after fina
 fileext_FI_cdf = lowercase(fileext_FI_cdf)
 @everywhere fileext_thermal = $fileext_thermal
 @everywhere fileext_FI_cdf = $fileext_FI_cdf
+
+# Work with output filename
+if !(typeof(filename_o)==String)
+    error("The 'filename_o' input variable was specified as $(filename_o). This is not a String type. Please correct and re-try.")
+end
 
 ## ---------------------------------------------------------------------------------------------
 # Error checks
@@ -470,15 +475,16 @@ if saveVparaVperpWeights
 end
 println("Results will be saved to: ")
 t = isnothing(tokamak) ? "" : tokamak; T = isnothing(TRANSP_id) ? "" : TRANSP_id; ti = isnothing(timepoint) ? "" : timepoint; d = isnothing(diagnostic_name) ? "" : diagnostic_name
+filepath_o_s_fp = !(filename_o=="") ? filename_o : "EpRzWeights_"*t*"_"*T*"_at"*ti*"s_"*d*"_"*pretty2scpok(reaction; projVel = projVel)
 if iiimax == 1
-    println(folderpath_o*"EpRzWeights_"*t*"_"*T*"_at"*ti*"s_"*d*"_"*pretty2scpok(reaction; projVel = projVel)*"_$(length(range(Ed_min,stop=Ed_max,step=Ed_diff))-1)x$(nE)x$(np)x$(nR)x$(nz).jld2")
+    println(folderpath_o*filepath_o_s_fp*"_$(length(range(Ed_min,stop=Ed_max,step=Ed_diff))-1)x$(nE)x$(np)x$(nR)x$(nz).jld2")
 else
-    println(folderpath_o*"EpRzWeights_"*t*"_"*T*"_at"*ti*"s_"*d*"_"*pretty2scpok(reaction; projVel = projVel)*"_1.jld2")
+    println(folderpath_o*filepath_o_s_fp*"_1.jld2")
     println("... ")
-    println(folderpath_o*"EpRzWeights_"*t*"_"*T*"_at"*ti*"s_"*d*"_"*pretty2scpok(reaction; projVel = projVel)*"_$(iiimax).jld2")
+    println(folderpath_o*filepath_o_s_fp*"_$(iiimax).jld2")
     if iii_average
         println("---> Average of all files will be computed and saved to: ")
-        println("---> "*folderpath_o*"EpRzWeights_"*t*"_"*T*"_at"*ti*"s_"*d*"_"*pretty2scpok(reaction; projVel = projVel)*".jld2")
+        println("---> "*folderpath_o*filepath_o_s_fp*".jld2")
     end
 end
 if debug
@@ -489,7 +495,7 @@ end
 println("")
 println("If you would like to change any settings, please edit the start_calc4DW_template.jl file or similar.")
 println("")
-println("Written by Henrik Järleblad. Last maintained 2025-05-14.")
+println("Written by Henrik Järleblad. Last maintained 2025-05-23.")
 println("--------------------------------------------------------------------------------------------------")
 println("")
 
@@ -765,7 +771,7 @@ for iii=1:iiimax
 
         Rz_inds = collect(Iterators.product(1:nR,1:nz))
         # Do the first case separately, first weight matrix row and first (R,z) point, to avoid having to re-assign vpara_array, vperp_array all the time
-        verbose && println("---> Transforming w(E,p) for (R,z) point 1 of $(length(Rz_inds))... ")
+        verbose && println("---> Transforming w(E,p) for (R,z) point 1 of $(length(Rz_inds)) from (E,p) to (vpara,vperp)... ")
         ### DEBUG PRINT ### println(""); println(Wtot); println("")
         iR = Rz_inds[1][1]
         iz = Rz_inds[1][2]
@@ -794,8 +800,12 @@ for iii=1:iiimax
         Wtot_vel += dropzeros(sparse(ROW,COL,VAL)) # Build upon the (vpara,vperp,R,z) sparse matrix Wtot_vel, instantiated above
 
         # NOW, REPEAT FOR ALL (R,z) POINTS FOR THE FIRST WEIGHT MATRIX ROW
+        global prog_proc = []
         for iRz in 2:length(Rz_inds)
-            verbose && println("---> Transforming w(E,p) for (R,z) point $(iRz) of $(length(Rz_inds))... ")
+            if !(floor(100*iRz/length(Rz_inds)) in prog_proc)
+                append!(prog_proc,floor(100*iRz/length(Rz_inds)))
+                verbose && println("---> Transforming w(E,p) to w(vpara,vperp) for the rest of the (R,z) points for row 1 of $(size(Wtot,1)) ($(prog_proc[end]) %)... ")
+            end
             iR = Rz_inds[iRz][1]
             iz = Rz_inds[iRz][2]
             W_Ep = zeros(nE,np)
@@ -904,12 +914,16 @@ for iii=1:iiimax
             cols = [1,nvpara*nvperp*nR*nz] # The first and last column of Wtot_vel (but non Wtot, since (vpara,vperp) will result in another set of weight matrix columns)
             Wtot_vel_exceptFirstRow = dropzeros(sparse(rows,cols,[0.0,0.0]))
             for iRow in collect(2:size(Wtot,1))
-                verbose && println("Transforming row $(iRow) of $(size(Wtot,1))... ")
+                verbose && println("Transforming row $(iRow) of $(size(Wtot,1)) from (E,p) to (vpara,vperp)... ")
                 rows = [1,size(Wtot,1)] # The first and last row of Wtot (and also Wtot_vel)
                 cols = [1,nvpara*nvperp*nR*nz] # The first and last column of Wtot_vel (but non Wtot, since (vpara,vperp) will result in another set of weight matrix columns)
                 Wtot_vel_row = dropzeros(sparse(rows,cols,[0.0,0.0])) # Instantiate a sparse matrix for the (vpara,vperp,R,z) weight matrix (but only the iRow:th row)
+                global prog_proc = []
                 for iRz in 1:length(Rz_inds)
-                    verbose && println("---> Transforming w(E,p) for (R,z) point $(iRz) of $(length(Rz_inds))... ")
+                    if !(floor(100*iRz/length(Rz_inds)) in prog_proc)
+                        append!(prog_proc,floor(100*iRz/length(Rz_inds)))
+                        verbose && println("---> Transforming w(E,p) to w(vpara,vperp) for all (R,z) points for row $(iRow) of $(size(Wtot,1)) ($(prog_proc[end]) %)... ")
+                    end
                     iR = Rz_inds[iRz][1]
                     iz = Rz_inds[iRz][2]
                     W_Ep = zeros(nE,np)
@@ -959,25 +973,130 @@ for iii=1:iiimax
     end
 
     if !debug
-        # CURRENTLY UNDER DEVELOPMENT!!!
-        # CURRENTLY UNDER DEVELOPMENT!!!
-        # CODE PLOTTING FUNCTIONALITY USING 'plot_results' INPUT VARIABLE!!!
-        # CURRENTLY UNDER DEVELOPMENT!!!
-        # CURRENTLY UNDER DEVELOPMENT!!!
-        verbose && println("Saving weight function matrix... ")
-        global filepath_output_orig # To avoid annoying warnings about global/local scope
+        # Set the output file name 'filepath_out'
+        # First, if the user specified a custom output file name (filename_o), use that instead of the default OWCF output file name
+        filepath_o_s = !(filename_o=="") ? filename_o : "EpRzWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)
         if iiimax==1 # If you intend to calculate only one weight matrix
-            filepath_output_orig = folderpath_o*"EpRzWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*"_$(length(range(Ed_min,stop=Ed_max,step=Ed_diff))-1)x$(nE)x$(np)x$(nR)x$(nz)"
+            global filepath_output_orig = folderpath_o*filepath_o_s*"_$(length(range(Ed_min,stop=Ed_max,step=Ed_diff))-1)x$(nE)x$(np)x$(nR)x$(nz)"
         else # If you intend to calculate several (identical) weight matrices
-            filepath_output_orig = folderpath_o*"EpRzWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*"_$(iii)"
+            global filepath_output_orig = folderpath_o*filepath_o_s*"_$(iii)"
         end
-        global filepath_output; filepath_output = deepcopy(filepath_output_orig)
-        global count; count = 1
+        global filepath_output = deepcopy(filepath_output_orig)
+        global count = 1
         while isfile(filepath_output*".jld2") # To take care of not overwriting files. Add _(1), _(2) etc
             global filepath_output; global count
             filepath_output = filepath_output_orig*"_($(Int64(count)))"
             count += 1 # global scope, to surpress warnings
         end
+
+        if plot_results
+            plot_font = "Computer Modern"
+            Plots.default(fontfamily=plot_font)
+            verbose && println("Plotting weight function data... ")
+
+            if instrumental_response
+                W_raw_plt = Wtot_raw # Bad variable names...
+                W_plt = Wtot # Bad variable names...
+                if saveVparaVperpWeights
+                    W_vel_raw_plt = Wtot_vel_raw # Bad variable names...
+                    W_vel_plt = Wtot_vel # Bad variable names...
+                end
+            else
+                W_raw_plt = Wtot # Bad variable names...
+                if saveVparaVperpWeights
+                    W_vel_plt = Wtot_vel # Bad variable names...
+                end
+            end
+
+            # Without instrumental response (raw)
+            N_bins = length(Ed_array)
+            if N_bins>=5
+                plt_raw_inds = Int64.(round.(collect(range(1,length(Ed_array); length=5))[2:4]))
+            elseif N_bins==4
+                plt_raw_inds = [2,3,4]
+            elseif N_bins==3
+                plt_raw_inds = [1,2,3]
+            elseif N_bins==2
+                plt_raw_inds = [1,1,2]
+            else # N_bins==1
+                plt_raw_inds = [1,1,1]
+            end
+
+            Ed_low = @sprintf "%.2E" Ed_array[plt_raw_inds[1]]
+            Ed_mid = @sprintf "%.2E" Ed_array[plt_raw_inds[2]]
+            Ed_hi = @sprintf "%.2E" Ed_array[plt_raw_inds[3]]
+            W_raw_plt_low = W_raw_plt[plt_raw_inds[1],:] # w_low(E,p,R,z) but vectorized
+            W_raw_plt_mid = W_raw_plt[plt_raw_inds[2],:] # w_mid(E,p,R,z) but vectorized
+            W_raw_plt_hi = W_raw_plt[plt_raw_inds[3],:] # w_hi(E,p,R,z) but vectorized
+
+            W_raw_plt_low_Ep = zeros(length(E_array),length(p_array)) # w_low(E,p) = inv(dRdz) ∫ w_low(E,p,R,z) dRdz 
+            W_raw_plt_mid_Ep = zeros(length(E_array),length(p_array)) # w_mid(E,p) = inv(dRdz) ∫ w_mid(E,p,R,z) dRdz 
+            W_raw_plt_hi_Ep = zeros(length(E_array),length(p_array)) # w_hi(E,p) = inv(dRdz) ∫ w_hi(E,p,R,z) dRdz 
+            W_raw_plt_low_Rz = zeros(length(R_array),length(z_array)) # w_low(R,z) = inv(dEdp) ∫ w_low(E,p,R,z) dEdp 
+            W_raw_plt_mid_Rz = zeros(length(R_array),length(z_array)) # w_mid(R,z) = inv(dEdp) ∫ w_mid(E,p,R,z) dEdp 
+            W_raw_plt_hi_Rz = zeros(length(R_array),length(z_array)) # w_hi(R,z) = inv(dEdp) ∫ w_hi(E,p,R,z) dEdp 
+
+            for (i,elem) in enumerate(EpRz_zip_array)
+                EpRz_zip = EpRz_zip_array[i]
+                iE = EpRz_zip[1][1]
+                ip = EpRz_zip[2][1]
+                iR = EpRz_zip[3][1]
+                iz = EpRz_zip[4][1]
+
+                W_raw_plt_low_Ep[iE,ip] += W_raw_plt_low[i]
+                W_raw_plt_mid_Ep[iE,ip] += W_raw_plt_mid[i]
+                W_raw_plt_hi_Ep[iE,ip] += W_raw_plt_hi[i]
+                W_raw_plt_low_Rz[iR,iz] += W_raw_plt_low[i]
+                W_raw_plt_mid_Rz[iR,iz] += W_raw_plt_mid[i]
+                W_raw_plt_hi_Rz[iR,iz] += W_raw_plt_hi[i]
+            end
+
+            W_raw_plt_low_Ep_max = @sprintf "%.2E" maximum(W_raw_plt_low_Ep)
+            W_raw_plt_mid_Ep_max = @sprintf "%.2E" maximum(W_raw_plt_mid_Ep)
+            W_raw_plt_hi_Ep_max = @sprintf "%.2E" maximum(W_raw_plt_hi_Ep)
+            W_raw_plt_low_Rz_max = @sprintf "%.2E" maximum(W_raw_plt_low_Rz)
+            W_raw_plt_mid_Rz_max = @sprintf "%.2E" maximum(W_raw_plt_mid_Rz)
+            W_raw_plt_hi_Rz_max = @sprintf "%.2E" maximum(W_raw_plt_hi_Rz)
+
+            plt_Ep_raw_low = Plots.heatmap(E_array, p_array, transpose(W_raw_plt_low_Ep),title="∫dRdz w($(Ed_low),E,p,R,z), max(w): $(W_raw_plt_low_Ep_max) keV^-1", colorbar=false, xlims=extrema(E_array), ylims=extrema(p_array))
+            plt_Ep_raw_mid = Plots.heatmap(E_array, p_array, transpose(W_raw_plt_mid_Ep),title="∫dRdz w($(Ed_mid),E,p,R,z), max(w): $(W_raw_plt_mid_Ep_max) keV^-1",colorbar=false, xlims=extrema(E_array), ylims=extrema(p_array))
+            plt_Ep_raw_hi = Plots.heatmap(E_array, p_array, transpose(W_raw_plt_hi_Ep),title="∫dRdz w($(Ed_hi),E,p,R,z), max(w): $(W_raw_plt_hi_Ep_max) keV^-1",colorbar=false, xlims=extrema(E_array), ylims=extrema(p_array))
+            plt_Rz_raw_low = Plots.heatmap(R_array, z_array, transpose(W_raw_plt_low_Rz),title="∫dEdp w($(Ed_low),E,p,R,z), max(w): $(W_raw_plt_low_Rz_max) keV^-1",colorbar=false)
+            plt_Rz_raw_mid = Plots.heatmap(R_array, z_array, transpose(W_raw_plt_mid_Rz),title="∫dEdp w($(Ed_mid),E,p,R,z), max(w): $(W_raw_plt_mid_Rz_max) keV^-1",colorbar=false)
+            plt_Rz_raw_hi = Plots.heatmap(R_array, z_array, transpose(W_raw_plt_hi_Rz),title="∫dEdp w($(Ed_hi),E,p,R,z), max(w): $(W_raw_plt_hi_Rz_max) keV^-1",colorbar=false)
+            
+            # Add labels etc to (E,p) plots
+            plt_Ep_raw_low = Plots.plot!(plt_Ep_raw_low, xlabel="Energy [keV]", ylabel="Pitch [-]")
+            plt_Ep_raw_mid = Plots.plot!(plt_Ep_raw_mid, xlabel="Energy [keV]", ylabel="Pitch [-]")
+            plt_Ep_raw_hi = Plots.plot!(plt_Ep_raw_hi, xlabel="Energy [keV]", ylabel="Pitch [-]")
+
+            # Add tokamak wall, labels etc to (R,z) plots
+            plt_Rz_raw_low = Plots.plot!(plt_Rz_raw_low, wall.r, wall.z, linewidth=2.0, label="", xlabel="R [m]", ylabel="z [m]", aspect_ratio=:equal)
+            plt_Rz_raw_mid = Plots.plot!(plt_Rz_raw_mid, wall.r, wall.z, linewidth=2.0, label="", xlabel="R [m]", ylabel="z [m]", aspect_ratio=:equal)
+            plt_Rz_raw_hi = Plots.plot!(plt_Rz_raw_hi, wall.r, wall.z, linewidth=2.0, label="", xlabel="R [m]", ylabel="z [m]", aspect_ratio=:equal)
+
+            plt_EpRz_raw = Plots.plot(plt_Ep_raw_low, plt_Ep_raw_mid, plt_Ep_raw_hi,
+                                      plt_Rz_raw_low, plt_Rz_raw_mid, plt_Rz_raw_hi,
+                                      layout=(2,3), size=(1200,800), dpi=200, 
+                                fillcolor=cgrad([:white, :yellow, :orange, :red, :black]), titlefontsize=10, colorbar=false, bottom_margin=6Plots.mm,
+                                left_margin=6Plots.mm, right_margin=5Plots.mm)
+            png(plt_EpRz_raw,filepath_output*"_EpRz_raw")
+
+            # CONTINUE CODING HERE!!!
+            # CONTINUE CODING HERE!!!
+            # CONTINUE CODING HERE!!!
+
+            if saveVparaVperpWeights
+            end
+
+            if instrumental_response
+
+                if saveVparaVperpWeights
+                end
+            end
+        end
+
+        verbose && println("Saving weight function matrix... ")
         filepath_output = filepath_output*".jld2"
         list_o_saved_filepaths[iii] = filepath_output # Store a record of the saved file
         myfile_s = jldopen(filepath_output,true,true,false,IOStream)
@@ -1040,162 +1159,162 @@ for iii=1:iiimax
         # WRITE WHATEVER CODE TO SAVE THE DEBUGGED QUANTITIES
     end
 end # The end of the iii=1:iiimax for-loop. (to enable computation of several identical orbit weight matrices, to post-analyze MC noise influence for example)
-if iiimax>1 # If we were supposed to compute more than one weight matrix...
-    if iii_average # If an average of all saved files were supposed to be computed... compute it!
-        verbose && println("Computing average of all weight matrices... ")
-        filepath_first_W = list_o_saved_filepaths[1]
-        myfile = jldopen(filepath_first_W,false,false,false,IOStream)
-        VAL_total = myfile["VAL"] # Vector containing the non-zero values of the (E,p,R,z) weight matrix
-        ROW = myfile["ROW"] # Vector containing the corresponding row elements
-        COL = myfile["COL"] # Vector containing the corresponding column elements
-        m_W = myfile["m_W"] # Total number of rows (including zero elements not included in R and C) of the (E,p,R,z) weight matrix
-        n_W = myfile["n_W"] # Total number of columns (including zero elements not included in R and C) of the (E,p,R,z) weight matrix
-        global W_total; W_total = dropzeros(sparse(append!(ROW,m_W),append!(COL,n_W),append!(VAL_total,0.0))) # Make the corresponding sparse matrix (to be able to use addition on several matrices effectively). Add one dummy element to re-create correct size. Don't store it though, only the total matrix size.
-        E_array = myfile["E_array"]
-        p_array = myfile["p_array"]
-        R_array = myfile["R_array"]
-        z_array = myfile["z_array"]
-        Ed_array = myfile["Ed_array"]
-        Ed_array_units = myfile["Ed_array_units"]
-        reaction = myfile["reaction"]
-        EpRz_coords = myfile["EpRz_coords"] # The indices and (E,p,R,z) coordinates for all the columns of the (E,p,R,z) weight matrix
-        if projVel
-            projVel = myfile["projVel"]
-        end
+
+if iiimax>1 && iii_average # If we were supposed to compute more than one weight matrix and an average of all saved files were supposed to be computed... compute it!
+    verbose && println("Computing average of all weight matrices... ")
+    filepath_first_W = list_o_saved_filepaths[1]
+    myfile = jldopen(filepath_first_W,false,false,false,IOStream)
+    VAL_total = myfile["VAL"] # Vector containing the non-zero values of the (E,p,R,z) weight matrix
+    ROW = myfile["ROW"] # Vector containing the corresponding row elements
+    COL = myfile["COL"] # Vector containing the corresponding column elements
+    m_W = myfile["m_W"] # Total number of rows (including zero elements not included in R and C) of the (E,p,R,z) weight matrix
+    n_W = myfile["n_W"] # Total number of columns (including zero elements not included in R and C) of the (E,p,R,z) weight matrix
+    global W_total; W_total = dropzeros(sparse(append!(ROW,m_W),append!(COL,n_W),append!(VAL_total,0.0))) # Make the corresponding sparse matrix (to be able to use addition on several matrices effectively). Add one dummy element to re-create correct size. Don't store it though, only the total matrix size.
+    E_array = myfile["E_array"]
+    p_array = myfile["p_array"]
+    R_array = myfile["R_array"]
+    z_array = myfile["z_array"]
+    Ed_array = myfile["Ed_array"]
+    Ed_array_units = myfile["Ed_array_units"]
+    reaction = myfile["reaction"]
+    EpRz_coords = myfile["EpRz_coords"] # The indices and (E,p,R,z) coordinates for all the columns of the (E,p,R,z) weight matrix
+    if projVel
+        projVel = myfile["projVel"]
+    end
+    if saveVparaVperpWeights
+        VAL_vel_total = myfile["VAL_vel"] # Vector containing the non-zero values of the (vpara,vperp,R,z) weight matrix
+        ROW_vel = myfile["ROW_vel"] # Vector containing the corresponding row elements
+        COL_vel = myfile["COL_vel"] # Vector containing the corresponding column elements
+        m_W_vel = myfile["m_W_vel"] # Total number of rows (including zero elements not included in R and C) of the (vpara,vperp,R,z) weight matrix
+        n_W_vel = myfile["n_W_vel"] # Total number of columns (including zero elements not included in R and C) of the (vpara,vperp,R,z) weight matrix
+        global W_vel_total; W_vel_total = dropzeros(sparse(append!(ROW_vel,m_W_vel),append!(COL_vel,n_W_vel),append!(VAL_vel_total,0.0))) # Make the corresponding sparse matrix (to be able to use addition on several matrices effectively). Add one dummy element to re-create correct size. Don't store it though, only the total matrix size.
+        global vpara_array; vpara_array = myfile["vpara_array"]
+        global vperp_array; vperp_array = myfile["vperp_array"]
+        VparVperRz_coords = myfile["VparVperRz_coords"] # The indices and (vpara,vperp,R,z) coordinates for all the columns of the (vpara,vperp,R,z) weight matrix
+    end
+    if instrumental_response
+        VAL_raw_total = myfile["VAL_raw"] # Vector containing the non-zero raw (without instrumental response) values of the (E,p,R,z) weight matrix
+        ROW_raw = myfile["ROW_raw"] # Vector containing the corresponding row elements
+        COL_raw = myfile["COL_raw"] # Vector containing the corresponding column elements
+        m_W_raw = myfile["m_W_raw"] # Total number of rows (including zero elements not included in R and C) of the raw (without instrumental response) (E,p,R,z) weight matrix
+        n_W_raw = myfile["n_W_raw"] # Total number of columns (including zero elements not included in R and C) of the raw (without instrumental response) (E,p,R,z) weight matrix
+        global W_raw_total; W_raw_total = dropzeros(sparse(append!(ROW_raw,m_W_raw),append!(COL_raw,n_W_raw),append!(VAL_raw_total,0.0))) # Make the corresponding sparse matrix (to be able to use addition on several matrices effectively). Add one dummy element to re-create correct size. Don't store it though, only the total matrix size.
+        Ed_array_raw = myfile["Ed_array_raw"]
+        Ed_array_raw_units = myfile["Ed_array_raw_units"]
+        instrumental_response_input = myfile["instrumental_response_input"]
+        instrumental_response_output = myfile["instrumental_response_output"]
+        instrumental_response_matrix = myfile["instrumental_response_matrix"]
         if saveVparaVperpWeights
-            VAL_vel_total = myfile["VAL_vel"] # Vector containing the non-zero values of the (vpara,vperp,R,z) weight matrix
-            ROW_vel = myfile["ROW_vel"] # Vector containing the corresponding row elements
-            COL_vel = myfile["COL_vel"] # Vector containing the corresponding column elements
-            m_W_vel = myfile["m_W_vel"] # Total number of rows (including zero elements not included in R and C) of the (vpara,vperp,R,z) weight matrix
-            n_W_vel = myfile["n_W_vel"] # Total number of columns (including zero elements not included in R and C) of the (vpara,vperp,R,z) weight matrix
-            global W_vel_total; W_vel_total = dropzeros(sparse(append!(ROW_vel,m_W_vel),append!(COL_vel,n_W_vel),append!(VAL_vel_total,0.0))) # Make the corresponding sparse matrix (to be able to use addition on several matrices effectively). Add one dummy element to re-create correct size. Don't store it though, only the total matrix size.
-            global vpara_array; vpara_array = myfile["vpara_array"]
-            global vperp_array; vperp_array = myfile["vperp_array"]
-            VparVperRz_coords = myfile["VparVperRz_coords"] # The indices and (vpara,vperp,R,z) coordinates for all the columns of the (vpara,vperp,R,z) weight matrix
+            VAL_vel_raw_total = myfile["VAL_vel_raw"] # Vector containing the non-zero raw (without instrumental response) values of the (vpara,vperp,R,z) weight matrix
+            ROW_vel_raw = myfile["ROW_vel_raw"] # Vector containing the corresponding row elements
+            COL_vel_raw = myfile["COL_vel_raw"] # Vector containing the corresponding column elements
+            m_W_vel_raw = myfile["m_W_vel_raw"] # Total number of rows (including zero elements not included in R and C) of the raw (without instrumental response) (vpara,vperp,R,z) weight matrix
+            n_W_vel_raw = myfile["n_W_vel_raw"] # Total number of columns (including zero elements not included in R and C) of the raw (without instrumental response) (vpara,vperp,R,z) weight matrix
+            global W_vel_raw_total; W_vel_raw_total = dropzeros(sparse(append!(ROW_vel_raw,m_W_vel_raw),append!(COL_vel_raw,n_W_vel_raw),append!(VAL_vel_raw_total,0.0))) # Make the corresponding sparse matrix (to be able to use addition on several matrices effectively). Add one dummy element to re-create correct size. Don't store it though, only the total matrix size.
+        end
+    end
+    filepath_thermal_distr = myfile["filepath_thermal_distr"]
+    close(myfile)
+
+    for il in 2:length(list_o_saved_filepaths)
+        local myfile = jldopen(list_o_saved_filepaths[il],false,false,false,IOStream)
+        VAL_il = myfile["VAL"]
+        ROW_il = myfile["ROW"]
+        COL_il = myfile["COL"]
+        m_W_il = myfile["m_W"]
+        n_W_il = myfile["n_W"]
+        global W_total += dropzeros(sparse(append!(ROW_il,m_W_il),append!(COL_il,n_W_il),append!(VAL_il,0.0))) # Add the il sparse weight matrix to the total sparse weight matrix
+        if saveVparaVperpWeights
+            VAL_vel_il = myfile["VAL_vel"]
+            ROW_vel_il = myfile["ROW_vel"]
+            COL_vel_il = myfile["COL_vel"]
+            m_W_vel_il = myfile["m_W_vel"]
+            n_W_vel_il = myfile["n_W_vel"]
+            global W_vel_total += dropzeros(sparse(append!(ROW_vel_il,m_W_vel_il),append!(COL_vel_il,n_W_vel_il),append!(VAL_vel_il,0.0))) # Add the il sparse weight matrix to the total sparse weight matrix
         end
         if instrumental_response
-            VAL_raw_total = myfile["VAL_raw"] # Vector containing the non-zero raw (without instrumental response) values of the (E,p,R,z) weight matrix
-            ROW_raw = myfile["ROW_raw"] # Vector containing the corresponding row elements
-            COL_raw = myfile["COL_raw"] # Vector containing the corresponding column elements
-            m_W_raw = myfile["m_W_raw"] # Total number of rows (including zero elements not included in R and C) of the raw (without instrumental response) (E,p,R,z) weight matrix
-            n_W_raw = myfile["n_W_raw"] # Total number of columns (including zero elements not included in R and C) of the raw (without instrumental response) (E,p,R,z) weight matrix
-            global W_raw_total; W_raw_total = dropzeros(sparse(append!(ROW_raw,m_W_raw),append!(COL_raw,n_W_raw),append!(VAL_raw_total,0.0))) # Make the corresponding sparse matrix (to be able to use addition on several matrices effectively). Add one dummy element to re-create correct size. Don't store it though, only the total matrix size.
-            Ed_array_raw = myfile["Ed_array_raw"]
-            Ed_array_raw_units = myfile["Ed_array_raw_units"]
-            instrumental_response_input = myfile["instrumental_response_input"]
-            instrumental_response_output = myfile["instrumental_response_output"]
-            instrumental_response_matrix = myfile["instrumental_response_matrix"]
+            VAL_raw_il = myfile["VAL_raw"]
+            ROW_raw_il = myfile["ROW_raw"]
+            COL_raw_il = myfile["COL_raw"]
+            m_W_raw_il = myfile["m_W_raw"]
+            n_W_raw_il = myfile["n_W_raw"]
+            global W_raw_total += dropzeros(sparse(append!(ROW_raw_il,m_W_raw_il),append!(COL_raw_il,n_W_raw_il),append!(VAL_raw_il,0.0))) # Add the il sparse weight matrix to the total sparse weight matrix
             if saveVparaVperpWeights
-                VAL_vel_raw_total = myfile["VAL_vel_raw"] # Vector containing the non-zero raw (without instrumental response) values of the (vpara,vperp,R,z) weight matrix
-                ROW_vel_raw = myfile["ROW_vel_raw"] # Vector containing the corresponding row elements
-                COL_vel_raw = myfile["COL_vel_raw"] # Vector containing the corresponding column elements
-                m_W_vel_raw = myfile["m_W_vel_raw"] # Total number of rows (including zero elements not included in R and C) of the raw (without instrumental response) (vpara,vperp,R,z) weight matrix
-                n_W_vel_raw = myfile["n_W_vel_raw"] # Total number of columns (including zero elements not included in R and C) of the raw (without instrumental response) (vpara,vperp,R,z) weight matrix
-                global W_vel_raw_total; W_vel_raw_total = dropzeros(sparse(append!(ROW_vel_raw,m_W_vel_raw),append!(COL_vel_raw,n_W_vel_raw),append!(VAL_vel_raw_total,0.0))) # Make the corresponding sparse matrix (to be able to use addition on several matrices effectively). Add one dummy element to re-create correct size. Don't store it though, only the total matrix size.
+                VAL_vel_raw_il = myfile["VAL_vel_raw"]
+                ROW_vel_raw_il = myfile["ROW_vel_raw"]
+                COL_vel_raw_il = myfile["COL_vel_raw"]
+                m_W_vel_raw_il = myfile["m_W_vel_raw"]
+                n_W_vel_raw_il = myfile["n_W_vel_raw"]
+                global W_vel_raw_total += dropzeros(sparse(append!(ROW_vel_raw_il,m_W_vel_raw_il),append!(COL_vel_raw_il,n_W_vel_raw_il),append!(VAL_vel_raw_il,0.0))) # Add the il sparse weight matrix to the total sparse weight matrix
             end
         end
-        filepath_thermal_distr = myfile["filepath_thermal_distr"]
-        close(myfile)
-
-        for il in 2:length(list_o_saved_filepaths)
-            local myfile = jldopen(list_o_saved_filepaths[il],false,false,false,IOStream)
-            VAL_il = myfile["VAL"]
-            ROW_il = myfile["ROW"]
-            COL_il = myfile["COL"]
-            m_W_il = myfile["m_W"]
-            n_W_il = myfile["n_W"]
-            global W_total += dropzeros(sparse(append!(ROW_il,m_W_il),append!(COL_il,n_W_il),append!(VAL_il,0.0))) # Add the il sparse weight matrix to the total sparse weight matrix
-            if saveVparaVperpWeights
-                VAL_vel_il = myfile["VAL_vel"]
-                ROW_vel_il = myfile["ROW_vel"]
-                COL_vel_il = myfile["COL_vel"]
-                m_W_vel_il = myfile["m_W_vel"]
-                n_W_vel_il = myfile["n_W_vel"]
-                global W_vel_total += dropzeros(sparse(append!(ROW_vel_il,m_W_vel_il),append!(COL_vel_il,n_W_vel_il),append!(VAL_vel_il,0.0))) # Add the il sparse weight matrix to the total sparse weight matrix
-            end
-            if instrumental_response
-                VAL_raw_il = myfile["VAL_raw"]
-                ROW_raw_il = myfile["ROW_raw"]
-                COL_raw_il = myfile["COL_raw"]
-                m_W_raw_il = myfile["m_W_raw"]
-                n_W_raw_il = myfile["n_W_raw"]
-                global W_raw_total += dropzeros(sparse(append!(ROW_raw_il,m_W_raw_il),append!(COL_raw_il,n_W_raw_il),append!(VAL_raw_il,0.0))) # Add the il sparse weight matrix to the total sparse weight matrix
-                if saveVparaVperpWeights
-                    VAL_vel_raw_il = myfile["VAL_vel_raw"]
-                    ROW_vel_raw_il = myfile["ROW_vel_raw"]
-                    COL_vel_raw_il = myfile["COL_vel_raw"]
-                    m_W_vel_raw_il = myfile["m_W_vel_raw"]
-                    n_W_vel_raw_il = myfile["n_W_vel_raw"]
-                    global W_vel_raw_total += dropzeros(sparse(append!(ROW_vel_raw_il,m_W_vel_raw_il),append!(COL_vel_raw_il,n_W_vel_raw_il),append!(VAL_vel_raw_il,0.0))) # Add the il sparse weight matrix to the total sparse weight matrix
-                end
-            end
-            close(myfile)
-        end
-
-        W_total ./= length(list_o_saved_filepaths)
-        if saveVparaVperpWeights
-            W_vel_total ./= length(list_o_saved_filepaths)
-        end
-        if instrumental_response
-            W_raw_total ./= length(list_o_saved_filepaths)
-            if saveVparaVperpWeights
-                W_vel_raw_total ./= length(list_o_saved_filepaths)
-            end
-        end
-
-        verbose && println("Success! Saving average in separate file... ")
-        myfile = jldopen(folderpath_o*"EpRzWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*".jld2",true,true,false,IOStream)
-        ROW, COL, VAL = findnz(W_total)
-        write(myfile,"VAL",VAL)
-        write(myfile,"ROW",ROW)
-        write(myfile,"COL",COL)
-        write(myfile,"m_W", W_total.m)
-        write(myfile,"n_W", W_total.n)
-        write(myfile,"E_array",E_array)
-        write(myfile,"p_array",p_array)
-        write(myfile,"R_array",R_array)
-        write(myfile,"z_array",z_array)
-        write(myfile,"EpRz_coords",EpRz_coords)
-        write(myfile,"Ed_array",Ed_array)
-        write(myfile,"Ed_array_units",Ed_array_units)
-        write(myfile,"reaction",reaction)
-        if projVel
-            write(myfile,"projVel",projVel)
-        end
-        if saveVparaVperpWeights
-            ROW_vel, COL_vel, VAL_vel = findnz(W_vel_total)
-            write(myfile,"VAL_vel",VAL_vel)
-            write(myfile,"ROW_vel",ROW_vel)
-            write(myfile,"COL_vel",COL_vel)
-            write(myfile,"m_W_vel",W_vel_total.m)
-            write(myfile,"n_W_vel",W_vel_total.n)
-            write(myfile,"vpara_array",vpara_array)
-            write(myfile,"vperp_array",vperp_array)
-            write(myfile,"VparVperRz_coords",VparVperRz_coords)
-        end
-        if instrumental_response
-            ROW_raw, COL_raw, VAL_raw = findnz(W_raw_total)
-            write(myfile,"VAL_raw",VAL_raw)
-            write(myfile,"ROW_raw",ROW_raw)
-            write(myfile,"COL_raw",COL_raw)
-            write(myfile,"m_W_raw",W_raw_total.m)
-            write(myfile,"n_W_raw",W_raw_total.n)
-            write(myfile,"Ed_array_raw",Ed_array_raw)
-            write(myfile,"Ed_array_raw_units",Ed_array_raw_units)
-            write(myfile,"instrumental_response_input",instrumental_response_input)
-            write(myfile,"instrumental_response_output",instrumental_response_output)
-            write(myfile,"instrumental_response_matrix",instrumental_response_matrix)
-            if saveVparaVperpWeights
-                ROW_vel_raw, COL_vel_raw, VAL_vel_raw = findnz(W_vel_raw_total)
-                write(myfile,"VAL_vel_raw",VAL_vel_raw)
-                write(myfile,"ROW_vel_raw",ROW_vel_raw)
-                write(myfile,"COL_vel_raw",COL_vel_raw)
-                write(myfile,"m_W_vel_raw",W_vel_raw_total.m)
-                write(myfile,"n_W_vel_raw",W_vel_raw_total.n)
-            end
-        end
-        write(myfile,"filepath_thermal_distr",filepath_thermal_distr)
         close(myfile)
     end
+
+    W_total ./= length(list_o_saved_filepaths)
+    if saveVparaVperpWeights
+        W_vel_total ./= length(list_o_saved_filepaths)
+    end
+    if instrumental_response
+        W_raw_total ./= length(list_o_saved_filepaths)
+        if saveVparaVperpWeights
+            W_vel_raw_total ./= length(list_o_saved_filepaths)
+        end
+    end
+
+    verbose && println("Success! Saving average in separate file... ")
+    filepath_o_avg = reduce(*,map(x -> x*"_",split(filepath_first_W,"_")[1:end-1]))[1:end-1]*".jld2"
+    myfile = jldopen(filepath_o_avg,true,true,false,IOStream)
+    ROW, COL, VAL = findnz(W_total)
+    write(myfile,"VAL",VAL)
+    write(myfile,"ROW",ROW)
+    write(myfile,"COL",COL)
+    write(myfile,"m_W", W_total.m)
+    write(myfile,"n_W", W_total.n)
+    write(myfile,"E_array",E_array)
+    write(myfile,"p_array",p_array)
+    write(myfile,"R_array",R_array)
+    write(myfile,"z_array",z_array)
+    write(myfile,"EpRz_coords",EpRz_coords)
+    write(myfile,"Ed_array",Ed_array)
+    write(myfile,"Ed_array_units",Ed_array_units)
+    write(myfile,"reaction",reaction)
+    if projVel
+        write(myfile,"projVel",projVel)
+    end
+    if saveVparaVperpWeights
+        ROW_vel, COL_vel, VAL_vel = findnz(W_vel_total)
+        write(myfile,"VAL_vel",VAL_vel)
+        write(myfile,"ROW_vel",ROW_vel)
+        write(myfile,"COL_vel",COL_vel)
+        write(myfile,"m_W_vel",W_vel_total.m)
+        write(myfile,"n_W_vel",W_vel_total.n)
+        write(myfile,"vpara_array",vpara_array)
+        write(myfile,"vperp_array",vperp_array)
+        write(myfile,"VparVperRz_coords",VparVperRz_coords)
+    end
+    if instrumental_response
+        ROW_raw, COL_raw, VAL_raw = findnz(W_raw_total)
+        write(myfile,"VAL_raw",VAL_raw)
+        write(myfile,"ROW_raw",ROW_raw)
+        write(myfile,"COL_raw",COL_raw)
+        write(myfile,"m_W_raw",W_raw_total.m)
+        write(myfile,"n_W_raw",W_raw_total.n)
+        write(myfile,"Ed_array_raw",Ed_array_raw)
+        write(myfile,"Ed_array_raw_units",Ed_array_raw_units)
+        write(myfile,"instrumental_response_input",instrumental_response_input)
+        write(myfile,"instrumental_response_output",instrumental_response_output)
+        write(myfile,"instrumental_response_matrix",instrumental_response_matrix)
+        if saveVparaVperpWeights
+            ROW_vel_raw, COL_vel_raw, VAL_vel_raw = findnz(W_vel_raw_total)
+            write(myfile,"VAL_vel_raw",VAL_vel_raw)
+            write(myfile,"ROW_vel_raw",ROW_vel_raw)
+            write(myfile,"COL_vel_raw",COL_vel_raw)
+            write(myfile,"m_W_vel_raw",W_vel_raw_total.m)
+            write(myfile,"n_W_vel_raw",W_vel_raw_total.n)
+        end
+    end
+    write(myfile,"filepath_thermal_distr",filepath_thermal_distr)
+    close(myfile)
 end
 println("------ Done! ------")

@@ -142,7 +142,7 @@ end
     E_array = nothing # keV. Array can be specified manually. Otherwise, leave as 'nothing'
     Emin = 0.0 # keV
     Emax = 000.0 # keV
-    filename_o = nothing # If specified, output file will be saved in the "folderpath_o" folder with "filename_o" name. Do not include file extension!
+    filename_o = "" # If specified, output file will be saved in the "folderpath_o" folder with "filename_o" name. Do not include file extension!
     filepath_equil = "" # for example "equilibrium/JET/g96100/g96100_0-53.0012.eqdsk" or "myOwnSolovev.jld2"
     filepath_FI_cdf = "" # If filepath_thermal_distr=="96100J01.cdf", then filepath_FI_cdf should be "96100J01_fi_1.cdf" for example
     filepath_thermal_distr = "" # for example "96100J01.cdf", "myOwnThermalDistr.jld2" or ""
