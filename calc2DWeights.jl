@@ -85,7 +85,7 @@
 # Please note that the diagnostic energy grid will be created as bin centers.
 # That is, the first diagnostic energy grid value will be (Ed_min+Ed_diff/2) and so on.
 
-# Script written by Henrik Järleblad. Last maintained 2025-03-25.
+# Script written by Henrik Järleblad. Last maintained 2025-05-23.
 ################################################################################################
 
 ## ---------------------------------------------------------------------------------------------
@@ -172,10 +172,8 @@ fileext_FI_cdf = lowercase(fileext_FI_cdf)
 @everywhere fileext_FI_cdf = $fileext_FI_cdf
 
 # Work with output filename
-if !isnothing(filename_o)
-    if !(typeof(filename_o)==String)
-        error("The 'filename_o' input variable was specified as $(filename_o). This is not 'nothing' nor a String type. Please correct and re-try.")
-    end
+if !(typeof(filename_o)==String)
+    error("The 'filename_o' input variable was specified as $(filename_o). This is not a String type. Please correct and re-try.")
 end
 
 ## ---------------------------------------------------------------------------------------------
@@ -482,15 +480,16 @@ if saveVparaVperpWeights
     println("")
 end
 println("Results will be saved to: ")
+filepath_o_s_fp = !(filename_o=="") ? filename_o : ("velWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel))
 if iiimax == 1
-    println(folderpath_o*"velWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*"_$(length(range(Ed_min,stop=Ed_max,step=Ed_diff))-1)x$(nE)x$(np).jld2")
+    println(folderpath_o*filepath_o_s_fp*"_$(length(range(Ed_min,stop=Ed_max,step=Ed_diff))-1)x$(nE)x$(np).jld2")
 else
-    println(folderpath_o*"velWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*"_1.jld2")
+    println(folderpath_o*filepath_o_s_fp*"_1.jld2")
     println("... ")
-    println(folderpath_o*"velWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*"_$(iiimax).jld2")
+    println(folderpath_o*filepath_o_s_fp*"_$(iiimax).jld2")
     if iii_average
         println("---> Average of all files will be computed and saved to: ")
-        println("---> "*folderpath_o*"velWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*".jld2")
+        println("---> "*folderpath_o*filepath_o_s_fp*".jld2")
     end
 end
 println("")
@@ -509,7 +508,7 @@ println("Please remove previously saved files with the same file name (if any) p
 println("")
 println("If you would like to change any settings, please edit the start_calc2DW_template.jl file or similar.")
 println("")
-println("Written by Henrik Järleblad. Last maintained 2025-05-16.")
+println("Written by Henrik Järleblad. Last maintained 2025-05-23.")
 println("--------------------------------------------------------------------------------------------------")
 println("")
 
@@ -803,6 +802,7 @@ for iii=1:iiimax
         nvpara = Int64(round(sqrt(nE*np))) # We know the default values for Ep2VparaVperp()
         nvperp = nvpara # We know the default values for Ep2VparaVperp()
         W_vel = zeros(nEd,nvpara,nvperp)
+        global vpara_array; global vperp_array # Declare global scope, to avoid annoying warnings when executing OWCF/tests/run_tests.jl
         W_vel[1,:,:], vpara_array, vperp_array = Ep2VparaVperp(E_array, p_array, Wtot[1,:,:], returnAbscissas=true)
         for iEd=2:nEd
             W_vel[iEd,:,:] = Ep2VparaVperp(E_array, p_array, Wtot[iEd,:,:], returnAbscissas=false)
@@ -821,12 +821,12 @@ for iii=1:iiimax
 
     if !debug
         # Set the output file name 'filepath_out'
-        if !isnothing(filename_o)
-            filepath_output_orig = folderpath_o*filename_o
-        elseif iiimax==1 # If you intend to calculate only one weight matrix
-            global filepath_output_orig = folderpath_o*"velWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*"_$(length(range(Ed_min,stop=Ed_max,step=Ed_diff))-1)x$(nE)x$(np)"
+        # First, if the user specified a custom output file name (filename_o), use that instead of the default OWCF output file name
+        filepath_o_s = !(filename_o=="") ? filename_o : ("velWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel))
+        if iiimax==1 # If you intend to calculate only one weight matrix
+            global filepath_output_orig = folderpath_o*filepath_o_s*"_$(length(Ed_array))x$(nE)x$(np)"
         else # If you intend to calculate several (identical) weight matrices
-            global filepath_output_orig = folderpath_o*"velWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*"_$(iii)"
+            global filepath_output_orig = folderpath_o*filepath_o_s*"_$(iii)"
         end
         global filepath_output = deepcopy(filepath_output_orig)
         global count = 1
@@ -845,12 +845,12 @@ for iii=1:iiimax
                 W_plt = Wtot # Bad variable names...
                 if saveVparaVperpWeights
                     W_vel_raw_plt = W_vel_raw # Bad variable names...
-                    W_vel_plt = W_vel # Bad variables names...
+                    W_vel_plt = W_vel # Bad variable names...
                 end
             else
-                W_raw_plt = Wtot
+                W_raw_plt = Wtot # Bad variable names...
                 if saveVparaVperpWeights
-                    W_vel_raw_plt = W_vel
+                    W_vel_raw_plt = W_vel # Bad variable names...
                 end
             end
 
@@ -1052,7 +1052,8 @@ if iiimax>1 # If we were supposed to compute more than one weight matrix...
         end
 
         verbose && println("Success! Saving average in separate file... ")
-        myfile = jldopen(folderpath_o*"velWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*".jld2",true,true,false,IOStream)
+        filepath_o_avg = reduce(*,map(x -> x*"_",split(filepath_first_W,"_")[1:end-1]))[1:end-1]*".jld2"
+        myfile = jldopen(filepath_o_avg,true,true,false,IOStream)
         write(myfile,"W",W_total)
         write(myfile,"E_array",E_array)
         write(myfile,"p_array",p_array)

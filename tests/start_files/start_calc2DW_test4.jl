@@ -128,7 +128,7 @@ distributed = false
 
 ## -----------------------------------------------------------------------------
 @everywhere begin
-    analytic = true
+    analytic = false
     debug = false
     diagnostic_filepath = folderpath_OWCF*"vc_data/AB/AB.vc" # Currently supported: "TOFOR", "AB" and ""
     diagnostic_name = "AB"
@@ -139,8 +139,8 @@ distributed = false
     Ed_diff = 50.0 # keV (or m/s if 'reaction' input variable is specified on form (3) (please see OWCF/misc/availReacts.jl for explanation))
     E_array = nothing # keV. Array can be specified manually. Otherwise, leave as 'nothing'
     Emin = 1000.0 # keV
-    Emax = 6000.0 # keV
-    filename_o = "calc2DW_test2" # If specified, output file will be saved in the "folderpath_o" folder with "filename_o" name. Do not include file extension!
+    Emax = 5000.0 # keV
+    filename_o = "calc2DW_test4" # If specified, output file will be saved in the "folderpath_o" folder with "filename_o" name. Do not include file extension!
     filepath_equil = folderpath_OWCF*"equilibrium/JET/g96100/g96100_0-53.0012.eqdsk" # for example "equilibrium/JET/g96100/g96100_0-53.0012.eqdsk" or "myOwnSolovev.jld2"
     filepath_FI_cdf = "" # If filepath_thermal_distr=="96100J01.cdf", then filepath_FI_cdf should be "96100J01_fi_1.cdf" for example
     filepath_thermal_distr = "" # for example "96100J01.cdf", "myOwnThermalDistr.jld2" or ""
@@ -148,7 +148,7 @@ distributed = false
     flr_effects = false
     folderpath_o = folderpath_OWCF*"tests/outputs/" # Output folder path. Finish with '/'
     folderpath_OWCF = $folderpath_OWCF # Set path to OWCF folder to same as main process (hence the '$')
-    gyro_samples = 50 # 50 is the default discretization number for the gyro-motion
+    gyro_samples = 100 # 50 is the default discretization number for the gyro-motion
     iiimax = 1 # The script will calculate iiimax number of weight matrices. They can then be examined in terms of similarity (to determine MC noise influence etc).
     (iiimax > 1) && (iii_average = false) # If true, the average of all weight matrices will be computed and saved. Without the "_i" suffix.
     nE = 10
