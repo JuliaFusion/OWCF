@@ -49,7 +49,7 @@
 # printed output should be included as a screenshot when creating a pull-request at the Github repo
 # https://github.com/JuliaFusion/OWCF/pulls.
 
-# Script written by Henrik Järleblad. Last mainted 2025-05-12.
+# Script written by Henrik Järleblad. Last mainted 2025-05-23.
 ###################################################################################################
 
 folderpath_OWCF = "/path/to/the/OWCF/" # The path to where the OWCF folder is saved on your computer. Remember to finish with '/'
@@ -171,7 +171,8 @@ using Distributed # To enable test files of accessing the 'folderpath_OWCF' vari
 using Dates # To enable date and time functions use
 using JLD2 # To enable reading of test start files in .jld2 file format 
 plot_test_results && (using Plots) # If test results are to be plotted, the Plots.jl package needs to be loaded
-oldstd = stdout # To be able to suppress prints from the test scripts, but not warnings and errors
+oldstdout = stdout # To be able to suppress prints from the test scripts, but not errors
+oldstderr = stderr # To be able to suppress warnings from the test scripts, but not errors
 SUPPRESS_SUBTEST_PRINT = !VERY_VERBOSE
 
 # Checking so that the OWCF/tests/outputs/ folder is empty
@@ -220,19 +221,21 @@ for test in test_list
     global test_prog
 
     println("- Running $(test) (total run_tests.jl progress: $(round(100*test_prog/NUMBER_OF_TESTS)) %)... ")
-    SUPPRESS_SUBTEST_PRINT && redirect_stdout(devnull)
 
     try
+        SUPPRESS_SUBTEST_PRINT && redirect_stdout(devnull) # Re-direct prints to null
+        SUPPRESS_SUBTEST_PRINT && redirect_stderr(devnull) # Re-direct warnings to null
         include(folderpath_OWCF*"tests/start_files/$(test)")
     catch e
+        SUPPRESS_SUBTEST_PRINT && redirect_stderr(oldstderr) # Re-direct warnings to old I/O channel (i.e. the default, visible channel)
         global err_dict
         @warn "The test $(test) unfortunately resulted in an error. Please examine error specification when test results are printed."
         err_dict["$(test)"] = "$(e)"
-        terminate_when_first_error && (@warn "'terminate_when_first_error' set to true. The error: $(e)")
+        #terminate_when_first_error && (@warn "'terminate_when_first_error' set to true. The error: $(e)")
         terminate_when_first_error && break
     end
 
-    SUPPRESS_SUBTEST_PRINT && redirect_stdout(oldstd)
+    SUPPRESS_SUBTEST_PRINT && redirect_stdout(oldstdout) # Re-direct prints to old I/O channel (i.e. the default, visible channel)
     test_prog += 1 # Test completed!
 end
 println("- All tests completed (total run_tests.jl progress: $(round(100*test_prog/NUMBER_OF_TESTS,digits=3)) %)... ")

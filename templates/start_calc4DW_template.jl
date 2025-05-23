@@ -41,6 +41,8 @@
 # E_array - The fast-ion energy (keV) grid points of your (E,p,R,z) grid. If set to 'nothing': nE, Emin and Emax must be specified - Vector
 # Emin - The lower boundary for the fast-ion energy in orbit space - Float64
 # Emax - The upper boundary for the fast-ion energy in orbit space - Float64
+# filename_o - If specified, e.g. "myCustomName", the output file will be saved as "myCustomName.jld2". Otherwise, leave as "" to have the OWCF 
+#              use the default output file naming convention (please see the OWCF/calc4DWeights.jl script) - String
 # filepath_equil - The path to the file with the tokamak magnetic equilibrium and geometry - String
 # filepath_FI_cdf - To be specified, if filepath_thermal_distr is a TRANSP .cdf shot file. See below for specifications - String
 # filepath_thermal_distr - The path to the thermal distribution file to extract thermal species data from. Must be a valid TRANSP .cdf file, a valid .jld2 file or "".
@@ -85,7 +87,7 @@
 # and thermal_dens_axis variables will be used to scale the polynomial profiles to match the specified
 # thermal temperature and thermal density at the magnetic axis. Please see the /misc/temp_n_dens.jl script for info.
 
-# Script written by Henrik Järleblad. Last maintained 2025-03-12.
+# Script written by Henrik Järleblad. Last maintained 2025-05-23.
 ######################################################################################################
 
 ## First you have to set the system specifications
@@ -135,6 +137,7 @@ end
     E_array = nothing # keV. Array can be specified manually. Otherwise, leave as 'nothing'
     Emin = 0.0 # keV
     Emax = 000.0 # keV
+    filename_o = "" # For example "myCustomName". Otherwise, leave as "" for default output file naming by the OWCF
     filepath_equil = "" # for example "equilibrium/JET/g96100/g96100_0-53.0012.eqdsk" or "myOwnSolovev.jld2"
     filepath_FI_cdf = "" # If filepath_thermal_distr=="96100J01.cdf", then filepath_FI_cdf should be "96100J01_fi_1.cdf" for example
     filepath_thermal_distr = "" # for example "96100J01.cdf", "myOwnThermalDistr.jld2" or ""

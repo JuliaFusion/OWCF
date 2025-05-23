@@ -125,7 +125,7 @@ distributed = false
 ## -----------------------------------------------------------------------------
 @everywhere begin
     debug = false
-    diagnostic_filepath = folderpath_OWCF*"vc_data/MPRu/KM9_2021_coarse.out" # In addition to a file path, the following Strings also supported: "TOFOR", "AB" and ""
+    diagnostic_filepath = folderpath_OWCF*"vc_data/TOFOR/TOFOR.vc" # In addition to a file path, the following Strings also supported: "TOFOR", "AB" and ""
     diagnostic_name = "calc4DW_test1"
     instrumental_response_filepath = "" # Should be the filepath to three .txt-files or one .jld2-file. Otherwise, leave as ""
     instrumental_response_output_units = "" # Should be specified as described in OWCF/misc/convert_units.jl. If instrumental_response_filepath=="", leave as ""
@@ -134,19 +134,20 @@ distributed = false
     Ed_diff = 10.0 # keV (or m/s if 'reaction' input variable is on form (3) (please see OWCF/misc/availReacts.jl for further explanation))
     E_array = nothing # keV. Array can be specified manually. Otherwise, leave as 'nothing'
     Emin = 20.0 # keV
-    Emax = 2300.0 # keV
+    Emax = 500.0 # keV
+    filename_o = "calc4DW_test1" # For example "myCustomName". Otherwise, leave as nothing for default output file naming by the OWCF
     filepath_equil = folderpath_OWCF*"equilibrium/JET/g94701/g94701_0-50.7932.eqdsk" # for example "equilibrium/JET/g96100/g96100_0-53.0012.eqdsk" or "myOwnSolovev.jld2"
     filepath_FI_cdf = "" # If filepath_thermal_distr=="96100J01.cdf", then filepath_FI_cdf should be "96100J01_fi_1.cdf" for example
     filepath_thermal_distr = "" # for example "96100J01.cdf", "myOwnThermalDistr.jld2" or ""
-    folderpath_o = folderpath_OWCF*"tests/outputs/" # Output folder path. Finish with '/'
+    folderpath_o = ($folderpath_OWCF)*"tests/outputs/" # Output folder path. Finish with '/'
     folderpath_OWCF = $folderpath_OWCF # Set path to OWCF folder to same as main process (hence the '$')
     gyro_samples = 50 # 50 is the default discretization number for the gyro-motion
     iiimax = 2 # The script will calculate iiimax number of weight matrices. They can then be examined in terms of similarity (to determine MC noise influence etc).
     (iiimax > 1) && (iii_average = true) # If true, the average of all weight matrices will be computed and saved. Without the "_i" suffix.
-    nE = 3 # Please specify, if E_array is set to nothing
-    np = 6 # Please specify, if p_array is set to nothing
-    nR = 4 # Please specify, if R_array is set to nothing
-    nz = 5 # Please specify, if z_array is set to nothing
+    nE = 11 # Please specify, if E_array is set to nothing
+    np = 12 # Please specify, if p_array is set to nothing
+    nR = 5 # Please specify, if R_array is set to nothing
+    nz = 6 # Please specify, if z_array is set to nothing
     p_array = nothing # Array can be specified manually. Otherwise, leave as 'nothing'
     p_min = -1.0
     p_max = 1.0

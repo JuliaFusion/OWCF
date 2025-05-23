@@ -46,7 +46,7 @@
 # filepath_FI_cdf - Can be specified, if filepath_thermal_distr is a TRANSP .cdf shot file. See below for specifications - String
 # filepath_thermal_distr - The path to the thermal distribution file to extract thermal species data from. Must be TRANSP .cdf, .jld2 file format or "" - String
 # folderpath_o - The path to the folder where the results will be saved - String
-# flr_effects - If set to true, finite Larmor radius effects will be included in the weight function computations - Bool
+# flr_effects - If set to true, finite Larmor radius effects will be taken into account when computing the weight function(s) - Bool
 # iiimax - If specified to be greater than 1, several copies of weight functions will be calculated. For comparison. - Int64
 # inclPrideRockOrbs - If true, then counter-stagnation (pride-rock) orbits will be included. Otherwise, minimum(Rm) = magnetic axis by default - Bool
 # include2Dto4D - If true, then (in addition) the 2D orbit weight functions will be enflated to their 4D form (channels,nE,npm,nRm) and saved in the folderpath_o folder as well - Bool
@@ -151,7 +151,7 @@ end
     nE = 0
     npm = 0
     nRm = 0
-    og_filepath = nothing # nothing, by default. Specify a string with the path to a .jld2 file computed with the calcOrbGrid.jl to use that orbit grid
+    og_filepath = "" # "", by default. Specify a string with the path to a .jld2 file computed with the calcOrbGrid.jl to use that orbit grid
     pm_array = nothing # Array can be specified manually. Otherwise, leave as 'nothing'
     pm_min = -1.0
     pm_max = 1.0
