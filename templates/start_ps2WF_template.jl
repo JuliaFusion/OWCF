@@ -34,6 +34,8 @@
 # nEbatch - The batch size of your energy grid in orbit space. Must be <= nE - Int64
 # npm - The number of fast-ion pm grid points in orbit space, if pm_array is left unspecified - Int64
 # nRm - The number of fast-ion Rm grid points in orbit space, if Rm_array is left unspecified - Int64
+# og_filepath - The file path to an output file of the OWCF/helper/calcOrbGrid.jl script. If left unspecified, the (E,pm,Rm) grid will be 
+#               created from the other input variables (e.g. Emin, Emax, nE etc) - String
 # pm_array - If specified, the ps2WF.jl will use the values in this array as the pm grid points in its (E,pm,Rm) grid - Array{Float64,1}
 # pm_min - The lower boundary for the orbit-grid pitch values - Float64
 # pm_max - THe upper boundary for the orbit-grid pitch values - Float64
@@ -125,7 +127,7 @@ end
     nEbatch = 2
     npm = 0
     nRm = 0
-    og_filepath = nothing
+    og_filepath = ""
     pm_array = nothing
     pm_min = -1.0
     pm_max = 1.0
