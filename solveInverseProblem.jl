@@ -1265,7 +1265,7 @@ if !isempty(rec_space_zero_dict)
     for key in keys(rec_space_zero_dict)
         if rec_space_zero_dict[key]==length(W) # If the reconstruction space point has zero sensitivity, for all diagnostics
             verbose && println("---> The reconstruction space point (bad point) $([W_abscissas[1][i+1][key[i]] for i in 1:length(key)]) with units $([W_abscissas_units[1][i+1] for i in 1:length(key)]) has no sensitivity for all diagnostics. Excluding from reconstruction... ")
-            append!(bad_inds, findfirst(x-> x==key, rec_space_coords))
+            append!(bad_inds, findfirst(x-> x==key, vec(rec_space_coords)))
         end
     end
     bad_inds = unique(bad_inds) # Should be redundant, but just in case
