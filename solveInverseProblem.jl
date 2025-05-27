@@ -1273,16 +1273,16 @@ if !isempty(rec_space_zero_dict)
     
     rec_space_coords = rec_space_coords[good_inds] # Update the list of reconstruction space coordinates, to be able to correctly inflate tomographic reconstruction vector to full N-dimensional array
     for (i,w) in enumerate(W)
-        verbose && println("------> Excluding $(length(bad_points)) bad points from the weight matrix of diagnostic $(i)... ")
+        verbose && println("------> Excluding $(length(bad_inds)) bad points from the weight matrix of diagnostic $(i)... ")
         W[i] = w[:,good_inds]
     end
     if "collisions" in lowercase.(String.(regularization)) # Exclude bad points from slowing-down (collision physics) basis functions
-        verbose && println("------> Excluding $(length(bad_points)) bad points from the slowing-down (collision physics) basis functions... ")
+        verbose && println("------> Excluding $(length(bad_inds)) bad points from the slowing-down (collision physics) basis functions... ")
         F_SD_safe = F_SD_safe[good_inds,:]
     end
 
     if !isempty(priors) # If not empty, exclude bad points from the regularization matrices and priors
-        verbose && println("------> Excluding $(length(bad_points)) bad points from the regularization matrices and priors... ")
+        verbose && println("------> Excluding $(length(bad_inds)) bad points from the regularization matrices and priors... ")
         for (i,l) in enumerate(L)
             L[i] = l[good_inds,good_inds]
             priors[i] = (priors[i])[good_inds]
