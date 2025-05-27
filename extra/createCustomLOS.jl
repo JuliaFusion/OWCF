@@ -4,7 +4,7 @@
 # This script allows the user of the OWCF to create a custom line-of-sight (LOS) to use as a 
 # diagnostic for computing weight functions. The LOS will be saved as a .vc file that can be used by 
 # other OWCF script, often as the 'filepath_diagnostic' input variable. The LOS can be constructed in 
-# either of the following 5 ways:
+# any of the following 5 ways:
 # Case 1: The LOS is constructed using a Cartesian (x,y,z) vector as the 'LOS_vec' input variable
 #         (further explained below) and a Cartesian point for the 'detector_location' input variable.
 #         The LOS_vec is then a vector (does not need to be a unit vector) that runs along the LOS,
@@ -52,7 +52,7 @@
 # - The tenth column corresponds to toroidal phi angle points
 # - The eleventh column corresponds to solid angles OMEGA
 
-# Script written by Henrik Järleblad. Last maintained 2025-05-07.
+# Script written by Henrik Järleblad. Last maintained 2025-05-27.
 ###############################################################################################################
 
 ## ---------------------------------------------------------------------------------------------
@@ -594,6 +594,7 @@ end
 # Plot LOS, if requested
 date_and_time = split("$(Dates.now())","T")[1]*"at"*split("$(Dates.now())","T")[2][1:5] # Might be needed immidiately below, and definitely when saving output data
 if plot_LOS
+    verbose && println("Plotting top view (x,y) and poloidal projection (R,z) of LOS... ")
     LOS_heatmap_res = 100
     flux_R = range(extrema(wall.r)...,length=LOS_heatmap_res); dR = diff(flux_R)[1]
     flux_z = range(extrema(wall.z)...,length=LOS_heatmap_res); dz = diff(flux_z)[1]
@@ -612,7 +613,7 @@ if plot_LOS
     flux_x = range(extrema(topview_R_lfs_x)...,length=LOS_heatmap_res); dx = diff(flux_x)[1]
     flux_y = range(extrema(topview_R_lfs_y)...,length=LOS_heatmap_res); dy = diff(flux_y)[1]
 
-    LOS_Rz_proj = psi_mag .*ones(LOS_heatmap_res,LOS_heatmap_res) # Multiplying with psi_mag, psy_bdry purely for plotting reasons (use heatmap and contour in same figure)
+    LOS_Rz_proj = psi_mag .*ones(LOS_heatmap_res,LOS_heatmap_res) # Multiplying with psi_mag, psy_bdry purely for plotting reasons (to be able to use heatmap and contour in same figure)
     LOS_xy_proj = psi_mag .*ones(LOS_heatmap_res,LOS_heatmap_res)
     for i in eachindex(LOS_R)
         iR = Int64(round(inv(dR)*(LOS_R[i]-flux_R[1])+1))
@@ -627,11 +628,17 @@ if plot_LOS
         end
     end
 
+    # Use correct color ordering for LOS visualization
+    color_array = [:white, :green]
+    if (psi_bdry-psi_mag)<0 # If COCOS ID 3, 4, 7 or 8 (O. Sauter and S. Yu. Medvedev, Computer Physics Communications 184 (2013) 293)
+        color_array = [:green, :white]
+    end
+
     wall_dR = maximum(wall.r)-minimum(wall.r)
     plot_font = "Computer Modern"
     Plots.default(fontfamily=plot_font)
     
-    plt_crs = Plots.heatmap(flux_R, flux_z, transpose(LOS_Rz_proj), title="Poloidal proj. $(LOS_name) LOS", fillcolor=cgrad([:white, :green], categorical=true), colorbar=false)
+    plt_crs = Plots.heatmap(flux_R, flux_z, transpose(LOS_Rz_proj), title="Poloidal proj. $(LOS_name) LOS", fillcolor=cgrad(color_array, categorical=true), colorbar=false)
     plt_crs = Plots.contour!(flux_R, flux_z, transpose(psi_rz), levels=collect(range(psi_mag,stop=psi_bdry,length=5)), color=:gray, linewidth=2.5, label="", colorbar=false)
     plt_crs = Plots.plot!(wall.r,wall.z,label="Tokamak first wall",linewidth=2.5,color=:black)
     #plt_crs = Plots.plot!(LOS_R,LOS_z,label="$(LOS_name) LOS",linewidth=2.0,color=:gray)
@@ -641,7 +648,7 @@ if plot_LOS
     plt_crs = Plots.plot!(legend=:bottomright,legendfontsize=13)
     #plt_crs = Plots.plot!(plt_crs,title="Poloidal proj.",titlefontsize=20)
 
-    plt_top = Plots.heatmap(flux_x, flux_y, transpose(LOS_xy_proj), title="Top view $(date_and_time)", fillcolor=cgrad([:white, :green], categorical=true), colorbar=false)
+    plt_top = Plots.heatmap(flux_x, flux_y, transpose(LOS_xy_proj), title="Top view $(date_and_time)", fillcolor=cgrad(color_array, categorical=true), colorbar=false)
     plt_top = Plots.plot!(topview_R_hfs_x,topview_R_hfs_y,linewidth=2.5,color=:black,label="")
     plt_top = Plots.plot!(topview_R_lfs_x,topview_R_lfs_y,linewidth=2.5,color=:black,label="")
     #plt_top = Plots.plot!(LOS_x,LOS_y,linewidth=2.0,color=:gray,label="")
