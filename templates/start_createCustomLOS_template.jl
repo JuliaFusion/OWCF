@@ -6,7 +6,7 @@
 # OWCF/extra/createCustomLOS.jl allows the user of the OWCF to create a custom line-of-sight (LOS) to use as a 
 # diagnostic for computing weight functions. The LOS will be saved as a .vc file that can be used by 
 # other OWCF script, often as the 'filepath_diagnostic' input variable. The LOS can be constructed in 
-# either of the following 5 ways:
+# any of the following 5 ways:
 # Case 1: The LOS is constructed using a Cartesian (x,y,z) vector as the 'LOS_vec' input variable
 #         (further explained below) and a Cartesian point for the 'detector_location' input variable.
 #         The LOS_vec is then a vector (does not need to be a unit vector) that runs along the LOS,
@@ -80,7 +80,7 @@
 # IF NOT SPECIFIED OTHERWISE, all angles in this start file should be specified in degrees, and points/lengths 
 # in meters.
 
-# Script written by Henrik Järleblad. Last maintained 2025-03-26.
+# Script written by Henrik Järleblad. Last maintained 2025-05-24.
 ######################################################################################################
 
 ## First you have to set the system specifications
