@@ -122,7 +122,7 @@
 # WARNING! Please note that the output files of calc4DWeights.jl will be LARGE. This is due to the relatively high dimensionality
 # of the weight functions.
 
-# Script written by Henrik Järleblad. Last maintained 2025-05-23.
+# Script written by Henrik Järleblad. Last maintained 2025-05-29.
 ################################################################################################
 
 ## ---------------------------------------------------------------------------------------------
@@ -495,7 +495,7 @@ end
 println("")
 println("If you would like to change any settings, please edit the start_calc4DW_template.jl file or similar.")
 println("")
-println("Written by Henrik Järleblad. Last maintained 2025-05-23.")
+println("Written by Henrik Järleblad. Last maintained 2025-05-29.")
 println("--------------------------------------------------------------------------------------------------")
 println("")
 
@@ -990,6 +990,9 @@ for iii=1:iiimax
         end
 
         if plot_results
+            # DEVELOPER COMMENT: Hopefully, sometime in the future, these plot routines are going to be re-written as one, single function in OWCF/extra/gui.jl. But for now, let the ugly code be...
+            # DEVELOPER COMMENT: Hopefully, sometime in the future, these plot routines are going to be re-written as one, single function in OWCF/extra/gui.jl. But for now, let the ugly code be...
+            # DEVELOPER COMMENT: Hopefully, sometime in the future, these plot routines are going to be re-written as one, single function in OWCF/extra/gui.jl. But for now, let the ugly code be...
             plot_font = "Computer Modern"
             Plots.default(fontfamily=plot_font)
             verbose && println("Plotting weight function data... ")
@@ -1004,14 +1007,14 @@ for iii=1:iiimax
             else
                 W_raw_plt = Wtot # Bad variable names...
                 if saveVparaVperpWeights
-                    W_vel_plt = Wtot_vel # Bad variable names...
+                    W_vel_raw_plt = Wtot_vel # Bad variable names...
                 end
             end
 
-            # Without instrumental response (raw)
+            # Without instrumental response (raw), (E,p)
             N_bins = length(Ed_array)
             if N_bins>=5
-                plt_raw_inds = Int64.(round.(collect(range(1,length(Ed_array); length=5))[2:4]))
+                plt_raw_inds = Int64.(round.(collect(range(1,N_bins; length=5))[2:4]))
             elseif N_bins==4
                 plt_raw_inds = [2,3,4]
             elseif N_bins==3
@@ -1037,11 +1040,7 @@ for iii=1:iiimax
             W_raw_plt_hi_Rz = zeros(length(R_array),length(z_array)) # w_hi(R,z) = inv(dEdp) ∫ w_hi(E,p,R,z) dEdp 
 
             for (i,elem) in enumerate(EpRz_zip_array)
-                EpRz_zip = EpRz_zip_array[i]
-                iE = EpRz_zip[1][1]
-                ip = EpRz_zip[2][1]
-                iR = EpRz_zip[3][1]
-                iz = EpRz_zip[4][1]
+                iE = elem[1][1]; ip = elem[2][1]; iR = elem[3][1]; iz = elem[4][1]
 
                 W_raw_plt_low_Ep[iE,ip] += W_raw_plt_low[i]
                 W_raw_plt_mid_Ep[iE,ip] += W_raw_plt_mid[i]
@@ -1082,16 +1081,187 @@ for iii=1:iiimax
                                 left_margin=6Plots.mm, right_margin=5Plots.mm)
             png(plt_EpRz_raw,filepath_output*"_EpRz_raw")
 
-            # CONTINUE CODING HERE!!!
-            # CONTINUE CODING HERE!!!
-            # CONTINUE CODING HERE!!!
-
             if saveVparaVperpWeights
+                # Without instrumental response (raw), (vpara,vperp)
+                W_vel_raw_plt_low = W_vel_raw_plt[plt_raw_inds[1],:] # w_low(vpara,vperp,R,z) but vectorized
+                W_vel_raw_plt_mid = W_vel_raw_plt[plt_raw_inds[2],:] # w_mid(vpara,vperp,R,z) but vectorized
+                W_vel_raw_plt_hi  = W_vel_raw_plt[plt_raw_inds[3],:] # w_hi(vpara,vperp,R,z)  but vectorized
+
+                W_vel_raw_plt_low_VpaVpe = zeros(length(vpara_array),length(vperp_array)) # w_low(vpara,vperp) = inv(dRdz) ∫ w_low(vpara,vperp,R,z) dRdz 
+                W_vel_raw_plt_mid_VpaVpe = zeros(length(vpara_array),length(vperp_array)) # w_mid(vpara,vperp) = inv(dRdz) ∫ w_mid(vpara,vperp,R,z) dRdz 
+                W_vel_raw_plt_hi_VpaVpe = zeros(length(vpara_array),length(vperp_array)) # w_hi(vpara,vperp) = inv(dRdz) ∫ w_hi(vpara,vperp,R,z) dRdz 
+                W_vel_raw_plt_low_Rz = zeros(length(R_array),length(z_array)) # w_low(R,z) = inv(dVpa*dVpe) ∫ w_low(vpara,vperp,R,z) dVpa*dVpe 
+                W_vel_raw_plt_mid_Rz = zeros(length(R_array),length(z_array)) # w_mid(R,z) = inv(dVpa*dVpe) ∫ w_mid(vpara,vperp,R,z) dVpa*dVpe 
+                W_vel_raw_plt_hi_Rz = zeros(length(R_array),length(z_array)) # w_hi(R,z) = inv(dVpa*dVpe) ∫ w_hi(vpara,vperp,R,z) dVpa*dVpe
+
+                for (i,elem) in enumerate(VparVperRz_coords)
+                    iVpa = elem[1][1]; iVpe = elem[2][1]; iR = elem[3][1]; iz = elem[4][1]
+
+                    W_vel_raw_plt_low_VpaVpe[iVpa,iVpe] += W_vel_raw_plt_low[i]
+                    W_vel_raw_plt_mid_VpaVpe[iVpa,iVpe] += W_vel_raw_plt_mid[i]
+                    W_vel_raw_plt_hi_VpaVpe[iVpa,iVpe] += W_vel_raw_plt_hi[i]
+                    W_vel_raw_plt_low_Rz[iR,iz] += W_vel_raw_plt_low[i]
+                    W_vel_raw_plt_mid_Rz[iR,iz] += W_vel_raw_plt_mid[i]
+                    W_vel_raw_plt_hi_Rz[iR,iz] += W_vel_raw_plt_hi[i]
+                end
+
+                W_vel_raw_plt_low_VpaVpe_max = @sprintf "%.2E" maximum(W_vel_raw_plt_low_VpaVpe)
+                W_vel_raw_plt_mid_VpaVpe_max = @sprintf "%.2E" maximum(W_vel_raw_plt_mid_VpaVpe)
+                W_vel_raw_plt_hi_VpaVpe_max = @sprintf "%.2E" maximum(W_vel_raw_plt_hi_VpaVpe)
+                W_vel_raw_plt_low_Rz_max = @sprintf "%.2E" maximum(W_vel_raw_plt_low_Rz)
+                W_vel_raw_plt_mid_Rz_max = @sprintf "%.2E" maximum(W_vel_raw_plt_mid_Rz)
+                W_vel_raw_plt_hi_Rz_max = @sprintf "%.2E" maximum(W_vel_raw_plt_hi_Rz)
+
+                plt_vel_VpaVpe_raw_low = Plots.heatmap(vpara_array, vperp_array, transpose(W_vel_raw_plt_low_VpaVpe),title="∫dRdz w($(Ed_low),vpa,vpe,R,z), max(w): $(W_vel_raw_plt_low_VpaVpe_max) keV^-1", colorbar=false, xlims=extrema(vpara_array), ylims=extrema(vperp_array))
+                plt_vel_VpaVpe_raw_mid = Plots.heatmap(vpara_array, vperp_array, transpose(W_vel_raw_plt_mid_VpaVpe),title="∫dRdz w($(Ed_mid),vpa,vpe,R,z), max(w): $(W_vel_raw_plt_mid_VpaVpe_max) keV^-1",colorbar=false, xlims=extrema(vpara_array), ylims=extrema(vperp_array))
+                plt_vel_VpaVpe_raw_hi = Plots.heatmap(vpara_array, vperp_array, transpose(W_vel_raw_plt_hi_VpaVpe),title="∫dRdz w($(Ed_hi),vpa,vpe,R,z), max(w): $(W_vel_raw_plt_hi_VpaVpe_max) keV^-1",colorbar=false, xlims=extrema(vpara_array), ylims=extrema(vperp_array))
+                plt_vel_Rz_raw_low = Plots.heatmap(R_array, z_array, transpose(W_vel_raw_plt_low_Rz),title="∫dVpa*dVpe w($(Ed_low),vpa,vpe,R,z), max(w): $(W_vel_raw_plt_low_Rz_max) keV^-1",colorbar=false)
+                plt_vel_Rz_raw_mid = Plots.heatmap(R_array, z_array, transpose(W_vel_raw_plt_mid_Rz),title="∫dVpa*dVpe w($(Ed_mid),vpa,vpe,R,z), max(w): $(W_vel_raw_plt_mid_Rz_max) keV^-1",colorbar=false)
+                plt_vel_Rz_raw_hi = Plots.heatmap(R_array, z_array, transpose(W_vel_raw_plt_hi_Rz),title="∫dVpa*dVpe w($(Ed_hi),vpa,vpe,R,z), max(w): $(W_vel_raw_plt_hi_Rz_max) keV^-1",colorbar=false)
+
+                # Add labels etc to (vpa,vpe) plots
+                plt_vel_VpaVpe_raw_low = Plots.plot!(plt_vel_VpaVpe_raw_low, xlabel="Vpa [m/s]", ylabel="Vpe [m/s]")
+                plt_vel_VpaVpe_raw_mid = Plots.plot!(plt_vel_VpaVpe_raw_mid, xlabel="Vpa [m/s]", ylabel="Vpe [m/s]")
+                plt_vel_VpaVpe_raw_hi = Plots.plot!(plt_vel_VpaVpe_raw_hi, xlabel="Vpa [m/s]", ylabel="Vpe [m/s]")
+
+                # Add tokamak wall, labels etc to (R,z) plots
+                plt_vel_Rz_raw_low = Plots.plot!(plt_vel_Rz_raw_low, wall.r, wall.z, linewidth=2.0, label="", xlabel="R [m]", ylabel="z [m]", aspect_ratio=:equal)
+                plt_vel_Rz_raw_mid = Plots.plot!(plt_vel_Rz_raw_mid, wall.r, wall.z, linewidth=2.0, label="", xlabel="R [m]", ylabel="z [m]", aspect_ratio=:equal)
+                plt_vel_Rz_raw_hi = Plots.plot!(plt_vel_Rz_raw_hi, wall.r, wall.z, linewidth=2.0, label="", xlabel="R [m]", ylabel="z [m]", aspect_ratio=:equal)
+
+                plt_VpaVpeRz_raw = Plots.plot(plt_vel_VpaVpe_raw_low, plt_vel_VpaVpe_raw_mid, plt_vel_VpaVpe_raw_hi,
+                                      plt_vel_Rz_raw_low, plt_vel_Rz_raw_mid, plt_vel_Rz_raw_hi,
+                                      layout=(2,3), size=(1200,800), dpi=200, 
+                                fillcolor=cgrad([:white, :yellow, :orange, :red, :black]), titlefontsize=10, colorbar=false, bottom_margin=6Plots.mm,
+                                left_margin=6Plots.mm, right_margin=5Plots.mm)
+                png(plt_VpaVpeRz_raw,filepath_output*"_VpaVpeRz_raw")
             end
 
             if instrumental_response
+                # With instrumental response, (E,p)
+                N_bins = length(instrumental_response_output)
+                if N_bins>=5
+                    plt_inds = Int64.(round.(collect(range(1,N_bins; length=5))[2:4]))
+                elseif N_bins==4
+                    plt_inds = [2,3,4]
+                elseif N_bins==3
+                    plt_inds = [1,2,3]
+                elseif N_bins==2
+                    plt_inds = [1,1,2]
+                else # N_bins==1
+                    plt_inds = [1,1,1]
+                end
+
+                Ed_low = @sprintf "%.2E" instrumental_response_output[plt_raw_inds[1]]
+                Ed_mid = @sprintf "%.2E" instrumental_response_output[plt_raw_inds[2]]
+                Ed_hi = @sprintf "%.2E" instrumental_response_output[plt_raw_inds[3]]
+                W_plt_low = W_plt[plt_inds[1],:] # w_low(E,p,R,z) but vectorized
+                W_plt_mid = W_plt[plt_inds[2],:] # w_mid(E,p,R,z) but vectorized
+                W_plt_hi = W_plt[plt_inds[3],:] # w_hi(E,p,R,z) but vectorized
+
+                W_plt_low_Ep = zeros(length(E_array),length(p_array)) # w_low(E,p) = inv(dRdz) ∫ w_low(E,p,R,z) dRdz 
+                W_plt_mid_Ep = zeros(length(E_array),length(p_array)) # w_mid(E,p) = inv(dRdz) ∫ w_mid(E,p,R,z) dRdz 
+                W_plt_hi_Ep = zeros(length(E_array),length(p_array)) # w_hi(E,p) = inv(dRdz) ∫ w_hi(E,p,R,z) dRdz 
+                W_plt_low_Rz = zeros(length(R_array),length(z_array)) # w_low(R,z) = inv(dEdp) ∫ w_low(E,p,R,z) dEdp 
+                W_plt_mid_Rz = zeros(length(R_array),length(z_array)) # w_mid(R,z) = inv(dEdp) ∫ w_mid(E,p,R,z) dEdp 
+                W_plt_hi_Rz = zeros(length(R_array),length(z_array)) # w_hi(R,z) = inv(dEdp) ∫ w_hi(E,p,R,z) dEdp
+
+                for (i,elem) in enumerate(EpRz_zip_array)
+                    iE = elem[1][1]; ip = elem[2][1]; iR = elem[3][1]; iz = elem[4][1]
+
+                    W_plt_low_Ep[iE,ip] += W_plt_low[i]
+                    W_plt_mid_Ep[iE,ip] += W_plt_mid[i]
+                    W_plt_hi_Ep[iE,ip] += W_plt_hi[i]
+                    W_plt_low_Rz[iR,iz] += W_plt_low[i]
+                    W_plt_mid_Rz[iR,iz] += W_plt_mid[i]
+                    W_plt_hi_Rz[iR,iz] += W_plt_hi[i]
+                end
+
+                W_plt_low_Ep_max = @sprintf "%.2E" maximum(W_plt_low_Ep)
+                W_plt_mid_Ep_max = @sprintf "%.2E" maximum(W_plt_mid_Ep)
+                W_plt_hi_Ep_max = @sprintf "%.2E" maximum(W_plt_hi_Ep)
+                W_plt_low_Rz_max = @sprintf "%.2E" maximum(W_plt_low_Rz)
+                W_plt_mid_Rz_max = @sprintf "%.2E" maximum(W_plt_mid_Rz)
+                W_plt_hi_Rz_max = @sprintf "%.2E" maximum(W_plt_hi_Rz)
+
+                plt_Ep_low = Plots.heatmap(E_array, p_array, transpose(W_plt_low_Ep),title="∫dRdz w($(Ed_low),E,p,R,z), max(w): $(W_plt_low_Ep_max) $(units_inverse(instrumental_response_output_units))", colorbar=false, xlims=extrema(E_array), ylims=extrema(p_array))
+                plt_Ep_mid = Plots.heatmap(E_array, p_array, transpose(W_plt_mid_Ep),title="∫dRdz w($(Ed_mid),E,p,R,z), max(w): $(W_plt_mid_Ep_max) $(units_inverse(instrumental_response_output_units))",colorbar=false, xlims=extrema(E_array), ylims=extrema(p_array))
+                plt_Ep_hi = Plots.heatmap(E_array, p_array, transpose(W_plt_hi_Ep),title="∫dRdz w($(Ed_hi),E,p,R,z), max(w): $(W_plt_hi_Ep_max) $(units_inverse(instrumental_response_output_units))",colorbar=false, xlims=extrema(E_array), ylims=extrema(p_array))
+                plt_Rz_low = Plots.heatmap(R_array, z_array, transpose(W_plt_low_Rz),title="∫dEdp w($(Ed_low),E,p,R,z), max(w): $(W_plt_low_Rz_max) $(units_inverse(instrumental_response_output_units))",colorbar=false)
+                plt_Rz_mid = Plots.heatmap(R_array, z_array, transpose(W_plt_mid_Rz),title="∫dEdp w($(Ed_mid),E,p,R,z), max(w): $(W_plt_mid_Rz_max) $(units_inverse(instrumental_response_output_units))",colorbar=false)
+                plt_Rz_hi = Plots.heatmap(R_array, z_array, transpose(W_plt_hi_Rz),title="∫dEdp w($(Ed_hi),E,p,R,z), max(w): $(W_plt_hi_Rz_max) $(units_inverse(instrumental_response_output_units))",colorbar=false)
+
+                # Add labels etc to (E,p) plots
+                plt_Ep_low = Plots.plot!(plt_Ep_low, xlabel="Energy [keV]", ylabel="Pitch [-]")
+                plt_Ep_mid = Plots.plot!(plt_Ep_mid, xlabel="Energy [keV]", ylabel="Pitch [-]")
+                plt_Ep_hi = Plots.plot!(plt_Ep_hi, xlabel="Energy [keV]", ylabel="Pitch [-]")
+
+                # Add tokamak wall, labels etc to (R,z) plots
+                plt_Rz_low = Plots.plot!(plt_Rz_low, wall.r, wall.z, linewidth=2.0, label="", xlabel="R [m]", ylabel="z [m]", aspect_ratio=:equal)
+                plt_Rz_mid = Plots.plot!(plt_Rz_mid, wall.r, wall.z, linewidth=2.0, label="", xlabel="R [m]", ylabel="z [m]", aspect_ratio=:equal)
+                plt_Rz_hi = Plots.plot!(plt_Rz_hi, wall.r, wall.z, linewidth=2.0, label="", xlabel="R [m]", ylabel="z [m]", aspect_ratio=:equal)
+
+                plt_EpRz = Plots.plot(plt_Ep_low, plt_Ep_mid, plt_Ep_hi,
+                                      plt_Rz_low, plt_Rz_mid, plt_Rz_hi,
+                                      layout=(2,3), size=(1200,800), dpi=200, 
+                                      fillcolor=cgrad([:white, :yellow, :orange, :red, :black]), titlefontsize=10, colorbar=false, bottom_margin=6Plots.mm,
+                                      left_margin=6Plots.mm, right_margin=5Plots.mm)
+                png(plt_EpRz,filepath_output*"_EpRz")
 
                 if saveVparaVperpWeights
+                    # With instrumental response, (vpara,vperp)
+                    W_vel_plt_low = W_vel_plt[plt_inds[1],:] # w_low(vpara,vperp,R,z) but vectorized
+                    W_vel_plt_mid = W_vel_plt[plt_inds[2],:] # w_mid(vpara,vperp,R,z) but vectorized
+                    W_vel_plt_hi  = W_vel_plt[plt_inds[3],:] # w_hi(vpara,vperp,R,z)  but vectorized
+
+                    W_vel_plt_low_VpaVpe = zeros(length(vpara_array),length(vperp_array)) # w_low(vpara,vperp) = inv(dRdz) ∫ w_low(vpara,vperp,R,z) dRdz 
+                    W_vel_plt_mid_VpaVpe = zeros(length(vpara_array),length(vperp_array)) # w_mid(vpara,vperp) = inv(dRdz) ∫ w_mid(vpara,vperp,R,z) dRdz 
+                    W_vel_plt_hi_VpaVpe = zeros(length(vpara_array),length(vperp_array)) # w_hi(vpara,vperp) = inv(dRdz) ∫ w_hi(vpara,vperp,R,z) dRdz 
+                    W_vel_plt_low_Rz = zeros(length(R_array),length(z_array)) # w_low(R,z) = inv(dVpa*dVpe) ∫ w_low(vpara,vperp,R,z) dVpa*dVpe 
+                    W_vel_plt_mid_Rz = zeros(length(R_array),length(z_array)) # w_mid(R,z) = inv(dVpa*dVpe) ∫ w_mid(vpara,vperp,R,z) dVpa*dVpe 
+                    W_vel_plt_hi_Rz = zeros(length(R_array),length(z_array)) # w_hi(R,z) = inv(dVpa*dVpe) ∫ w_hi(vpara,vperp,R,z) dVpa*dVpe
+
+                    for (i,elem) in enumerate(VparVperRz_coords)
+                        iVpa = elem[1][1]; iVpe = elem[2][1]; iR = elem[3][1]; iz = elem[4][1]
+
+                        W_vel_plt_low_VpaVpe[iVpa,iVpe] += W_vel_plt_low[i]
+                        W_vel_plt_mid_VpaVpe[iVpa,iVpe] += W_vel_plt_mid[i]
+                        W_vel_plt_hi_VpaVpe[iVpa,iVpe] += W_vel_plt_hi[i]
+                        W_vel_plt_low_Rz[iR,iz] += W_vel_plt_low[i]
+                        W_vel_plt_mid_Rz[iR,iz] += W_vel_plt_mid[i]
+                        W_vel_plt_hi_Rz[iR,iz] += W_vel_plt_hi[i]
+                    end
+
+                    W_vel_plt_low_VpaVpe_max = @sprintf "%.2E" maximum(W_vel_plt_low_VpaVpe)
+                    W_vel_plt_mid_VpaVpe_max = @sprintf "%.2E" maximum(W_vel_plt_mid_VpaVpe)
+                    W_vel_plt_hi_VpaVpe_max = @sprintf "%.2E" maximum(W_vel_plt_hi_VpaVpe)
+                    W_vel_plt_low_Rz_max = @sprintf "%.2E" maximum(W_vel_plt_low_Rz)
+                    W_vel_plt_mid_Rz_max = @sprintf "%.2E" maximum(W_vel_plt_mid_Rz)
+                    W_vel_plt_hi_Rz_max = @sprintf "%.2E" maximum(W_vel_plt_hi_Rz)
+
+                    plt_vel_VpaVpe_low = Plots.heatmap(vpara_array, vperp_array, transpose(W_vel_plt_low_VpaVpe),title="∫dRdz w($(Ed_low),vpa,vpe,R,z), max(w): $(W_vel_plt_low_VpaVpe_max) $(units_inverse(instrumental_response_output_units))", colorbar=false, xlims=extrema(vpara_array), ylims=extrema(vperp_array))
+                    plt_vel_VpaVpe_mid = Plots.heatmap(vpara_array, vperp_array, transpose(W_vel_plt_mid_VpaVpe),title="∫dRdz w($(Ed_mid),vpa,vpe,R,z), max(w): $(W_vel_plt_mid_VpaVpe_max) $(units_inverse(instrumental_response_output_units))",colorbar=false, xlims=extrema(vpara_array), ylims=extrema(vperp_array))
+                    plt_vel_VpaVpe_hi = Plots.heatmap(vpara_array, vperp_array, transpose(W_vel_plt_hi_VpaVpe),title="∫dRdz w($(Ed_hi),vpa,vpe,R,z), max(w): $(W_vel_plt_hi_VpaVpe_max) $(units_inverse(instrumental_response_output_units))",colorbar=false, xlims=extrema(vpara_array), ylims=extrema(vperp_array))
+                    plt_vel_Rz_low = Plots.heatmap(R_array, z_array, transpose(W_vel_plt_low_Rz),title="∫dVpa*dVpe w($(Ed_low),vpa,vpe,R,z), max(w): $(W_vel_plt_low_Rz_max) $(units_inverse(instrumental_response_output_units))",colorbar=false)
+                    plt_vel_Rz_mid = Plots.heatmap(R_array, z_array, transpose(W_vel_plt_mid_Rz),title="∫dVpa*dVpe w($(Ed_mid),vpa,vpe,R,z), max(w): $(W_vel_plt_mid_Rz_max) $(units_inverse(instrumental_response_output_units))",colorbar=false)
+                    plt_vel_Rz_hi = Plots.heatmap(R_array, z_array, transpose(W_vel_plt_hi_Rz),title="∫dVpa*dVpe w($(Ed_hi),vpa,vpe,R,z), max(w): $(W_vel_plt_hi_Rz_max) $(units_inverse(instrumental_response_output_units))",colorbar=false)
+
+                    # Add labels etc to (vpa,vpe) plots
+                    plt_vel_VpaVpe_low = Plots.plot!(plt_vel_VpaVpe_low, xlabel="Vpa [m/s]", ylabel="Vpe [m/s]")
+                    plt_vel_VpaVpe_mid = Plots.plot!(plt_vel_VpaVpe_mid, xlabel="Vpa [m/s]", ylabel="Vpe [m/s]")
+                    plt_vel_VpaVpe_hi = Plots.plot!(plt_vel_VpaVpe_hi, xlabel="Vpa [m/s]", ylabel="Vpe [m/s]")
+
+                    # Add tokamak wall, labels etc to (R,z) plots
+                    plt_vel_Rz_low = Plots.plot!(plt_vel_Rz_low, wall.r, wall.z, linewidth=2.0, label="", xlabel="R [m]", ylabel="z [m]", aspect_ratio=:equal)
+                    plt_vel_Rz_mid = Plots.plot!(plt_vel_Rz_mid, wall.r, wall.z, linewidth=2.0, label="", xlabel="R [m]", ylabel="z [m]", aspect_ratio=:equal)
+                    plt_vel_Rz_hi = Plots.plot!(plt_vel_Rz_hi, wall.r, wall.z, linewidth=2.0, label="", xlabel="R [m]", ylabel="z [m]", aspect_ratio=:equal)
+
+                    plt_VpaVpeRz = Plots.plot(plt_vel_VpaVpe_low, plt_vel_VpaVpe_mid, plt_vel_VpaVpe_hi,
+                                        plt_vel_Rz_low, plt_vel_Rz_mid, plt_vel_Rz_hi,
+                                        layout=(2,3), size=(1200,800), dpi=200, 
+                                    fillcolor=cgrad([:white, :yellow, :orange, :red, :black]), titlefontsize=10, colorbar=false, bottom_margin=6Plots.mm,
+                                    left_margin=6Plots.mm, right_margin=5Plots.mm)
+                    png(plt_VpaVpeRz,filepath_output*"_VpaVpeRz")
                 end
             end
         end

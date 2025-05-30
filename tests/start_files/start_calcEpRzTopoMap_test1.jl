@@ -17,10 +17,6 @@
 # filepath_distr - The path to the .jld2/.h5 weights file to extract particle grid info from (if useDistrFile) - String
 # filepath_equil - The path to the .eqdsk-file (or .geqdsk/.jld2-file) with the tokamak magnetic equilibrium and geometry - String
 # folderpath_o - The path to the folder where the results will be saved - String
-# plot_results - If true, (a selection of) the results will be plotted when computations are completed. Since the results are 4D,
-#                the plots will show f(E, p, R_i, z_j) where 'f' is e.g. the topological map, the poloidal transit times etc. 'i' 
-#                and 'j' are indices centered around, and including, the point (R_mid, z_mid) i.e. the (R,z) point in the middle 
-#                of the (R,z) grid - Bool
 # saveTransitTimeMaps - If set to true, the poloidal and toroidal transit times will be saved for every valid orbit - Bool
 # saveXYZJacobian - If true, the Jacobian from (x,y,z,vx,vy,vz) to (E,p,R,z) will be computed - Bool
 # timepoint - The timepoint of the tokamak shot for the magnetic equilibrium. Format XX,YYYY where XX are seconds and YYYY are decimals - String
@@ -72,54 +68,54 @@
 
 ## First you have to set the system specifications
 using Distributed # Needed, even though distributed might be set to false. This is to export all inputs to all workers right away, if needed.
-batch_job = false
-distributed = true
-folderpath_OWCF = "" # OWCF folder path. Finish with '/'
-numOcores = 4 # When executing script via HPC cluster job, make sure you know how many cores you have requested for your batch job
+#batch_job = false
+distributed = false
+#folderpath_OWCF = "" # OWCF folder path. Finish with '/'
+#numOcores = 4 # When executing script via HPC cluster job, make sure you know how many cores you have requested for your batch job
 
 ## Navigate to the OWCF folder and activate the OWCF environment
-cd(folderpath_OWCF)
-using Pkg
-Pkg.activate(".")
+#cd(folderpath_OWCF)
+#using Pkg
+#Pkg.activate(".")
 
 ## If running as a batch job on a SLURM CPU cluster
-if batch_job && distributed
-    # Load the SLURM CPU cores
-    using ClusterManagers
-    addprocs(SlurmManager(numOcores))
-    hosts = []
-    pids = []
-    for i in workers()
-        host, pid = fetch(@spawnat i (gethostname(), getpid()))
-        push!(hosts, host)
-        push!(pids, pid)
-    end
-    @show hosts
-end
+#if batch_job && distributed
+#    # Load the SLURM CPU cores
+#    using ClusterManagers
+#    addprocs(SlurmManager(numOcores))
+#    hosts = []
+#    pids = []
+#    for i in workers()
+#        host, pid = fetch(@spawnat i (gethostname(), getpid()))
+#        push!(hosts, host)
+#        push!(pids, pid)
+#    end
+#    @show hosts
+#end
 
 ## If running locally and multi-threaded
-if !batch_job && distributed # Assume you are executing the script on a local laptop (/computer)
-    println("Adding processes... ")
-    addprocs(numOcores-(nprocs()-1)) # If you didn't execute this script as an HPC cluster job, then you need to add processors like this. Add all remaining available cores.
-    # The '-(nprocs()-1)' part is simply to ensure to extra processes are added, in case script needs to be restarted on a local computer
-end
+#if !batch_job && distributed # Assume you are executing the script on a local laptop (/computer)
+#    println("Adding processes... ")
+#    addprocs(numOcores-(nprocs()-1)) # If you didn't execute this script as an HPC cluster job, then you need to add processors like this. Add all remaining available cores.
+#    # The '-(nprocs()-1)' part is simply to ensure to extra processes are added, in case script needs to be restarted on a local computer
+#end
 
 ## -----------------------------------------------------------------------------
 @everywhere begin
-    folderpath_OWCF = $folderpath_OWCF # Set path to OWCF folder to same as main process (hence the '$')
-    
-    distinguishIncomplete = false
-    distinguishLost = false
+    folderpath_OWCF = $folderpath_OWCF
+
+    distinguishIncomplete = true
+    distinguishLost = true
     distrFileJLD2 = false # Set to true, if useDistrFile is set to true, and filepath_distr is .jld2 in file format
-    FI_species = "D" # for example "D" for deuterium, "p" for proton, "T" for tritium, "3he" for helium-3
+    FI_species = "Be" # for example "D" for deuterium, "p" for proton, "T" for tritium, "3he" for helium-3
     filepath_distr = ""
-    filepath_equil = ""
-    folderpath_o = "../OWCF_results/template/" # Output folder path. Finish with '/'
-    plot_results = false # Set to true, if (a selection of) the results are to be plotted upon completion of the computations
-    saveTransitTimeMaps = false # If true, then calcEpRzTopoMap.jl will save 4D data of the poloidal and toroidal transit times for the valid orbits
+    filepath_equil = folderpath_OWCF*"equilibrium/JET/g99971/g99971_474-48.9.eqdsk"
+    folderpath_o = folderpath_OWCF*"tests/outputs/" # Output folder path. Finish with '/'
+    plot_results = $plot_test_results
+    saveTransitTimeMaps = true # If true, then calcEpRzTopoMap.jl will save 4D data of the poloidal and toroidal transit times for the valid orbits
     saveXYZJacobian = false # Set to true, if Jacobian from (x,y,z,vx,vy,vz) to (E,p,R,z) should be computed and saved
     timepoint = nothing # If unknown, just leave as nothing. The algorithm will try to figure it out automatically.
-    tokamak = "" # If unknown, just set ""
+    tokamak = "JET" # If unknown, just set ""
     TRANSP_id = "" # If unknown, just set ""
     useDistrFile = false # Set to true, if you want to load the particle grid from the distribution file filepath_distr
     verbose = true # If set to true, the script will be very extroverted! Yay!
@@ -132,12 +128,12 @@ end
     z_array = nothing # for example [-1.5 1.5]
 
     # \/ Only necessary if E_array, p_array, R_array and/or z_array are set to nothing
-    Emin = 0.0 # keV
-    Emax = 000.0 # keV
-    nE = 0
-    np = 0
-    nR = 0
-    nz = 0
+    Emin = 1.0 # keV
+    Emax = 10.0 # keV
+    nE = 11
+    np = 12
+    nR = 5
+    nz = 6
     p_min = -1.0
     p_max = 1.0
     R_min = nothing # Automatically HFS wall to LFS wall. Override by specifying together with R_max
