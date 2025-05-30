@@ -1,10 +1,10 @@
 ################################ calcEpRzTopoMap.jl #########################################
 
 #### Description:
-# This script calculates the topological map for an (E,p,R,z) grid. It creates a 4D
-# matrix where each element in the matrix corresponds to one grid point in particle space
-# (with the same indices etc.). Each matrix element will have one of the following integer
-# values:
+# This script calculates the (fast-ion drift orbit) topological map for an (E,p,R,z) grid. 
+# It creates a 4D array where each element in the matrix corresponds to one grid point in 
+# particle space (E,p,R,z) (with the same indices etc.). Each array element will have one 
+# of the following integer values:
 # 1 - This integer value is given to all stagnation orbits. Red.
 # 2 - This integer value is given to all trapped orbits. Blue.
 # 3 - This integer value is given to all co-passing orbits. Green.
@@ -24,12 +24,17 @@
 # If you set useDistrFile to true, make sure to provide the correct path to the distribution file.
 # If distribution file is in .jld2 file format, set distrFileJLD2 to true.
 #
+# If you  set saveTransitTimeMaps to true, the poloidal and toroidal transit times of the fast-ion
+# drift orbits of the (E,p,R,z) grid will be saved as 4D arrays as well. In units of seconds.
+#
 # If you set saveXYZJacobian to true, the Jacobian from (x,y,z,vx,vy,vz) to (E,p,R,z) will be 
 # computed for each (E,p,R,z) point. The Jacobian from (x,y,z,vx,vy,vz) to (E,p,R,z) is
 #
 # J = 4*(pi^2)*R*v/m
 #
 # where R is the major radius position, v is the speed of the ion and m is the mass.
+#
+# If you set plot_results to true, results will be plotted when computations are completed.
 
 #### Inputs (units given when defined in the script)
 # Given in start_calcEpRzTopoMap_template.jl
@@ -61,7 +66,7 @@
 # If saveXYZJacobian==true,
 #   jacobian - The Jacobian from (x,y,z,vx,vy,vz) to (E,p,R,z) for all (E,p,R,z) points - Array{Float64,4}
 
-# Script written by Henrik Järleblad. Last maintained 2024-06-25.
+# Script written by Henrik Järleblad. Last maintained 2025-05-29.
 ########################################################################################
 
 ## ------
@@ -77,6 +82,7 @@ verbose && println("Loading packages (can take up to approx 15 secs/processor)..
     using ProgressMeter
     using Base.Iterators
     include("misc/species_func.jl")
+    plot_results && (include("extra/gui.jl"))
 end
 
 ## ------
@@ -169,6 +175,31 @@ if maximum(z_array)>100.0
 end
 
 ## ------
+# Decide output file name, based on inputs
+println("Deciding output file name, based on inputs... ")
+ident = ""
+if distinguishIncomplete
+    ident *= "_wIncomp"
+end
+if distinguishLost
+    ident *= "_wLost"
+end
+if saveXYZJacobian
+    ident *= "_wJac"
+end
+
+filepath_tm_orig = folderpath_o*"EpRzTopoMap_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*FI_species*"_$(length(E_array))x$(length(p_array))x$(length(R_array))x$(length(z_array))"*ident
+if !(filename_o=="")
+    filepath_tm_orig = folderpath_o*filename_o
+end
+global filepath_tm = deepcopy(filepath_tm_orig)
+global count = 1
+while isfile(filepath_tm*".jld2") # To take care of not overwriting files. Add _(1), _(2) etc
+    global filepath_tm = filepath_tm_orig*"_($(Int64(count)))"
+    global count += 1 # global scope, to surpress warnings
+end
+
+## ------
 # Printing script info and inputs
 println("")
 println("----------------------------------------calcEpRzTopoMap.jl----------------------------------------")
@@ -211,11 +242,21 @@ if saveXYZJacobian
     println("Jacobian from (x,y,z,vx,vy,vz) will be saved as .jld2-file key 'jacobian'.")
     println("")
 end
+if plot_results
+    println("When computations are completed, (a selection of) the results will be plotted and the figures will be saved as the following files:")
+    println("$(filepath_tm)_plot_1of5.png")
+    println("...")
+    println("$(filepath_tm)_plot_5of5.png")
+    println("")
+end
 println("Extra keyword arguments specified: ")
 println(extra_kw_args)
 println("")
-println("If you would like to change any settings, please edit the start_calcEpRzTopoMap_template.jl file.")
-println("Written by Henrik Järleblad. Last maintained 2023-05-23.")
+println("The results will be saved to the following output file:")
+println("$(filepath_tm).jld2")
+println("")
+println("If you would like to change any settings, please edit the start_calcEpRzTopoMap_template.jl file or equivalent.")
+println("Written by Henrik Järleblad. Last maintained 2025-05-29.")
 println("------------------------------------------------------------------------------------------------")
 println("")
 
@@ -437,26 +478,17 @@ global jacobian_tottot[iE,:,:,:] = dataMap_tot[4,:,:,:] # One energy slice of ja
 end ###########################################
 
 ## ------
-# Save the results
-verbose && println("Saving... ")
-ident = ""
-if distinguishIncomplete
-    ident *= "_wIncomp"
-end
-if distinguishLost
-    ident *= "_wLost"
-end
-if saveXYZJacobian
-    ident *= "_wJac"
+# Plot the results (if requested)
+if plot_results
+    # CONTINUE CODING HERE!!!
+    # CONTINUE CODING HERE!!!
+    # CONTINUE CODING HERE!!!
+    #png(OWCF_plot4DArrayAs2DSlices(topoMap_tottot,))
 end
 
-global filepath_tm_orig = folderpath_o*"EpRzTopoMap_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*FI_species*"_$(length(E_array))x$(length(p_array))x$(length(R_array))x$(length(z_array))"*ident
-global filepath_tm = deepcopy(filepath_tm_orig)
-global count = 1
-while isfile(filepath_tm*".jld2") # To take care of not overwriting files. Add _(1), _(2) etc
-    global filepath_tm = filepath_tm_orig*"_($(Int64(count)))"
-    global count += 1 # global scope, to surpress warnings
-end
+## ------
+# Save the results
+verbose && println("Saving... ")
 global filepath_tm = filepath_tm*".jld2"
 myfile = jldopen(filepath_tm,true,true,false,IOStream)
 write(myfile,"topoMap",topoMap_tottot)
