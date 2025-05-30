@@ -63,7 +63,7 @@ println("Loading Julia packages... ")
     using LinearAlgebra
     using Equilibrium
     plot_LOS && (using Plots)
-    debug = true # This is always set to false, except when OWCF developers are debugging
+    debug = false # This is always set to false, except when OWCF developers are debugging
     debug && (using Plots)
 end
 
@@ -71,35 +71,46 @@ end
 # Determine which case it is
 verbose && print("Determining custom LOS build case... ")
 case = :UNKNOWN
-possible_cases = Array{Int64,1}()
-if coordinate_system==:cartesian
-    push!(possible_cases,1)
-    push!(possible_cases,3)
-elseif coordinate_system==:cylindrical
-    push!(possible_cases,2)
-    push!(possible_cases,4)
-elseif coordinate_system==:magrel
-    verbose && println("It's 5!")
-    case = 5
-else
-    error("Unknown coordinate system. Please correct and re-try. Use :cartesian, :cylindrical or :magrel.")
-end
-if case==:UNKNOWN
-    numOcoords = length(LOS_vec)
-    if numOcoords==2
-        push!(possible_cases,3)
-        push!(possible_cases,4)
-    elseif numOcoords==3
+if collimated
+    possible_cases = Array{Int64,1}()
+    if coordinate_system==:cartesian
         push!(possible_cases,1)
+        push!(possible_cases,3)
+    elseif coordinate_system==:cylindrical
         push!(possible_cases,2)
+        push!(possible_cases,4)
+    elseif coordinate_system==:magrel
+        verbose && println("It's 5!")
+        case = 5
     else
-        error("Unknown number of coordinates. Please correct and re-try. If coordinate_system is not set to :magrel, please use 2 (angles) or 3 (coordinates) to specify 'LOS_vec'.")
+        error("Unknown coordinate system. Please correct and re-try. Use :cartesian, :cylindrical or :magrel.")
     end
-    # Find which case it is. 1, 2, 3 or 4?
-    case = argmax([length(findall(x-> x==0, possible_cases .- 1)),length(findall(x-> x==0, possible_cases .- 2)),length(findall(x-> x==0, possible_cases .- 3)),length(findall(x-> x==0, possible_cases .- 4))])
-    verbose && println("It's $(case)!")
+    if case==:UNKNOWN
+        numOcoords = length(LOS_vec)
+        if numOcoords==2
+            push!(possible_cases,3)
+            push!(possible_cases,4)
+        elseif numOcoords==3
+            push!(possible_cases,1)
+            push!(possible_cases,2)
+        else
+            error("Unknown number of coordinates. Please correct and re-try. If coordinate_system is not set to :magrel, please use 2 (angles) or 3 (coordinates) to specify 'LOS_vec'.")
+        end
+        # Find which case it is. 1, 2, 3 or 4?
+        case = argmax([length(findall(x-> x==0, possible_cases .- 1)),length(findall(x-> x==0, possible_cases .- 2)),length(findall(x-> x==0, possible_cases .- 3)),length(findall(x-> x==0, possible_cases .- 4))])
+    end
+else
+    if !(coordinate_system in [:cartesian, :cylindrical])
+        error("Input variable 'collimated' was set to $(collimated) but input variable 'coordinate_system' was set to $(coordinate_system). When 'collimated=false', currently supported options for 'coordinate_system' include :cartesian and :cylindrical. Please correct and re-try.")
+    end
+    if coordinate_system==:cartesian
+        case = 1
+    end
+    if coordinate_system==:cylindrical
+        case = 2
+    end
 end
-
+verbose && println("It's $(case)!")
 ## ---------------------------------------------------------------------------------------------
 # Loading tokamak equilibrium
 verbose && println("Loading tokamak equilibrium... ")
@@ -131,6 +142,7 @@ else # Otherwise, assume magnetic equilibrium is a saved .jld2 file
         timepoint = "00,0000" # Unknown timepoint for magnetic equilibrium
     end
 end
+wall_dR = maximum(wall.r)-minimum(wall.r)
 
 ## ---------------------------------------------------------------------------------------------
 # Define the function that returns a rotation matrix that can rotate a 3D vector an angle 'theta' about an arbitrary axis (defined by the unit vector 'u')
@@ -186,11 +198,14 @@ function getPhiFromXandY(x::Number, y::Number)
 end
 
 """
-    obscured_by_central_solenoid(wall::Boundary, point::AbstractVector, detector_location::AbstractVector)
+    visible_by_detector(wall::Boundary, point::AbstractVector, detector_location::AbstractVector)
 
-Given the tokamak wall 'wall', deduce if the point 'point' is visible by the detector 
-at the location 'detector_location'. That is, if the point is obscured by the central 
-solenoid or not. If it is, return true. Otherwise, return false.
+Given the tokamak wall 'wall', deduce if the Cartesian point 'point' is visible by the detector 
+at the Cartesian location 'detector_location'. If it is, return true. Otherwise, return false.
+The point is deemed not visible if:
+    - The point is outside of the tokamak wall
+    - The point is inside  of the tokamak wall and a straight line 's' from the point to the detector 
+      location passes through a region outside of the tokamak wall where ∂s/∂R<0
 
 Keyword arguments include:
     - verbose - If set to true, the function will talk a lot! - Bool
@@ -198,27 +213,31 @@ Keyword arguments include:
 The AbstractEquilibrium struct is the AbstractEquilibrium struct in the Equilibrium.jl package.
 The Boundary struct is the Boundary struct in the Equilibrium.jl package.
 """
-function obscured_by_central_solenoid(M::AbstractEquilibrium, wall::Boundary, point::AbstractVector, detector_location::AbstractVector; verbose::Bool=false)
-    R_axis, z_axis = magnetic_axis(M) # The (R,z) coordinate of the magnetic axis
-    R_detector_location = sqrt(detector_location[1]*detector_location[1]+detector_location[2]*detector_location[2])
+function visible_by_detector(wall::Boundary, point::AbstractVector, detector_location::AbstractVector; verbose::Bool=false)
+
+    R_point = sqrt(point[1]^2 + point[2]^2) # R of point
+    if !in_boundary(wall,R_point,point[3]) # If the point is outside of the tokamak wall, it is deemed not visible
+        verbose && println("visible_by_detector(): Point $(round.([R_point,point[3]],digits=2)) is outside of the tokamak first wall. Returning false... ")
+        return false
+    end
+
+    R_detector = sqrt(detector_location[1]^2 + detector_location[2]^2) # R of detector location
+
     U = detector_location - point # A vector pointing from the point to the detector
     distance_to_detector = norm(U) # The distance (in meters) from the point to the detector location
-    U = U ./distance_to_detector # Unit vector pointing from voxel to detector
-    R_point = sqrt(point[1]*point[1]+point[2]*point[2]) # R of point
-    min_wall_R = minimum(wall.r) # Minimum major radius value of first wall. In meters.
+    u = U ./distance_to_detector # Unit vector pointing from voxel to detector
     
+    prev_R = -Inf
     for l in round.(cumsum(0.1 .*ones(length(0.0:0.1:distance_to_detector)-1)),digits=3) # For every decimeter (except for the first one) from the point to the detector location...
-        point_to_check = point + (l .*U)
+        point_to_check = point + (l .*u)
         R = sqrt(point_to_check[1]*point_to_check[1] + point_to_check[2]*point_to_check[2])
-        if !in_boundary(wall, R, point_to_check[3]) && R<R_detector_location && R<min_wall_R # If any part of that straight line is outside of the tokamak first wall, and the major radius coordinate is smaller than both the detector location and min_wall_R
-            verbose && print("R_axis: $(R_axis) m    ")
-            verbose && print("minimum(wall.r): $(minimum(wall.r)) m    ")
-            verbose && print("Origin point: (x0,y0,R0)=($(round(point[1],digits=3)),$(round(point[2],digits=3)),$(round(R_point,digits=3)))    ")
-            verbose && println("Obscured point: (x,y,R)=($(round(point_to_check[1],digits=3)),$(round(point_to_check[2],digits=3)),$(round(R,digits=3)))")
-            return true # The point is deemed obscured by the central solenoid
+        if !in_boundary(wall, R, point_to_check[3]) && (R-prev_R)<0 && R<R_detector
+            verbose && println("visible_by_detector(): Point $(round.([R,point_to_check[3]],digits=2)) is outside of the tokamak wall and has ∂s/∂R<0 (R: $(round(R,digits=2)), prev_R: $(round(prev_R,digits=2))). Returning false... ")
+            return false
         end
+        prev_R = R
     end
-    return false
+    return true
 end
 ## ---------------------------------------------------------------------------------------------
 verbose && println("Creating uniform (R,phi,z) grid for storing LOS data... ")
@@ -227,13 +246,14 @@ phi_grid = (pi/180) .*collect(range(-180,stop=180,length=nphi))[1:end-1] # Toroi
 z_grid = collect(range(minimum(wall.z),stop=maximum(wall.z),length=nz)) # Vertical coordinate in meters
 ΔR = diff(R_grid)[1]; Δphi = diff(phi_grid)[1]; Δz = diff(z_grid)[1] # The grid spacings
 voxel_volumes = map(c-> ΔR*Δz*R_grid[c[1]]*Δphi, CartesianIndices((nR,nphi-1,nz))) # The volume of each voxel
-omega_3D_array = zeros(nR,nphi,nz) # A 3D array to store all solid angle values for each point of the uniform (R,phi,z) grid
+omega_3D_array = zeros(nR,nphi-1,nz) # A 3D array to store all solid angle values for each point of the uniform (R,phi,z) grid
 if case==1
     verbose && println("LOS vector and detector location specified in Cartesian coordinates. Taken as is...")
     LOS_vec = LOS_vec
     detector_location = detector_location
 elseif case==2
     verbose && println("LOS vector and detector location given in (R,phi,z). Transforming to (x,y,z) for easy computation... ")
+    LOS_vec = !collimated ? [1.0,1.0,1.0] : LOS_vec # If !collimated, LOS_vec does not matter
     LOS_vec_x = LOS_vec[1]*cos(LOS_vec[2]*pi/180)
     LOS_vec_y = LOS_vec[1]*sin(LOS_vec[2]*pi/180)
     detector_location_x = detector_location[1]*cos(detector_location[2]*pi/180)
@@ -292,268 +312,164 @@ end
 ## ---------------------------------------------------------------------------------------------
 # Check how parallel the line-of-sight vector is to one of the cylindrical coordinate directions.
 # If it is too parallel, we need special care to successfully map out the LOS voxels
-LOS_vec_R = sqrt(LOS_vec[1]*LOS_vec[1]+LOS_vec[2]*LOS_vec[2])
-LOS_vec_phi = round(getPhiFromXandY(LOS_vec[1],LOS_vec[2])*180/pi)
-LOS_vec_cyl = [LOS_vec_R, LOS_vec_phi, LOS_vec[3]]
-dot_R = dot(LOS_vec_cyl,[1.0,0.0,0.0])/norm(LOS_vec_cyl)
-dot_phi = dot(LOS_vec_cyl,[0.0,1.0,0.0])/norm(LOS_vec_cyl)
-dot_z = dot(LOS_vec_cyl,[0.0,0.0,1.0])/norm(LOS_vec_cyl)
+if collimated
+    LOS_vec_R = sqrt(LOS_vec[1]*LOS_vec[1]+LOS_vec[2]*LOS_vec[2])
+    LOS_vec_phi = round(getPhiFromXandY(LOS_vec[1],LOS_vec[2])*180/pi)
+    LOS_vec_cyl = [LOS_vec_R, LOS_vec_phi, LOS_vec[3]]
+    dot_R = dot(LOS_vec_cyl,[1.0,0.0,0.0])/norm(LOS_vec_cyl)
+    dot_phi = dot(LOS_vec_cyl,[0.0,1.0,0.0])/norm(LOS_vec_cyl)
+    dot_z = dot(LOS_vec_cyl,[0.0,0.0,1.0])/norm(LOS_vec_cyl)
 
-verbose && println("---> LOS vector (towards detector, cartesian   coordinates): $(round.(LOS_vec,digits=3))")
-verbose && println("---> LOS vector (towards detector, cylindrical coordinates (phi in degrees)): $(LOS_vec_cyl)")
+    verbose && println("---> LOS vector (towards detector, cartesian   coordinates): $(round.(LOS_vec,digits=3))")
+    verbose && println("---> LOS vector (towards detector, cylindrical coordinates (phi in degrees)): $(LOS_vec_cyl)")
 
-LOS_parallel_to_R = false
-if isapprox(dot_R,1.0)
-    verbose && println("LOS parallel to R-axis! Special algorithm will be utilized to successfully compute the LOS.")
-    LOS_parallel_to_R = true
-    prev_R = sqrt(detector_location[1]*detector_location[1]+detector_location[2]*detector_location[2]) # Will be needed if LOS is too parallel to the R axis
+    LOS_parallel_to_R = false
+    if isapprox(dot_R,1.0)
+        verbose && println("LOS parallel to R-axis! Special algorithm will be utilized to successfully compute the LOS.")
+        LOS_parallel_to_R = true
+        prev_R = sqrt(detector_location[1]*detector_location[1]+detector_location[2]*detector_location[2]) # Will be needed if LOS is too parallel to the R axis
+    end
+    LOS_parallel_to_phi = false
+    if isapprox(dot_phi,1.0)
+        verbose && println("LOS parallel to phi-axis! Special algorithm will be utilized to successfully compute the LOS.")
+        LOS_parallel_to_phi = true
+        prev_phi = getPhiFromXandY(detector_location[1],detector_location[2]) # Will be needed if LOS is too parallel to the phi axis
+    end
+    LOS_parallel_to_z = false
+    if isapprox(dot_z,1.0)
+        verbose && println("LOS parallel to z-axis! Special algorithm will be utilized to successfully compute the LOS.")
+        LOS_parallel_to_z = true
+        prev_z = detector_location[3] # Will be needed if LOS is too parallel to the z axis
+    end
 end
-LOS_parallel_to_phi = false
-if isapprox(dot_phi,1.0)
-    verbose && println("LOS parallel to phi-axis! Special algorithm will be utilized to successfully compute the LOS.")
-    LOS_parallel_to_phi = true
-    prev_phi = getPhiFromXandY(detector_location[1],detector_location[2]) # Will be needed if LOS is too parallel to the phi axis
-end
-LOS_parallel_to_z = false
-if isapprox(dot_z,1.0)
-    verbose && println("LOS parallel to z-axis! Special algorithm will be utilized to successfully compute the LOS.")
-    LOS_parallel_to_z = true
-    prev_z = detector_location[3] # Will be needed if LOS is too parallel to the z axis
-end
-
 ## ---------------------------------------------------------------------------------------------
 # Set the resolution of the LOS, based on the smallest possible distance resolvable by the (R,phi,z) grid
-δL = minimum([ΔR, minimum(R_grid)*Δphi, Δz]) # Smallest possible distance resolvable by the (R,phi,z) grid
-LOS_length_res = Int64(round(LOS_length/δL))
-if LOS_length_res<1
-    error("The LOS was found to be shorter than the smallest possible distance resolvable by the (R,phi,z) grid. Please increase the values of the nR, nz and nphi input variables to be able to create the LOS.")
-end
-LOS_azimuthal_res = Int64(round(pi*LOS_width/δL))
-if LOS_azimuthal_res<1
-    error("The LOS was found to be smaller than the smallest possible distance resolvable by the (R,phi,z) grid. Please increase the values of the nR, nz and nphi input variables to be able to create the LOS.")
-end
-LOS_radial_res = Int64(round(0.5*LOS_width/δL))
-if LOS_radial_res<1
-    error("The LOS was found to be thinner than the smallest possible distance resolvable by the (R,phi,z) grid. Please increase the values of the nR, nz and nphi input variables to be able to create the LOS.")
-end
-
-verbose && println("LOS will be resolved in... ")
-verbose && println("---> $(LOS_length_res) points along the LOS")
-verbose && println("---> $(LOS_azimuthal_res) points around the LOS")
-if !collimated
+if collimated
+    δL = minimum([ΔR, minimum(R_grid)*Δphi, Δz]) # Smallest possible distance resolvable by the (R,phi,z) grid
+    LOS_length_res = Int64(round(LOS_length/δL))
+    if LOS_length_res<1
+        error("The LOS was found to be shorter than the smallest possible distance resolvable by the (R,phi,z) grid. Please increase the values of the nR, nz and nphi input variables to be able to create the LOS.")
+    end
+    LOS_azimuthal_res = Int64(round(pi*LOS_width/δL))
+    if LOS_azimuthal_res<1
+        error("The LOS was found to be smaller than the smallest possible distance resolvable by the (R,phi,z) grid. Please increase the values of the nR, nz and nphi input variables to be able to create the LOS.")
+    end
+    LOS_radial_res = Int64(round(0.5*LOS_width/δL))
+    if LOS_radial_res<1
+        error("The LOS was found to be thinner than the smallest possible distance resolvable by the (R,phi,z) grid. Please increase the values of the nR, nz and nphi input variables to be able to create the LOS.")
+    end
+    verbose && println("LOS will be resolved in... ")
+    verbose && println("---> $(LOS_length_res) points along the LOS")
+    verbose && println("---> $(LOS_azimuthal_res) points around the LOS")
     verbose && println("---> $(2*LOS_radial_res) points across the (width of the) LOS")
 end
 
 ## ---------------------------------------------------------------------------------------------
 # Create LOS via 3D array storing solid angles, which represents a uniform (R,phi,z) grid
+if plot_LOS || debug
+    plot_font = "Computer Modern"
+    my_plt = Plots.default(fontfamily=plot_font)
+end
+
 verbose && println("Creating LOS... ")
-# Compute the unit vector in the direction of the detector. Using that vector, go stepwise from the detector along 
-# the length of the LOS. Transform the points of the LOS to (R,phi,z) to find LOS on uniform (R,phi,z) grid (LINE21 format requirement)
-# Check which points are inside the tokamak wall/plasma boundary, and keep only those
-y_hat = [0.0,1.0,0.0] # The Cartesian y unit vector. Arbitrary direction for Gram-Schmidt process.
-PERP2LOS_vec = y_hat - (dot(y_hat,LOS_vec)/dot(LOS_vec,LOS_vec))*LOS_vec # Gram-Schmidt process. To acquire vector perpendicular to line-of-sight
-perp2los_vec = PERP2LOS_vec ./norm(PERP2LOS_vec) # Get the unit vector perpendicular to the line-of-sight
-los_vec = LOS_vec ./norm(LOS_vec) # Get the normalized line-of-sight vector
-if LOS_azimuthal_res==1
-    @warn "'LOS_azimuthal_res' automatically set to 1. LOS might be badly resolved."
-    EDGE_ofLOS_unitvecs = [perp2los_vec]
-else
-    LOS_circ_angles = collect(range(0.0,stop=2*pi,length=LOS_azimuthal_res)) # Angles to rotate around spine of LOS
-    LOS_circ_angles = LOS_circ_angles[1:end-1] # Remove redundant 2*pi angle
-    EDGE_ofLOS_unitvecs = Vector{Vector{Float64}}(undef,LOS_azimuthal_res-1)
-    for (ia,angle) in enumerate(LOS_circ_angles)
-        local R
-        R = getRotationMatrix(los_vec,angle)
-        EDGE_ofLOS_unitvec = R*perp2los_vec # Get the unit vectors pointing outwards to the edge of the cylindrical LOS, relative to the radial center (spine) of the LOS
-        EDGE_ofLOS_unitvecs[ia] = inv(norm(EDGE_ofLOS_unitvec)) .*EDGE_ofLOS_unitvec # Should already be unit vector, but just in case of numerical inaccuracies
-    end
-end
-
-# Debug plot for keeping track of LOS creation process. ONLY FOR OWCF DEVELOPERS
-if debug
-    R_hfs = minimum(wall.r) # R-coord of high-field side wall
-    R_lfs = maximum(wall.r) # R-coord of low-field side wall
-    wall_phi = collect(0:1:359).*(2*pi/180.0) # Toroidal angle
-    topview_R_hfs_x = (R_hfs).*cos.(wall_phi)
-    topview_R_hfs_y = (R_hfs).*sin.(wall_phi)
-    topview_R_lfs_x = (R_lfs).*cos.(wall_phi)
-    topview_R_lfs_y = (R_lfs).*sin.(wall_phi)
-
-    plt_top = Plots.plot(topview_R_hfs_x,topview_R_hfs_y,linewidth=2.5,color=:black,label="")
-    plt_top = Plots.plot!(topview_R_lfs_x,topview_R_lfs_y,linewidth=2.5,color=:black,label="")
-    plt_top = Plots.plot!(aspect_ratio=:equal,xlabel="x [m]",ylabel="y [m]")
-    plt_top = Plots.plot!(xtickfontsize=14,ytickfontsize=14,xguidefontsize=16,yguidefontsize=16)
-    plt_top = Plots.plot!(plt_top,title="LOS constructing... ",titlefontsize=20)
-end
-
 if collimated
+    # Compute the unit vector in the direction of the detector. Using that vector, go stepwise from the detector along 
+    # the length of the LOS. Transform the points of the LOS to (R,phi,z) to find LOS on uniform (R,phi,z) grid (LINE21 format requirement)
+    # Check which points are inside the tokamak wall/plasma boundary, and keep only those
+    y_hat = [0.0,1.0,0.0] # The Cartesian y unit vector. Arbitrary direction for Gram-Schmidt process.
+    PERP2LOS_vec = y_hat - (dot(y_hat,LOS_vec)/dot(LOS_vec,LOS_vec))*LOS_vec # Gram-Schmidt process. To acquire vector perpendicular to line-of-sight
+    perp2los_vec = PERP2LOS_vec ./norm(PERP2LOS_vec) # Get the unit vector perpendicular to the line-of-sight
+    los_vec = LOS_vec ./norm(LOS_vec) # Get the normalized line-of-sight vector
+    if LOS_azimuthal_res==1
+        @warn "'LOS_azimuthal_res' automatically set to 1. LOS might be badly resolved."
+        EDGE_ofLOS_unitvecs = [perp2los_vec]
+    else
+        LOS_circ_angles = collect(range(0.0,stop=2*pi,length=LOS_azimuthal_res)) # Angles to rotate around spine of LOS
+        LOS_circ_angles = LOS_circ_angles[1:end-1] # Remove redundant 2*pi angle
+        EDGE_ofLOS_unitvecs = Vector{Vector{Float64}}(undef,LOS_azimuthal_res-1)
+        for (ia,angle) in enumerate(LOS_circ_angles)
+            local R
+            R = getRotationMatrix(los_vec,angle)
+            EDGE_ofLOS_unitvec = R*perp2los_vec # Get the unit vectors pointing outwards to the edge of the cylindrical LOS, relative to the radial center (spine) of the LOS
+            EDGE_ofLOS_unitvecs[ia] = inv(norm(EDGE_ofLOS_unitvec)) .*EDGE_ofLOS_unitvec # Should already be unit vector, but just in case of numerical inaccuracies
+        end
+    end
+
     s = collect(range(0.0,stop=LOS_length,length=LOS_length_res)) # Create increments for walking along the LOS using the normalized LOS vector
     ds = s[2] # Since s[1] is zero
     prog_proc = []
     for is=2:LOS_length_res # Skip first increment, since that would result in LOS voxels behind the detector
-        if debug
-            global plt_top
-            debug_plot = false
-        end
-        ss = s[is]
+        debug_plot = false
+
+        ss = s[is] # The length increment
+
+        # The "spine" is the center of the LOS cylinder (radially)
         LOS_spine_point = detector_location - (ss-ds)*los_vec # LOS_vec is pointing towards detector. To go away from detector, use -, not +.
         spine_x = LOS_spine_point[1]; spine_y = LOS_spine_point[2]; spine_z = LOS_spine_point[3] # (x,y,z) of LOS spine point
         spine_R = sqrt(spine_x*spine_x+spine_y*spine_y) # R = sqrt(x^2 + y^2)
-        # The "spine" is the center of the LOS cylinder (radially)
 
+        # Progress bar (1 % to 100 %) and debug plot bool (every 1 %)
         if !(floor(100*is/LOS_length_res) in prog_proc)
             append!(prog_proc,floor(100*is/LOS_length_res))
             verbose && println("Creating diagnostic line-of-sight $(prog_proc[end]) %... ")
-            debug_plot = true
+            debug && (debug_plot = true)
         end
 
-        if !in_boundary(wall, spine_R, spine_z) || obscured_by_central_solenoid(M, wall,[spine_x,spine_y,spine_z],detector_location) # Is the spine point outside of the tokamak wall/boundary? Or is it not visible by the detector (obscured by the central solenoid)?
-            continue # Skip this increment (is) 
+        # Is the spine point not visible by the detector (outside the tokamak wall or obscured by the central solenoid)?
+        if !visible_by_detector(wall,[spine_x, spine_y, spine_z],detector_location; verbose=debug)
+            continue # Skip this increment ('is') 
         end
 
+        # Spine point phi (in radians) and (iR,iphi,iz) index
+        spine_phi = getPhiFromXandY(spine_x, spine_y) # In radians
+        spine_iR = Int64(round(inv(ΔR)*(spine_R-R_grid[1])+1))
+        spine_iphi = Int64(round(inv(Δphi)*(spine_phi-phi_grid[1])+1))
+        spine_iz = Int64(round(inv(Δz)*(spine_z-z_grid[1])+1))
+
+        spine_distance_to_detector = ss-ds # Distance (in meters) from the spine point to the detector
+        if (ss-ds)==0 # If it's the first point along the LOS (should never be, since the detector would be then be at the edge of the machine/tokamak first wall)
+            spine_distance_to_detector = eps() # Avoid divide by 0
+        end
+        spine_omega = inv(spine_distance_to_detector^2)*(voxel_volumes[spine_iR, spine_iphi, spine_iz])^(2/3) # Ω = A/r^2 where A is the area of the voxel (approximate by volume^(2/3)) and r is the distance to the detector
+        omega_3D_array[spine_iR, spine_iphi, spine_iz] = (spine_omega > 2*pi ? 2*pi : spine_omega) # Cap the solid angle value to 2*pi. However, this should almost never be necessary
+
+        for r_radial in range(0.0,stop=LOS_width/2,length=LOS_radial_res)[2:end] # Radially discretize the LOS into LOS_radial_res number of points
+            for EDGE_ofLOS_unitvec in EDGE_ofLOS_unitvecs # Azimuthally discretize the LOS into LOS_azimuthal_res number of points
+                LOS_point = LOS_spine_point + r_radial .*EDGE_ofLOS_unitvec # An (x,y,z) point inside the LOS
+
+                local x; local y; local z; local R # Declare local scope, to avoid annoying warnings
+                x = LOS_point[1]; y = LOS_point[2]; z = LOS_point[3]; R = sqrt(x^2 + y^2)
+                if !in_boundary(wall,R,z) || !visible_by_detector(wall, [x,y,z], detector_location) # Is the point outside the tokamak wall/boundary? Or is it not visible by the detector (obscured by the central solenoid)?
+                    continue # Ignore this LOS point
+                end
+                local phi; # Declare local scope, to avoid annoying warnings
+                phi = getPhiFromXandY(x,y)
+
+                iR = Int64(round(inv(ΔR)*(R-R_grid[1])+1))
+                iphi = Int64(round(inv(Δphi)*(phi-phi_grid[1])+1))
+                iz = Int64(round(inv(Δz)*(z-z_grid[1])+1))
+
+                distance_to_detector = norm(LOS_point - detector_location)
+
+                omega = inv(distance_to_detector^2)*(voxel_volumes[iR, iphi, iz])^(2/3)
+
+                omega_3D_array[iR, iphi, iz] = (omega > 2*pi ? 2*pi : omega) # Cap the solid angle value to 2*pi. However, this should almost never be necessary
+            end
+        end
+
+        # Process plotting, for debug purposes
         if debug_plot
-            plt_top = Plots.scatter!(plt_top, [spine_x],[spine_y],label="",markercolor=:blue)
-        end
+            global my_plt
+            LOS_Rphi = map(x-> x>0.0 ? 1.0 : x, dropdims(sum(omega_3D_array,dims=3),dims=3))
+            LOS_Rz = map(x-> x>0.0 ? 1.0 : x, dropdims(sum(omega_3D_array,dims=2),dims=2))
 
-        if !collimated # If LOS_width<<machine_width is NOT true
-            spine_phi = getPhiFromXandY(spine_x, spine_y) # In radians
-            spine_iR = Int64(round(inv(ΔR)*(spine_R-R_grid[1])+1))
-            spine_iphi = Int64(round(inv(Δphi)*(spine_phi-phi_grid[1])+1))
-            spine_iz = Int64(round(inv(Δz)*(spine_z-z_grid[1])+1))
-
-            spine_distance_to_detector = ss-ds # Distance (in meters) from the spine point to the detector
-            if (ss-ds)==0 # If it's the first point along the LOS (should never be, since the detector would be then be at the edge of the machine/tokamak first wall)
-                spine_distance_to_detector = eps() # Avoid divide by 0
-            end
-            spine_omega = inv(spine_distance_to_detector^2)*(voxel_volumes[spine_iR, spine_iphi, spine_iz])^(2/3) # Ω = A/r^2 where A is the area of the voxel (approximate by volume^(2/3)) and r is the distance to the detector
-            omega_3D_array[spine_iR, spine_iphi, spine_iz] = (spine_omega > 2*pi ? 2*pi : spine_omega) # Cap the solid angle value to 2*pi. However, this should almost never be necessary
-
-            for r_radial in range(0.0,stop=LOS_width/2,length=LOS_radial_res)[2:end] # Radially discretize the LOS into LOS_radial_res number of points
-                for EDGE_ofLOS_unitvec in EDGE_ofLOS_unitvecs # Azimuthally discretize the LOS into LOS_azimuthal_res number of points
-                    LOS_point = LOS_spine_point + r_radial .*EDGE_ofLOS_unitvec # An (x,y,z) point inside the LOS
-
-                    local x; local y; local z; local R # Declare local scope, to avoid annoying warnings
-                    x = LOS_point[1]; y = LOS_point[2]; z = LOS_point[3]; R = sqrt(x^2 + y^2)
-                    if !in_boundary(wall,R,z) || obscured_by_central_solenoid(M, wall, [x,y,z], detector_location) # Is the point outside the tokamak wall/boundary? Or is it not visible by the detector (obscured by the central solenoid)?
-                        continue # Ignore this LOS point
-                    end
-                    local phi; # Declare local scope, to avoid annoying warnings
-                    phi = getPhiFromXandY(x,y)
-
-                    iR = Int64(round(inv(ΔR)*(R-R_grid[1])+1))
-                    iphi = Int64(round(inv(Δphi)*(phi-phi_grid[1])+1))
-                    iz = Int64(round(inv(Δz)*(z-z_grid[1])+1))
-
-                    distance_to_detector = norm(LOS_point - detector_location)
-
-                    omega = inv(distance_to_detector^2)*(voxel_volumes[iR, iphi, iz])^(2/3)
-
-                    omega_3D_array[iR, iphi, iz] = (omega > 2*pi ? 2*pi : omega) # Cap the solid angle value to 2*pi. However, this should almost never be necessary
-                end
-            end
-            continue
-        end
-
-        rminush = norm(s[is-1]*los_vec) # The distance from the detector to the center of the 'lid' of the voxel, where 'lid' is the voxel surface closest to the detector
-        r = norm(detector_location - (LOS_spine_point+((LOS_width/2) .*EDGE_ofLOS_unitvecs[1]))) # The distance from the detector to the edge of the 'lid' of the voxel. Don't care which one of the EDGEofLOS_unitvecs. Just use the first.
-        OMEGA_LOS_crs = 2*pi*(1-rminush/r) # See https://en.wikipedia.org/wiki/Solid_angle#Solid_angles_for_common_objects and pertaining figure for explanation
-
-        if LOS_parallel_to_R
-            global prev_R
-            # If the LOS is parallel to the R axis, we need to map all R points on the uniform (R,phi,z) grid via a different mechanism than the edge-cylinder approach
-            spine_R = sqrt(LOS_spine_point[1]*LOS_spine_point[1]+LOS_spine_point[2]*LOS_spine_point[2])
-            LOS_edge_Rmax = max(prev_R,spine_R) # To find boundaries of LOS on uniform (R,phi,z) grid (required to adhere to LINE21 format)
-            LOS_edge_Rmin = min(prev_R,spine_R) # To find boundaries of LOS on uniform (R,phi,z) grid (required to adhere to LINE21 format)
-            prev_R = spine_R
-        else
-            LOS_edge_Rmax = -Inf # To find boundaries of LOS on uniform (R,phi,z) grid (required to adhere to LINE21 format)
-            LOS_edge_Rmin = Inf # To find boundaries of LOS on uniform (R,phi,z) grid (required to adhere to LINE21 format)
-        end
-        if LOS_parallel_to_phi
-            global prev_phi
-            # If the LOS is parallel to the phi axis, we need to map all R points on the uniform (R,phi,z) grid via a different mechanism than the edge-cylinder approach
-            LOS_spine_point_phi = getPhiFromXandY(LOS_spine_point[1],LOS_spine_point[2])
-            LOS_edge_phimax = max(prev_phi,LOS_spine_point_phi) # To find boundaries of LOS on uniform (R,phi,z) grid (required to adhere to LINE21 format)
-            LOS_edge_phimin = min(prev_phi,LOS_spine_point_phi) # To find boundaries of LOS on uniform (R,phi,z) grid (required to adhere to LINE21 format)
-            prev_phi = LOS_spine_point_phi
-        else
-            LOS_edge_phimax = -Inf # To find boundaries of LOS on uniform (R,phi,z) grid (required to adhere to LINE21 format)
-            LOS_edge_phimin = Inf # To find boundaries of LOS on uniform (R,phi,z) grid (required to adhere to LINE21 format)
-        end
-        if LOS_parallel_to_z
-            global prev_z
-            # If the LOS is parallel to the z axis, we need to map all R points on the uniform (R,phi,z) grid via a different mechanism than the edge-cylinder approach
-            spine_z = LOS_spine_point[3]
-            LOS_edge_zmax = max(prev_z,spine_z) # To find boundaries of LOS on uniform (R,phi,z) grid (required to adhere to LINE21 format)
-            LOS_edge_zmin = min(prev_z,spine_z) # To find boundaries of LOS on uniform (R,phi,z) grid (required to adhere to LINE21 format)
-            prev_z = spine_z
-        else
-            LOS_edge_zmax = -Inf # To find boundaries of LOS on uniform (R,phi,z) grid (required to adhere to LINE21 format)
-            LOS_edge_zmin = Inf # To find boundaries of LOS on uniform (R,phi,z) grid (required to adhere to LINE21 format)
-        end
-        for EDGE_ofLOS_unitvec in EDGE_ofLOS_unitvecs
-            LOS_edge_point = LOS_spine_point + (LOS_width/2) .*EDGE_ofLOS_unitvec
-
-            R_edge = sqrt(LOS_edge_point[1]*LOS_edge_point[1]+LOS_edge_point[2]*LOS_edge_point[2])
-            phi_edge = getPhiFromXandY(LOS_edge_point[1],LOS_edge_point[2])
-
-            if R_edge>LOS_edge_Rmax 
-                LOS_edge_Rmax = R_edge
-            end
-            if R_edge<LOS_edge_Rmin
-                LOS_edge_Rmin = R_edge
-            end
-            # Check if the LOS covers the discontinuity in phi (jump from -pi to +pi) on the opposite side from where phi=0
-            if (LOS_edge_phimax-LOS_edge_phimin)>pi
-                # If so, we need to perform the (perhaps) unintuive procedure below
-                if phi_edge<LOS_edge_phimax && phi_edge>0
-                    LOS_edge_phimax = phi_edge
-                end
-                if phi_edge>LOS_edge_phimin && phi_edge<0
-                    LOS_edge_phimin = phi_edge
-                end
-            else
-                # If not, just find the phi range of the LOS as usual
-                if phi_edge>LOS_edge_phimax
-                    LOS_edge_phimax = phi_edge
-                end
-                if phi_edge<LOS_edge_phimin
-                    LOS_edge_phimin = phi_edge
-                end
-            end
-            if LOS_edge_point[3]>LOS_edge_zmax
-                LOS_edge_zmax = LOS_edge_point[3]
-            end
-            if LOS_edge_point[3]<LOS_edge_zmin
-                LOS_edge_zmin = LOS_edge_point[3]
-            end
-        end
-
-        edge_Rinds = findall(x-> x>=LOS_edge_Rmin && x<=LOS_edge_Rmax, R_grid)
-        edge_zinds = findall(x-> x>=LOS_edge_zmin && x<=LOS_edge_zmax, z_grid)
-        # Check if the LOS covers the discontinuity in phi (jump from -pi to +pi) on the opposite side from where phi=0
-        if (LOS_edge_phimax-LOS_edge_phimin)>pi
-            edge_phiinds_1 = findall(x-> x<LOS_edge_phimin, phi_grid) # The phi coordinates below the y=0 axis
-            edge_phiinds_2 = findall(x-> x>LOS_edge_phimax, phi_grid) # The phi coordinates above the y=0 axis
-            edge_phiinds = vcat(edge_phiinds_1, edge_phiinds_2)
-        else
-            # If not, just use the normal findall() approach
-            edge_phiinds = findall(x-> x>=LOS_edge_phimin && x<=LOS_edge_phimax, phi_grid)
-        end
-        OMEGA_per_R_phi_z_voxel = OMEGA_LOS_crs/(length(edge_Rinds)*length(edge_phiinds)*length(edge_zinds)) # The solid angle of a single (R,phi,z) voxel is approximately the total solid angle for the whole circular cross section of the cylinder LOS, divided by the number of (R,phi,z) points within that circular cross section. This is an approximation, but hopefully good enough, if the resolution of R_grid, phi_grid and z_grid is high enough.
-        omega_3D_array[edge_Rinds,edge_phiinds,edge_zinds] .= OMEGA_per_R_phi_z_voxel
-
-        if debug_plot
-            x1 = LOS_edge_Rmin*cos(LOS_edge_phimin); y1 = LOS_edge_Rmin*sin(LOS_edge_phimin)
-            x2 = LOS_edge_Rmax*cos(LOS_edge_phimin); y2 = LOS_edge_Rmax*sin(LOS_edge_phimin)
-            x3 = LOS_edge_Rmin*cos(LOS_edge_phimax); y3 = LOS_edge_Rmin*sin(LOS_edge_phimax)
-            x4 = LOS_edge_Rmax*cos(LOS_edge_phimax); y4 = LOS_edge_Rmax*sin(LOS_edge_phimax)
-
-            plt_top = Plots.scatter!(plt_top, [x1],[y1],label="",markercolor=:lightblue)
-            plt_top = Plots.scatter!(plt_top, [x2],[y2],label="",markercolor=:lightblue)
-            plt_top = Plots.scatter!(plt_top, [x3],[y3],label="",markercolor=:lightblue)
-            plt_top = Plots.scatter!(plt_top, [x4],[y4],label="",markercolor=:lightblue)
-            display(plt_top)
+            plt_Rphi = Plots.heatmap(R_grid, (180/pi) .*phi_grid, transpose(LOS_Rphi), colorbar=false, label="", xlabel="R [m]", ylabel="phi [degrees]", fillcolor=:blues)
+            plt_Rz = Plots.heatmap(R_grid, z_grid, transpose(LOS_Rz), colorbar=false, label="", xlabel="R [m]", ylabel="z [-]", fillcolor=:blues)
+            plt_Rz = Plots.plot!(wall.r,wall.z,label="Tokamak first wall",linewidth=2.5,color=:gray)
+            plt_Rz = Plots.scatter!([magnetic_axis(M)[1]],[magnetic_axis(M)[2]],label="Mag. axis",markershape=:xcross,markercolor=:slategray1,markerstrokewidth=4)
+            plt_Rz = Plots.plot!(aspect_ratio=:equal, xlims=(minimum(wall.r)-0.1*wall_dR,maximum(wall.r)+wall_dR),title="Creating LOS... ")
+            my_plt = Plots.plot(plt_Rphi, plt_Rz)
+            display(my_plt)
         end
     end
 else
@@ -561,34 +477,48 @@ else
     coords = CartesianIndices((nR,nphi-1,nz))
     prog_proc = []
     for (icoord,coord) in enumerate(coords)
+        debug_plot=false
 
+        # Progress bar (1 % to 100 %) for ever 1 %
         if !(floor(100*icoord/length(coords)) in prog_proc)
             append!(prog_proc,floor(100*icoord/length(coords)))
             verbose && println("Creating diagnostic line-of-sight $(prog_proc[end]) %... ")
+            debug && (debug_plot=true)
         end
         
         local x; local y; local z; local R; local phi
         iR, iphi, iz = coord[1], coord[2], coord[3]
         R, phi, z = R_grid[iR], phi_grid[iphi], z_grid[iz]
-
-        x = R * cos(phi)
-        y = R * sin(phi)
+        x, y = R*cos(phi), R*sin(phi)
 
         LOS_point = [x,y,z]
 
-        distance_to_detector = norm(LOS_point - detector_location)
-
-        omega = inv(distance_to_detector^2)*(voxel_volumes[iR, iphi, iz])^(2/3)
-
-        if (in_boundary(wall,R,z) && !obscured_by_central_solenoid(M, wall, [x,y,z], detector_location))
+        if visible_by_detector(wall, LOS_point, detector_location)
+            distance_to_detector = norm(LOS_point - detector_location)
+            omega = inv(distance_to_detector^2)*(voxel_volumes[iR, iphi, iz])^(2/3)
             omega_3D_array[iR,iphi,iz] = (omega > 2*pi ? 2*pi : omega) # Cap the solid angle value to 2*pi. However, this should almost never be necessary
+        end
+
+        # Process plotting, for debug purposes
+        if debug_plot
+            global my_plt
+            LOS_Rphi = map(x-> x>0.0 ? 1.0 : x, dropdims(sum(omega_3D_array,dims=3),dims=3))
+            LOS_Rz = map(x-> x>0.0 ? 1.0 : x, dropdims(sum(omega_3D_array,dims=2),dims=2))
+
+            plt_Rphi = Plots.heatmap(R_grid, (180/pi) .*phi_grid, transpose(LOS_Rphi), colorbar=false, label="", xlabel="R [m]", ylabel="phi [degrees]", fillcolor=:blues)
+            plt_Rz = Plots.heatmap(R_grid, z_grid, transpose(LOS_Rz), colorbar=false, label="", xlabel="R [m]", ylabel="z [-]", fillcolor=:blues)
+            plt_Rz = Plots.plot!(wall.r,wall.z,label="Tokamak first wall",linewidth=2.5,color=:gray)
+            plt_Rz = Plots.scatter!([magnetic_axis(M)[1]],[magnetic_axis(M)[2]],label="Mag. axis",markershape=:xcross,markercolor=:slategray1,markerstrokewidth=4)
+            plt_Rz = Plots.plot!(aspect_ratio=:equal, xlims=(minimum(wall.r)-0.1*wall_dR,maximum(wall.r)+wall_dR),title="Creating LOS... ")
+            my_plt = Plots.plot(plt_Rphi, plt_Rz)
+            display(my_plt)
         end
     end
 end
 
-if debug && collimated
+if debug
     verbose && println("--- DEBUG ---> Saving .png file of debug plot as $(folderpath_o)$(LOS_name)_debug_plot.png... ")
-    png(plt_top,folderpath_o*"$(LOS_name)_debug_plot")
+    png(my_plt, folderpath_o*"$(LOS_name)_debug_plot")
 end
 
 ## ---------------------------------------------------------------------------------------------
@@ -624,9 +554,9 @@ for (inz, nz_coord) in enumerate(nz_coords)
     iR, iphi, iz = nz_coord[1], nz_coord[2], nz_coord[3]
     R, phi, z = R_grid[iR], phi_grid[iphi], z_grid[iz]
 
-    x = R * cos(phi)
-    y = R * sin(phi)
+    x, y = R*cos(phi), R*sin(phi)
     V = voxel_volumes[iR,iphi,iz] # Volume of cylindrical voxel
+
     if !CTS_like
         U = detector_location - [x,y,z]
         U = U ./norm(U) # Unit vector pointing from voxel to detector
@@ -645,12 +575,12 @@ for (inz, nz_coord) in enumerate(nz_coords)
     LOS_R[inz] = R
     LOS_phi[inz] = phi
     LOS_OMEGA[inz] = OMEGA
-    LOS_in[inz] = (in_boundary(wall,R,z) && !obscured_by_central_solenoid(M, wall, [x,y,z], detector_location)) # Is the point inside the tokamak wall/boundary? And is it visible by the detector (not obscured by the central solenoid)?
+    LOS_in[inz] = visible_by_detector(wall, [x,y,z], detector_location)
 
     if !(floor(100*inz/length(nz_coords)) in prog_proc)
         append!(prog_proc,floor(100*inz/length(nz_coords)))
         verbose && println("Removing LOS voxels outside tokamak first wall and/or obscured by central solenoid $(prog_proc[end]) %... ")
-        obscured_by_central_solenoid(M, wall, [x,y,z], detector_location; verbose=debug)
+        visible_by_detector(wall, [x,y,z], detector_location; verbose=debug)
     end
 end
 verbose && println("---> Number of valid LOS voxels (not outside tokamak first wall and not obscured by central solenoid): $(sum(LOS_in))")
@@ -718,7 +648,7 @@ if plot_LOS
         iz = Int64(round(inv(dz)*(LOS_z[i]-flux_z[1])+1))
         ix = Int64(round(inv(dx)*(LOS_x[i]-flux_x[1])+1))
         iy = Int64(round(inv(dy)*(LOS_y[i]-flux_y[1])+1))
-        if iR>0 && iR<=LOS_heatmap_res && iz>0 && iz<=LOS_heatmap_res && in_boundary(wall, LOS_R[i], LOS_z[i])
+        if iR>0 && iR<=LOS_heatmap_res && iz>0 && iz<=LOS_heatmap_res
             LOS_Rz_proj[iR,iz] = psi_bdry
         end
         if ix>0 && ix<=LOS_heatmap_res && iy>0 && iy<=LOS_heatmap_res
@@ -726,41 +656,28 @@ if plot_LOS
         end
     end
 
-    if debug
-        db_plt_Rz = spy(transpose(LOS_Rz_proj))
-        db_plt_xy = spy(transpose(LOS_xy_proj))
-
-        png(db_plt_Rz,folderpath_o*"db_plt_Rz")
-        png(db_plt_xy,folderpath_o*"db_plt_xy")
-    end
-
     # Use correct color ordering for LOS visualization
     color_array = [:white, :green]
+    dpsi = abs(psi_mag - psi_bdry)
+    clims = (psi_mag-dpsi*0.01, psi_bdry+dpsi*0.01)
     if (psi_bdry-psi_mag)<0 # If COCOS ID 3, 4, 7 or 8 (O. Sauter and S. Yu. Medvedev, Computer Physics Communications 184 (2013) 293)
         color_array = [:green, :white]
+        clims = (psi_bdry-dpsi*0.01, psi_mag+dpsi*0.01)
     end
 
-    wall_dR = maximum(wall.r)-minimum(wall.r)
-    plot_font = "Computer Modern"
-    Plots.default(fontfamily=plot_font)
-
     plt_crs = Plots.heatmap(flux_R, flux_z, transpose(LOS_Rz_proj), title="Poloidal proj. $(LOS_name) LOS", fillcolor=cgrad(color_array, categorical=true), colorbar=false)
-    #plt_crs = Plots.contour!(flux_R, flux_z, transpose(psi_rz), levels=collect(range(psi_mag, stop=psi_bdry,length=5)), color=:gray, linewidth=2.5, label="", colorbar=false)
+    plt_crs = Plots.contour!(flux_R, flux_z, transpose(psi_rz), levels=collect(range(psi_mag, stop=psi_bdry,length=7)), color=:lightgray, clims=clims, linewidth=2.5, label="", colorbar=false)
     plt_crs = Plots.plot!(wall.r,wall.z,label="Tokamak first wall",linewidth=2.5,color=:black)
-    #plt_crs = Plots.plot!(LOS_R,LOS_z,label="$(LOS_name) LOS",linewidth=2.0,color=:gray)
     plt_crs = Plots.scatter!([magnetic_axis(M)[1]],[magnetic_axis(M)[2]],label="Mag. axis",markershape=:xcross,markercolor=:black,markerstrokewidth=4)
     plt_crs = Plots.plot!(aspect_ratio=:equal,xlabel="R [m]",ylabel="z [m]", xlims=(minimum(wall.r)-0.1*wall_dR,maximum(wall.r)+wall_dR))
     plt_crs = Plots.plot!(xtickfontsize=14,ytickfontsize=14,xguidefontsize=16,yguidefontsize=16)
     plt_crs = Plots.plot!(legend=:bottomright,legendfontsize=13)
-    #plt_crs = Plots.plot!(plt_crs,title="Poloidal proj.",titlefontsize=20)
 
     plt_top = Plots.heatmap(flux_x, flux_y, transpose(LOS_xy_proj), title="Top view $(date_and_time)", fillcolor=cgrad(color_array, categorical=true), colorbar=false)
     plt_top = Plots.plot!(topview_R_hfs_x,topview_R_hfs_y,linewidth=2.5,color=:black,label="")
     plt_top = Plots.plot!(topview_R_lfs_x,topview_R_lfs_y,linewidth=2.5,color=:black,label="")
-    #plt_top = Plots.plot!(LOS_x,LOS_y,linewidth=2.0,color=:gray,label="")
     plt_top = Plots.plot!(aspect_ratio=:equal,xlabel="x [m]",ylabel="y [m]")
     plt_top = Plots.plot!(xtickfontsize=14,ytickfontsize=14,xguidefontsize=16,yguidefontsize=16)
-    #plt_top = Plots.plot!(plt_top,title="Top view $(date_and_time)",titlefontsize=20)
 
     myplt = Plots.plot(plt_top,plt_crs,layout=(1,2),left_margin=5Plots.mm,bottom_margin=5Plots.mm, size=(1000,500))
     myplt = Plots.plot!(dpi=200)
