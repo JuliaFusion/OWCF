@@ -32,13 +32,19 @@
 
 #### The inputs are as follows:
 # folderpath_OWCF - The file path to the OWCF folder - String
+#
+# collimated - If set to true, the createCustomLOS.jl algorithm will assume that the width of the LOS is small compared to the width of the 
+#              tokamak. This approximation enables faster computations but is less accurate - Bool
 # coordinate_system - A symbol input to tell the script what type of coordinate system the 'LOS_vec'
 #                     and 'detector_location' input variables are using. The accepted values are 
 #                     :cartesian, :cylindrical or :magrel. The :cartesian symbol is used in cases 1
 #                     and 3 (see above), the :cylindrical symbol is used in cases 2 and 4 (see above)
 #                     and the :magrel symbol is used in case 5 (see above). - Symbol
-# R_of_interest - The R coordinate of interest, in case the script is run as case 5. Meters. If :mag_axis, the magnetic axis is used. - Float64
-# z_of_interest - The z coordinate of interest, in case the script is run as case 5. Meters. If :mag_axis, the magnetic axis is used. - Float64
+# ---> R_of_interest - The R coordinate of interest, in case the script is run as case 5. Meters. If :mag_axis, the magnetic axis is used. - Float64
+# ---> z_of_interest - The z coordinate of interest, in case the script is run as case 5. Meters. If :mag_axis, the magnetic axis is used. - Float64
+# CTS_like - If set to true, all points within the LOS will be approximated to have the same vector (LOS_vec) pointing 
+#            towards the detector. This is a good approximation if LOS is e.g. very small/thin/narrow. 'CTS_like' should be set to true if 
+#            e.g. Case 5 is used to create a CTS measurement volume LOS - Bool
 # detector_location - The location of the detector at the end of the LOS. In cases 1 and 3, this 
 #                     is specified as a 3-element Cartesian vector. In cases 2 and 4, this is
 #                     specified as a 3-element cylindrical vector. In case 5, this can be left 
@@ -60,18 +66,12 @@
 #           of 2 elements, θ_x and θ_z (explained above). For case 4, specify as an array of 2
 #           elements, θ_R and θ_phi (explained above). For case 5, specify as an array of 1 element,
 #           θ_u (explained above). - Vector{Float64}
-# LOS_vec_for_all - If set to true, all points within the LOS will be approximated to have the same vector (LOS_vec) pointing 
-#            towards the detector. Good approximation if LOS is e.g. very thin/narrow. Should be set to true if e.g. Case 5 is 
-#            used to create a CTS measurement volume LOS - Bool
 # LOS_width - The width of the LOS. In meters. - Float64
 # plot_LOS - If set to true, the LOS will be plotted (top and poloidal projection view) when created - Bool
 # save_LOS_plot - If set to true, the LOS plot will be saved in .png file format after plotted - Bool
 # verbose - If set to true, the script will talk a lot - Bool
  
 ### Advanced inputs (should NOT be changed from default values, unless you know what you're doing):
-# LOS_circ_res - The number of points by which to resolve the LOS azimuthally (around the cylinder
-#                LOS). - Int64
-# LOS_length_res - The number of points by which to resolve the LOS along the LOS - Int64
 # nR - The number of major radius grid points for the uniform (R,phi,z) grid onto which to map the LOS - Int64
 # nz - The number of vertical grid points for the uniform (R,phi,z) grid onto which to map the LOS - Int64
 # nphi - The number of toroidal grid points for the uniform (R,phi,z) grid onto which to map the LOS - Int64
@@ -80,37 +80,31 @@
 # IF NOT SPECIFIED OTHERWISE, all angles in this start file should be specified in degrees, and points/lengths 
 # in meters.
 
-# Script written by Henrik Järleblad. Last maintained 2025-05-24.
+# Script written by Henrik Järleblad. Last maintained 2025-05-30.
 ######################################################################################################
 
 ## First you have to set the system specifications
 using Distributed # Needed to be loaded, even though multi-core computations are not needed for createCustomLOS.jl.
 folderpath_OWCF = "" # OWCF folder path. Finish with '/'
 
-## Navigate to the OWCF folder and activate the OWCF environment
-cd(folderpath_OWCF)
-using Pkg
-Pkg.activate(".")
-
 ## -----------------------------------------------------------------------------
 @everywhere begin
+    collimated = true # Set to false, if LOS_width << machine_width does not hold, where 'machine_width' is the size of the machine/tokamak in meters
     coordinate_system = :magrel # :cartesian, :cylindrical or :magrel
     (coordinate_system==:magrel) && ((R_of_interest, z_of_interest)=(:mag_axis, :mag_axis)) # If you want to specify the LOS as an angle relative to the magnetic field, you have to specify an (R,z) point of interest. Accepted values are Float64 and :mag_axis (magnetic axis). 
+    CTS_like = false # Should be set to true if e.g. Case 5 is used to create a small measurement volume LOS for CTS (Collective Thomson Scattering)
     detector_location = [] # TOFOR (proxy): [2.97, 0.0, 18.8] /// NE213 (proxy): [8.35,2.1,-0.27]. When coordinate_system==:magrel, detector_location can be set to whatever (the script will figure it out automatically from the angle and LOS_length)
     filepath_equil = "" # To load tokamak wall/plasma boundary and magnetic equilibrium (for coordinate_system==:magrel)
     folderpath_o = ""
     LOS_length = 0.0 # Length of line-of-sight. From detector to desired end. Meters. When coordinate_system==:magrel, assume (R,z) point of interest is at half the LOS length
     LOS_name = "test_detector"
     LOS_vec = [] # TOFOR (proxy) cartesian: [0.005,-0.001,0.9999] /// NE213 (proxy) cartesian: [0.995902688, 0.293844478e-2, -0.903836320e-1]
-    LOS_vec_for_all = false # Should be set to true if e.g. Case 5 is used to create a small measurement volume LOS for CTS (Collective Thomson Scattering)
-    LOS_width = 0.0 # TOFOR (proxy): 0.27 /// NE213 (proxy): 0.25
+    LOS_width = 0.0 # Meters. TOFOR (proxy): 0.27 /// NE213 (proxy): 0.25
     plot_LOS = false # If set to true, the LOS will be plotted (top view and poloidal projection) after creation. For validation purposes.
     plot_LOS && (save_LOS_plot = true) # If set to true, the LOS plot will be saved in .png file format
     verbose = true
     
     # Advanced inputs
-    LOS_circ_res = 100 # The cylindrical shape that is the line-of-sight will be resolved azimuthally into these many points
-    LOS_length_res = 20000 # The cylindrical shape that is the line-of-sight will be resolved parallel to LOS_vec into these many points
     nR = 200 # The number of R grid points
     nz = 200 # The number of z grid points
     nphi = 720 # The number of phi grid points

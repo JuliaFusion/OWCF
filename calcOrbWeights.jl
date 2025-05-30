@@ -469,7 +469,7 @@ end
 ## ---------------------------------------------------------------------------------------------
 # Calculating orbit grid
 verbose && debug && println("")
-if !(og_filepath===nothing)
+if isfile(og_filepath)
     verbose && println("Orbit grid and pertaining valid orbits were found in "*og_filepath*"... ")
 else
     verbose && println("Calculating the orbit grid... ")
