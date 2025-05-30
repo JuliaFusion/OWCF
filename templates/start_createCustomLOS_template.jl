@@ -33,8 +33,15 @@
 #### The inputs are as follows:
 # folderpath_OWCF - The file path to the OWCF folder - String
 #
-# collimated - If set to true, the createCustomLOS.jl algorithm will assume that the width of the LOS is small compared to the width of the 
-#              tokamak. This approximation enables faster computations but is less accurate - Bool
+# collimated - If set to false, the createCustomLOS.jl algorithm will create the LOS simply by checking which points are obscured by the 
+#              machine/tokamak central solenoid. I.e. if collimated=false, the only criterion that a point has to fulfull for it to be
+#              included in the LOS is that a straight line drawn from the point to the detector location does not pass through the central 
+#              solenoid. Thus, if collimated=false, the following input arguments are irrelevant: 
+#                  - CTS_like
+#                  - LOS_length
+#                  - LOS_vec
+#                  - LOS_width
+#              The 'collimated' input variable is a boolean. - Bool
 # coordinate_system - A symbol input to tell the script what type of coordinate system the 'LOS_vec'
 #                     and 'detector_location' input variables are using. The accepted values are 
 #                     :cartesian, :cylindrical or :magrel. The :cartesian symbol is used in cases 1
@@ -88,8 +95,17 @@ using Distributed # Needed to be loaded, even though multi-core computations are
 folderpath_OWCF = "" # OWCF folder path. Finish with '/'
 
 ## -----------------------------------------------------------------------------
+# Change directory to OWCF-folder on all external processes. Activate the environment there to ensure correct package versions
+# as specified in the Project.toml and Manuscript.toml files.
 @everywhere begin
-    collimated = true # Set to false, if LOS_width << machine_width does not hold, where 'machine_width' is the size of the machine/tokamak in meters
+    using Pkg
+    cd(folderpath_OWCF)
+    Pkg.activate(".")
+end
+
+## -----------------------------------------------------------------------------
+@everywhere begin
+    collimated = true # Set to false, if a non-collimated LOS is to be created
     coordinate_system = :magrel # :cartesian, :cylindrical or :magrel
     (coordinate_system==:magrel) && ((R_of_interest, z_of_interest)=(:mag_axis, :mag_axis)) # If you want to specify the LOS as an angle relative to the magnetic field, you have to specify an (R,z) point of interest. Accepted values are Float64 and :mag_axis (magnetic axis). 
     CTS_like = false # Should be set to true if e.g. Case 5 is used to create a small measurement volume LOS for CTS (Collective Thomson Scattering)
@@ -108,14 +124,6 @@ folderpath_OWCF = "" # OWCF folder path. Finish with '/'
     nR = 200 # The number of R grid points
     nz = 200 # The number of z grid points
     nphi = 720 # The number of phi grid points
-end
-## -----------------------------------------------------------------------------
-# Change directory to OWCF-folder on all external processes. Activate the environment there to ensure correct package versions
-# as specified in the Project.toml and Manuscript.toml files.
-@everywhere begin
-    using Pkg
-    cd(folderpath_OWCF)
-    Pkg.activate(".")
 end
 
 ## -----------------------------------------------------------------------------
