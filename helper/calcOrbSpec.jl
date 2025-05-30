@@ -23,13 +23,13 @@ include("../vcone.jl") # Load the possibility to model diagnostic sightlines (in
 include("../forward.jl") # Load the possibility to compute synthetic signals without Monte Carlo methods
 
 """
-    calcOrbSpec(M, o, nfast, forward, thermal_dist, Ed_bin_edges, reaction)
+    calcOrbSpec(M, o, n_fast, forward, thermal_dist, Ed_bin_edges, reaction)
     calcOrbSpec(-||-; analytic=false, flr=false, n_gyro=50, o_interp_length=500, thermal_temp=3.0, thermal_dens=1.0e19, debug=false)
 
 Calculate the expected diagnostic spectrum for one (drift) orbit. The input arguments are as follows:
 - M - An axisymmetric equilibrium from the Equilibrium.jl Julia package. It is used to utilize its magnetic field.
 - o - The orbit for which to compute the expected diagnostic spectrum. It is an Orbit struct from GuidingCenterOrbits.jl/orbit.jl.
-- nfast - The number of fast ions on the orbit. Set to 1, by default.
+- n_fast - The number of fast ions on the orbit. Set to 1, by default.
 - forward - The Forward Python DRESS object from the forward.py DRESS script. Used to compute the expected diagnostic spectrum. When the 
             'reaction input variable is specified as "b" where b is a fast-ion particle species, this input variable should instead be specified 
             as a String with the filepath to an output file from the LINE21 code or the OWCF/extra/createCustomLOS.jl script.
@@ -51,7 +51,7 @@ The keyword arguments are as follows:
                  specified as an extrapolation object, that will be used to compute the thermal particle species density value at all ρ_pol values of interest. 
 - debug - A boolean debug input variable. If set to true, the function will run in debug-mode.
 """
-function calcOrbSpec(M::AbstractEquilibrium, o::Orbit{Float64, EPRCoordinate{Float64}}, nfast::Float64, forward::Union{PyObject,AbstractString}, 
+function calcOrbSpec(M::AbstractEquilibrium, o::Orbit{Float64, EPRCoordinate{Float64}}, n_fast::Float64, forward::Union{PyObject,AbstractString}, 
                      thermal_dist::Union{Nothing,PyObject}, Ed_bin_edges::AbstractArray, reaction::AbstractString;
                      analytic::Bool=false, flr::Bool=false, n_gyro::Int64=50, o_interp_length=500, 
                      thermal_temp::Union{Nothing,Float64,Int64,Interpolations.Extrapolation,Interpolations.FilledExtrapolation}=3.0, 
