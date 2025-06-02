@@ -52,7 +52,7 @@
 # - The tenth column corresponds to toroidal phi angle points
 # - The eleventh column corresponds to solid angles OMEGA
 
-# Script written by Henrik Järleblad. Last maintained 2025-05-30.
+# Script written by Henrik Järleblad. Last maintained 2025-06-02.
 ###############################################################################################################
 
 ## ---------------------------------------------------------------------------------------------
@@ -63,7 +63,7 @@ println("Loading Julia packages... ")
     using LinearAlgebra
     using Equilibrium
     plot_LOS && (using Plots)
-    debug = false # This is always set to false, except when OWCF developers are debugging
+    debug = debug # This is always set to false, except when OWCF developers are debugging
     debug && (using Plots)
 end
 
@@ -460,28 +460,31 @@ if collimated
         # Process plotting, for debug purposes
         if debug_plot
             global my_plt
-            LOS_Rphi = map(x-> x>0.0 ? 1.0 : x, dropdims(sum(omega_3D_array,dims=3),dims=3))
-            LOS_Rz = map(x-> x>0.0 ? 1.0 : x, dropdims(sum(omega_3D_array,dims=2),dims=2))
+            LOS_Rphi = dropdims(sum(omega_3D_array,dims=3),dims=3)
+            LOS_Rz = dropdims(sum(omega_3D_array,dims=2),dims=2)
+            LOS_phiz = dropdims(sum(omega_3D_array,dims=1),dims=1)
 
             plt_Rphi = Plots.heatmap(R_grid, (180/pi) .*phi_grid, transpose(LOS_Rphi), colorbar=false, label="", xlabel="R [m]", ylabel="phi [degrees]", fillcolor=:blues)
             plt_Rz = Plots.heatmap(R_grid, z_grid, transpose(LOS_Rz), colorbar=false, label="", xlabel="R [m]", ylabel="z [-]", fillcolor=:blues)
             plt_Rz = Plots.plot!(wall.r,wall.z,label="Tokamak first wall",linewidth=2.5,color=:gray)
             plt_Rz = Plots.scatter!([magnetic_axis(M)[1]],[magnetic_axis(M)[2]],label="Mag. axis",markershape=:xcross,markercolor=:slategray1,markerstrokewidth=4)
             plt_Rz = Plots.plot!(aspect_ratio=:equal, xlims=(minimum(wall.r)-0.1*wall_dR,maximum(wall.r)+wall_dR),title="Creating LOS... ")
-            my_plt = Plots.plot(plt_Rphi, plt_Rz)
+            plt_phiz = Plots.heatmap(z_grid, (180/pi) .*phi_grid, LOS_phiz, colorbar=false, label="", xlabel="z [m]", ylabel="phi [degrees]", fillcolor=:blues)
+            plt2 = Plots.plot(plt_Rphi, plt_phiz)
+            my_plt = Plots.plot(plt_Rz, plt2, layout=(1,2))
             display(my_plt)
         end
     end
 else
     verbose && println("LOS not collimated. Creating LOS by checking which (R,phi,z) voxels are obscured by the central solenoid... ")
-    coords = CartesianIndices((nR,nphi-1,nz))
+    mycoords = CartesianIndices((nR,nphi-1,nz))
     prog_proc = []
-    for (icoord,coord) in enumerate(coords)
+    for (icoord,coord) in enumerate(mycoords)
         debug_plot=false
 
         # Progress bar (1 % to 100 %) for ever 1 %
-        if !(floor(100*icoord/length(coords)) in prog_proc)
-            append!(prog_proc,floor(100*icoord/length(coords)))
+        if !(floor(100*icoord/length(mycoords)) in prog_proc)
+            append!(prog_proc,floor(100*icoord/length(mycoords)))
             verbose && println("Creating diagnostic line-of-sight $(prog_proc[end]) %... ")
             debug && (debug_plot=true)
         end
@@ -502,15 +505,18 @@ else
         # Process plotting, for debug purposes
         if debug_plot
             global my_plt
-            LOS_Rphi = map(x-> x>0.0 ? 1.0 : x, dropdims(sum(omega_3D_array,dims=3),dims=3))
-            LOS_Rz = map(x-> x>0.0 ? 1.0 : x, dropdims(sum(omega_3D_array,dims=2),dims=2))
+            LOS_Rphi = dropdims(sum(omega_3D_array,dims=3),dims=3)
+            LOS_Rz = dropdims(sum(omega_3D_array,dims=2),dims=2)
+            LOS_phiz = dropdims(sum(omega_3D_array,dims=1),dims=1)
 
             plt_Rphi = Plots.heatmap(R_grid, (180/pi) .*phi_grid, transpose(LOS_Rphi), colorbar=false, label="", xlabel="R [m]", ylabel="phi [degrees]", fillcolor=:blues)
             plt_Rz = Plots.heatmap(R_grid, z_grid, transpose(LOS_Rz), colorbar=false, label="", xlabel="R [m]", ylabel="z [-]", fillcolor=:blues)
             plt_Rz = Plots.plot!(wall.r,wall.z,label="Tokamak first wall",linewidth=2.5,color=:gray)
             plt_Rz = Plots.scatter!([magnetic_axis(M)[1]],[magnetic_axis(M)[2]],label="Mag. axis",markershape=:xcross,markercolor=:slategray1,markerstrokewidth=4)
             plt_Rz = Plots.plot!(aspect_ratio=:equal, xlims=(minimum(wall.r)-0.1*wall_dR,maximum(wall.r)+wall_dR),title="Creating LOS... ")
-            my_plt = Plots.plot(plt_Rphi, plt_Rz)
+            plt_phiz = Plots.heatmap(z_grid, (180/pi) .*phi_grid, LOS_phiz, colorbar=false, label="", xlabel="z [m]", ylabel="phi [degrees]", fillcolor=:blues)
+            plt2 = Plots.plot(plt_Rphi, plt_phiz)
+            my_plt = Plots.plot(plt_Rz, plt2, layout=(1,2))
             display(my_plt)
         end
     end
