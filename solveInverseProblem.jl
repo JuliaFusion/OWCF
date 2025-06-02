@@ -92,7 +92,7 @@
 ### Other
 # 
 
-# Script written by Henrik Järleblad. Last maintained 2025-04-11.
+# Script written by Henrik Järleblad. Last maintained 2025-05-02.
 ###########################################################################################################
 
 # A dictionary to keep a record of the names of all sections and their respective execution times
@@ -1553,7 +1553,7 @@ if plot_solutions || gif_solutions
         end
         subfig_WF = Plots.plot(WF_plots..., layout=layout_WF)
 
-        # CREATE THE FAST-ION DISTRIBUTION SUBFIGURE, which will be at the bottom of the plot stack
+        # CREATE THE F* SUBFIGURE, which will be at the bottom of the plot stack
         # If slowing-down basis function coefficients, compute fast-ion distribution
         if collision_physics_reg
             F_vec = F_SD_safe*sol_i
@@ -1566,9 +1566,9 @@ if plot_solutions || gif_solutions
             F[c] = F_vec[ic]
         end
         if length(rec_space_size)==1 # If the dimensionality of the reconstruction space is 1
-            F_plots = [Plots.plot(W_abscissas[1][2],F,xlabel=W_abscissas_units[1][2],ylabel="Fast-ion distribution [ion/$(W_abscissas_units[1][2])]", title="FI distr. [ion/$(W_abscissas_units[1][2])]",label="")]
+            F_plots = [Plots.plot(W_abscissas[1][2],F,xlabel=W_abscissas_units[1][2],ylabel="F* [$(units_inverse(W_abscissas_units[1][2]))]", title="F* [$(units_inverse(W_abscissas_units[1][2]))]",label="")]
         elseif length(rec_space_size)==2 # If the dimensionality of the reconstruction space is 2
-            F_plots = [Plots.heatmap(W_abscissas[1][2],W_abscissas[1][3],transpose(F),xlabel=W_abscissas_units[1][2],ylabel=W_abscissas_units[1][3], title="FI distr. [ion/($(W_abscissas_units[1][2])*$(W_abscissas_units[1][3]))]",fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]))]
+            F_plots = [Plots.heatmap(W_abscissas[1][2],W_abscissas[1][3],transpose(F),xlabel=W_abscissas_units[1][2],ylabel=W_abscissas_units[1][3], title="F* [$(units_multiply(units_inverse(W_abscissas_units[1][2]), units_inverse(W_abscissas_units[1][3])))]",fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]))]
         elseif length(rec_space_size)==3 # -||- is 3. Currently, the two supported cases are (E,pm,Rm) and (E,mu,Phi). Neither requires a Jacobian when integrating
             F_plots = Vector{any}(undef,3) # Pre-allocate vector with plots
             for plot_coord in plot_coords
@@ -1576,7 +1576,7 @@ if plot_solutions || gif_solutions
                 iy = plot_coord[2]; y = W_abscissas[1][iy+1]; y_units = W_abscissas_units[1][iy+1] # +1 because W_abscissas and W_abscissas_units has a first dimension of diagnostic measurement bins
                 iz = filter(xx-> !(xx==ix || xx==iy), rec_space_dims)
                 F_sub = dropdims(sum(rec_space_diff[iz...] .*F,dims=iz),dims=iz)
-                F_plot = Plots.heatmap(x,y,F_sub; xlabel=x_units, ylabel=y_units, title="FI distr. [ion/($(x_units)*$(y_units))]", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]))
+                F_plot = Plots.heatmap(x,y,F_sub; xlabel=x_units, ylabel=y_units, title="F* [$(units_multiply(units_inverse(x_units), units_inverse(y_units)))]", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]))
                 append!(F_plots,F_plot)
             end
         elseif length(rec_space_size)==4 # -||- is 4. Currently, the only supported case is (E,p,R,z). Suitable Jacobian is computed prior to plot for-loop
@@ -1587,7 +1587,7 @@ if plot_solutions || gif_solutions
                     iy = plot_coord[2]; y = W_abscissas[1][iy+1]; y_units = W_abscissas_units[1][iy+1] # +1 because W_abscissas and W_abscissas_units has a first dimension of diagnostic measurement bins
                     izs = filter(xx-> !(xx==ix || xx==iy), rec_space_dims)
                     F_sub = dropdims(sum(reduce(*,rec_space_diffs[[izs...]]) .*F,dims=izs),dims=izs)
-                    F_plot = Plots.heatmap(x,y,F_sub; xlabel=x_units, ylabel=y_units, title="FI distr. [ion/($(x_units)*$(y_units))]", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]))
+                    F_plot = Plots.heatmap(x,y,F_sub; xlabel=x_units, ylabel=y_units, title="F* [$(units_multiply(units_inverse(x_units), units_inverse(y_units)))]", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]))
                     append!(F_plots,F_plot)
                 end
                 for plot_jac_coord in plot_jac_coords
@@ -1595,7 +1595,7 @@ if plot_solutions || gif_solutions
                     iy = plot_jac_coord[2]; y = W_abscissas[1][iy+1]; y_units = W_abscissas_units[1][iy+1] # +1 because W_abscissas and W_abscissas_units has a first dimension of diagnostic measurement bins
                     izs = filter(xx-> !(xx==ix || xx==iy), rec_space_dims)
                     F_sub = dropdims(sum(reduce(*,rec_space_diffs[[izs...]]) .*two_pi_R_jacobian .*F,dims=izs),dims=izs)
-                    F_plot = Plots.heatmap(x,y,F_sub; xlabel=x_units, ylabel=y_units, title="FI distr. [ion/($(x_units)*$(y_units))]", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]))
+                    F_plot = Plots.heatmap(x,y,F_sub; xlabel=x_units, ylabel=y_units, title="F* [$(units_multiply(units_inverse(x_units), units_inverse(y_units)))]", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]))
                     append!(F_plots,F_plot)
                 end
             elseif false # <--- ADD MORE 4D COORDINATE OPTIONS HERE IN FUTURE VERSIONS
