@@ -52,6 +52,8 @@
 # CTS_like - If set to true, all points within the LOS will be approximated to have the same vector (LOS_vec) pointing 
 #            towards the detector. This is a good approximation if LOS is e.g. very small/thin/narrow. 'CTS_like' should be set to true if 
 #            e.g. Case 5 is used to create a CTS measurement volume LOS - Bool
+# debug - If set to true, extra print statements and plots will be included. The 'debug' input variable should only be set to true by the 
+#         OWCF developers when debugging/developing - Bool
 # detector_location - The location of the detector at the end of the LOS. In cases 1 and 3, this 
 #                     is specified as a 3-element Cartesian vector. In cases 2 and 4, this is
 #                     specified as a 3-element cylindrical vector. In case 5, this can be left 
@@ -87,7 +89,7 @@
 # IF NOT SPECIFIED OTHERWISE, all angles in this start file should be specified in degrees, and points/lengths 
 # in meters.
 
-# Script written by Henrik Järleblad. Last maintained 2025-05-30.
+# Script written by Henrik Järleblad. Last maintained 2025-06-02.
 ######################################################################################################
 
 ## First you have to set the system specifications
@@ -109,6 +111,7 @@ end
     coordinate_system = :magrel # :cartesian, :cylindrical or :magrel
     (coordinate_system==:magrel) && ((R_of_interest, z_of_interest)=(:mag_axis, :mag_axis)) # If you want to specify the LOS as an angle relative to the magnetic field, you have to specify an (R,z) point of interest. Accepted values are Float64 and :mag_axis (magnetic axis). 
     CTS_like = false # Should be set to true if e.g. Case 5 is used to create a small measurement volume LOS for CTS (Collective Thomson Scattering)
+    debug = false # Should only be set to true by the OWCF developers, when debugging/developing
     detector_location = [] # TOFOR (proxy): [2.97, 0.0, 18.8] /// NE213 (proxy): [8.35,2.1,-0.27]. When coordinate_system==:magrel, detector_location can be set to whatever (the script will figure it out automatically from the angle and LOS_length)
     filepath_equil = "" # To load tokamak wall/plasma boundary and magnetic equilibrium (for coordinate_system==:magrel)
     folderpath_o = ""
