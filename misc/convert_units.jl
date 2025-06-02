@@ -87,6 +87,37 @@ MAGNETICFIELD_UNITS_LONG = Dict("milligauss"=>1.0e-7,"gauss"=>1.0e-4,"millitesla
 OWCF_UNITS = merge(OWCF_BASE_UNITS, ACCELERATION_UNITS, FORCE_UNITS, PRESSURE_UNITS, CHARGE_UNITS, ENERGY_UNITS, POWER_UNITS, VOLTAGE_UNITS,MAGNETICFIELD_UNITS)
 OWCF_UNITS_LONG = merge(OWCF_BASE_UNITS_LONG, ACCELERATION_UNITS_LONG, FORCE_UNITS_LONG, PRESSURE_UNITS_LONG, CHARGE_UNITS_LONG, ENERGY_UNITS_LONG, POWER_UNITS_LONG, VOLTAGE_UNITS_LONG,MAGNETICFIELD_UNITS_LONG)
 
+"""
+    units_multiply(units_1, units_2)
+    units_multiply(-||-; verbose=false)
+
+Multiply two units together. Return the result as units_out. 
+For example, if units_1 = "keV_m^-2" and units_2="kA_m", then 
+units_out="m^-1_kA_keV".
+"""
+function units_multiply(units_1::String, units_2::String; verbose=false)
+    verbose && println("Input units: $(units_1), $(units_2)")
+    units_tot = units_1*"_"*units_2
+    units_out = units_from_dict(units_to_dict(units_tot))
+    verbose && println("Output units: $(units_out)")
+    return units_out
+end
+
+"""
+    units_divide(units_1, units_2)
+    units_divide(-||-; verbose=false)
+
+Divide units_1 by units_2. Return the result as units_out. 
+For example, if units_1 = "keV_m^-2" and units_2="kA_m", then 
+units_out="m^-3_kA^-1_keV".
+"""
+function units_divide(units_1::String, units_2::String; verbose=false)
+    verbose && println("Input units: $(units_1), $(units_2)")
+    units_tot = units_1*"_"*units_inverse(units_2)
+    units_out = units_from_dict(units_to_dict(units_tot))
+    verbose && println("Output units: $(units_out)")
+    return units_out
+end
 
 """
     units_pow(units_in,p)
