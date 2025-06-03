@@ -39,6 +39,25 @@
 
 ## First you have to set the system specifications
 using Distributed # Needed to be loaded, even though multi-core computations are not needed for createCustomLOS.jl.
+############---------------------------------------------------------------------------------------###
+# If running this script independently (not as a part of the OWCF/tests/run_tests.jl)
+if !(@isdefined folderpath_OWCF)
+    folderpath_OWCF = reduce(*,map(x-> "/"*x,split(@__DIR__,"/")[2:end-2]))*"/" # We know that the test start file is located in the OWCF/tests/start_files/ folder. Deduce the full OWCF folder path from that information
+end
+if !(@isdefined plot_test_results)
+    plot_test_results = false
+end
+if !isdir(folderpath_OWCF*"tests/outputs/")
+    print("The folder $(folderpath_OWCF)tests/outputs/ does not exist. Creating... ")
+    mkdir(folderpath_OWCF*"tests/outputs")
+    println("ok!")
+end
+@everywhere begin
+    using Pkg
+    cd(folderpath_OWCF)
+    Pkg.activate(".")
+end
+###------------------------------------------------------------------------------------------------###
 
 ## -----------------------------------------------------------------------------
 @everywhere begin
