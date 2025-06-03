@@ -68,9 +68,24 @@
 
 ## First you have to set the system specifications
 using Distributed # Needed, even though distributed might be set to false. This is to export all inputs to all workers right away, if needed.
-#batch_job = false
+batch_job = false
 distributed = false
-#folderpath_OWCF = "" # OWCF folder path. Finish with '/'
+if !(@isdefined folderpath_OWCF)
+    folderpath_OWCF = reduce(*,map(x-> "/"*x,split(@__DIR__,"/")[2:end-2]))*"/" # We know that the test start file is located in the OWCF/tests/start_files/ folder. Deduce the full OWCF folder path from that information
+end
+if !(@isdefined plot_test_results)
+    plot_test_results = false
+end
+if !isdir(folderpath_OWCF*"tests/outputs/")
+    print("The folder $(folderpath_OWCF)tests/outputs/ does not exist. Creating... ")
+    mkdir(folderpath_OWCF*"tests/outputs")
+    println("ok!")
+end
+@everywhere begin
+    using Pkg
+    cd(folderpath_OWCF)
+    Pkg.activate(".")
+end
 #numOcores = 4 # When executing script via HPC cluster job, make sure you know how many cores you have requested for your batch job
 
 ## Navigate to the OWCF folder and activate the OWCF environment
@@ -110,6 +125,7 @@ distributed = false
     FI_species = "Be" # for example "D" for deuterium, "p" for proton, "T" for tritium, "3he" for helium-3
     filepath_distr = ""
     filepath_equil = folderpath_OWCF*"equilibrium/JET/g99971/g99971_474-48.9.eqdsk"
+    filename_o = "calcEpRzTopoMap_test1"
     folderpath_o = folderpath_OWCF*"tests/outputs/" # Output folder path. Finish with '/'
     plot_results = $plot_test_results
     saveTransitTimeMaps = true # If true, then calcEpRzTopoMap.jl will save 4D data of the poloidal and toroidal transit times for the valid orbits
@@ -150,18 +166,8 @@ distributed = false
 end
 
 ## -----------------------------------------------------------------------------
-# Change directory to OWCF-folder on all external processes. Activate the environment there to ensure correct package versions
-# as specified in the Project.toml and Manuscript.toml files. Do this for every 
-# CPU processor (@everywhere)
-@everywhere begin
-    using Pkg
-    cd(folderpath_OWCF)
-    Pkg.activate(".")
-end
-
-## -----------------------------------------------------------------------------
 # Then you execute the script
-include("calcEpRzTopoMap.jl")
+include(folderpath_OWCF*"calcEpRzTopoMap.jl")
 
 ## -----------------------------------------------------------------------------
 # Then you clean up after yourself
