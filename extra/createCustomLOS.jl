@@ -205,7 +205,8 @@ at the Cartesian location 'detector_location'. If it is, return true. Otherwise,
 The point is deemed not visible if:
     - The point is outside of the tokamak wall
     - The point is inside  of the tokamak wall and a straight line 's' from the point to the detector 
-      location passes through a region outside of the tokamak wall where ∂s/∂R<0
+      location passes through a region outside of the tokamak wall where ∂s/∂R<0, and the region has a 
+      major radius value smaller than the detector location and the minimum of the tokamak wall
 
 Keyword arguments include:
     - verbose - If set to true, the function will talk a lot! - Bool
@@ -221,6 +222,7 @@ function visible_by_detector(wall::Boundary, point::AbstractVector, detector_loc
         return false
     end
 
+    min_R_wall = minimum(wall.r) # The minimum of the tokamak first wall
     R_detector = sqrt(detector_location[1]^2 + detector_location[2]^2) # R of detector location
 
     U = detector_location - point # A vector pointing from the point to the detector
@@ -231,7 +233,7 @@ function visible_by_detector(wall::Boundary, point::AbstractVector, detector_loc
     for l in round.(cumsum(0.1 .*ones(length(0.0:0.1:distance_to_detector)-1)),digits=3) # For every decimeter (except for the first one) from the point to the detector location...
         point_to_check = point + (l .*u)
         R = sqrt(point_to_check[1]*point_to_check[1] + point_to_check[2]*point_to_check[2])
-        if !in_boundary(wall, R, point_to_check[3]) && (R-prev_R)<0 && R<R_detector
+        if !in_boundary(wall, R, point_to_check[3]) && (R-prev_R)<0 && R<R_detector && R<min_R_wall
             verbose && println("visible_by_detector(): Point $(round.([R,point_to_check[3]],digits=2)) is outside of the tokamak wall and has ∂s/∂R<0 (R: $(round(R,digits=2)), prev_R: $(round(prev_R,digits=2))). Returning false... ")
             return false
         end
@@ -308,6 +310,7 @@ else # case must be 5
     p_of_interest = [x_of_interest, y_of_interest, z_of_interest]
     detector_location = p_of_interest + (LOS_length/2)*LOS_vec
 end
+detector_location_R = sqrt(detector_location[1]^2 + detector_location[2]^2) # For plotting purposes
 
 ## ---------------------------------------------------------------------------------------------
 # Check how parallel the line-of-sight vector is to one of the cylindrical coordinate directions.
@@ -466,6 +469,7 @@ if collimated
 
             plt_Rphi = Plots.heatmap(R_grid, (180/pi) .*phi_grid, transpose(LOS_Rphi), colorbar=false, label="", xlabel="R [m]", ylabel="phi [degrees]", fillcolor=:blues)
             plt_Rz = Plots.heatmap(R_grid, z_grid, transpose(LOS_Rz), colorbar=false, label="", xlabel="R [m]", ylabel="z [-]", fillcolor=:blues)
+            plt_Rz = Plots.scatter!([detector_location_R],[detector_location[3]], label="Detector location", markershape=:star, markercolor=:purple, markerstrokewidth=2)
             plt_Rz = Plots.plot!(wall.r,wall.z,label="Tokamak first wall",linewidth=2.5,color=:gray)
             plt_Rz = Plots.scatter!([magnetic_axis(M)[1]],[magnetic_axis(M)[2]],label="Mag. axis",markershape=:xcross,markercolor=:slategray1,markerstrokewidth=4)
             plt_Rz = Plots.plot!(aspect_ratio=:equal, xlims=(minimum(wall.r)-0.1*wall_dR,maximum(wall.r)+wall_dR),title="Creating LOS... ")
@@ -511,6 +515,7 @@ else
 
             plt_Rphi = Plots.heatmap(R_grid, (180/pi) .*phi_grid, transpose(LOS_Rphi), colorbar=false, label="", xlabel="R [m]", ylabel="phi [degrees]", fillcolor=:blues)
             plt_Rz = Plots.heatmap(R_grid, z_grid, transpose(LOS_Rz), colorbar=false, label="", xlabel="R [m]", ylabel="z [-]", fillcolor=:blues)
+            plt_Rz = Plots.scatter!([detector_location_R],[detector_location[3]], label="Detector location", markershape=:star, markercolor=:purple, markerstrokewidth=2)
             plt_Rz = Plots.plot!(wall.r,wall.z,label="Tokamak first wall",linewidth=2.5,color=:gray)
             plt_Rz = Plots.scatter!([magnetic_axis(M)[1]],[magnetic_axis(M)[2]],label="Mag. axis",markershape=:xcross,markercolor=:slategray1,markerstrokewidth=4)
             plt_Rz = Plots.plot!(aspect_ratio=:equal, xlims=(minimum(wall.r)-0.1*wall_dR,maximum(wall.r)+wall_dR),title="Creating LOS... ")
@@ -674,12 +679,14 @@ if plot_LOS
     plt_crs = Plots.heatmap(flux_R, flux_z, transpose(LOS_Rz_proj), title="Poloidal proj. $(LOS_name) LOS", fillcolor=cgrad(color_array, categorical=true), colorbar=false)
     plt_crs = Plots.contour!(flux_R, flux_z, transpose(psi_rz), levels=collect(range(psi_mag, stop=psi_bdry,length=7)), color=:lightgray, clims=clims, linewidth=2.5, label="", colorbar=false)
     plt_crs = Plots.plot!(wall.r,wall.z,label="Tokamak first wall",linewidth=2.5,color=:black)
+    plt_crs = Plots.scatter!([detector_location_R],[detector_location[3]], label="Detector location", markershape=:star, markercolor=:purple, markerstrokewidth=2)
     plt_crs = Plots.scatter!([magnetic_axis(M)[1]],[magnetic_axis(M)[2]],label="Mag. axis",markershape=:xcross,markercolor=:black,markerstrokewidth=4)
     plt_crs = Plots.plot!(aspect_ratio=:equal,xlabel="R [m]",ylabel="z [m]", xlims=(minimum(wall.r)-0.1*wall_dR,maximum(wall.r)+wall_dR))
     plt_crs = Plots.plot!(xtickfontsize=14,ytickfontsize=14,xguidefontsize=16,yguidefontsize=16)
     plt_crs = Plots.plot!(legend=:bottomright,legendfontsize=13)
 
     plt_top = Plots.heatmap(flux_x, flux_y, transpose(LOS_xy_proj), title="Top view $(date_and_time)", fillcolor=cgrad(color_array, categorical=true), colorbar=false)
+    plt_top = Plots.scatter!([detector_location[1]],[detector_location[2]], label="Detector location", markershape=:star, markercolor=:purple, markerstrokewidth=2)
     plt_top = Plots.plot!(topview_R_hfs_x,topview_R_hfs_y,linewidth=2.5,color=:black,label="")
     plt_top = Plots.plot!(topview_R_lfs_x,topview_R_lfs_y,linewidth=2.5,color=:black,label="")
     plt_top = Plots.plot!(aspect_ratio=:equal,xlabel="x [m]",ylabel="y [m]")

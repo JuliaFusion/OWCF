@@ -81,18 +81,39 @@
 
 ## First you have to set the system specifications
 using Distributed # Needed to be loaded, even though multi-core computations are not needed for createCustomLOS.jl.
+############---------------------------------------------------------------------------------------###
+# If running this script independently (not as a part of the OWCF/tests/run_tests.jl)
+if !(@isdefined folderpath_OWCF)
+    folderpath_OWCF = reduce(*,map(x-> "/"*x,split(@__DIR__,"/")[2:end-2]))*"/" # We know that the test start file is located in the OWCF/tests/start_files/ folder. Deduce the full OWCF folder path from that information
+end
+if !(@isdefined plot_test_results)
+    plot_test_results = false
+end
+if !isdir(folderpath_OWCF*"tests/outputs/")
+    print("The folder $(folderpath_OWCF)tests/outputs/ does not exist. Creating... ")
+    mkdir(folderpath_OWCF*"tests/outputs")
+    println("ok!")
+end
+@everywhere begin
+    using Pkg
+    cd(folderpath_OWCF)
+    Pkg.activate(".")
+end
+###------------------------------------------------------------------------------------------------###
 
 ## -----------------------------------------------------------------------------
 @everywhere begin
+    collimated = true
     coordinate_system = :cylindrical # :cartesian, :cylindrical or :magrel
     (coordinate_system==:magrel) && ((R_of_interest, z_of_interest)=(:mag_axis, :mag_axis)) # If you want to specify the LOS as an angle relative to the magnetic field, you have to specify an (R,z) point of interest. Accepted values are Float64 and :mag_axis (magnetic axis). 
+    CTS_like = false
+    debug = false
     detector_location = [2.97, 0.0, 18.8] # TOFOR (proxy): [2.97, 0.0, 18.8] /// NE213 (proxy): [8.35,2.1,-0.27]. When coordinate_system==:magrel, detector_location can be set to whatever (the script will figure it out automatically from the angle and LOS_length)
     filepath_equil = folderpath_OWCF*"equilibrium/JET/g96100/g96100_0-53.0012.eqdsk" # To load tokamak wall/plasma boundary and magnetic equilibrium (for coordinate_system==:magrel)
     folderpath_o = folderpath_OWCF*"tests/outputs/"
     LOS_length = 22.0 # Length of line-of-sight. From detector to desired end. Meters. When coordinate_system==:magrel, assume (R,z) point of interest is at half the LOS length
     LOS_name = "createCustomLOS_test2"
     LOS_vec = [0.005,0.0,0.9999] # TOFOR (proxy) cartesian: [0.005,-0.001,0.9999] /// NE213 (proxy) cartesian: [0.995902688, 0.293844478e-2, -0.903836320e-1]
-    LOS_vec_for_all = false
     LOS_width = 0.27 # TOFOR (proxy): 0.27 /// NE213 (proxy): 0.25
     plot_LOS = $plot_test_results # SET TO TRUE, VIA THE plot_test_results INPUT VARIABLE IN THE OWCF/tests/run_tests.jl SCRIPT
     plot_LOS && (save_LOS_plot = true) # If set to true, the LOS plot will be saved in .png file format

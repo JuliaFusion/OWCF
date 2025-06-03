@@ -26,7 +26,6 @@
 #      tests completing successfully.
 #
 ### Inputs:
-# folderpath_OWCF - The path to the OWCF folder on your computer - String
 # plot_test_results - If true, test results will be plotted and saved in .png file format - Bool
 # terminate_when_first_error - If true, as soon as an error is encountered, the error and stacktrace 
 #                              will be printed and the run_tests.jl script will terminate. If there 
@@ -49,10 +48,9 @@
 # printed output should be included as a screenshot when creating a pull-request at the Github repo
 # https://github.com/JuliaFusion/OWCF/pulls.
 
-# Script written by Henrik Järleblad. Last mainted 2025-05-23.
+# Script written by Henrik Järleblad. Last mainted 2025-06-02.
 ###################################################################################################
 
-folderpath_OWCF = "/path/to/the/OWCF/" # The path to where the OWCF folder is saved on your computer. Remember to finish with '/'
 plot_test_results = false # If set to true, test results will be plotted and saved in .png file format in the OWCF/tests/outputs/ folder
 terminate_when_first_error = false # If set to true, the run_tests.jl script will print the first error it encounters and skip the rest of the testing process
 clear_test_outputs_folder_when_done = true # Should be set to true, be default
@@ -166,6 +164,7 @@ VERY_VERBOSE = false # Should be set to false, unless developer debugging
 ############---------------------------------------------------------------------------------------###
 t_start = time() # Test script runtime start
 
+folderpath_OWCF = reduce(*,map(x-> "/"*x,split(@__DIR__,"/")[2:end-1]))*"/" # We know that the run_tests.jl file is located in the OWCF/tests/ folder. Deduce the full OWCF folder path from that information
 cd(folderpath_OWCF); using Pkg; Pkg.activate(".") # Navigate to the OWCF folder, activate the OWCF environment
 using Distributed # To enable test files of accessing the 'folderpath_OWCF' variable value correctly
 using Dates # To enable date and time functions use
@@ -220,22 +219,22 @@ println("-----------------------------------------------------------------------
 for test in test_list
     global test_prog
 
-    println("- Running $(test) (total run_tests.jl progress: $(round(100*test_prog/NUMBER_OF_TESTS)) %)... ")
+    println("- Running $(test) (total run_tests.jl progress: $(Int64(round(100*test_prog/NUMBER_OF_TESTS)))%)... ")
 
     try
         SUPPRESS_SUBTEST_PRINT && redirect_stdout(devnull) # Re-direct prints to null
         SUPPRESS_SUBTEST_PRINT && redirect_stderr(devnull) # Re-direct warnings to null
         include(folderpath_OWCF*"tests/start_files/$(test)")
     catch e
-        SUPPRESS_SUBTEST_PRINT && redirect_stderr(oldstderr) # Re-direct warnings to old I/O channel (i.e. the default, visible channel)
-        global err_dict
+        SUPPRESS_SUBTEST_PRINT && redirect_stderr(oldstderr) # Re-direct warnings back to old I/O channel (i.e. the default, visible channel)
+        global err_dict # Declare err_dict as the err_dict variable from the global scope (outside of the for-loop and the try-catch statement)
         @warn "The test $(test) unfortunately resulted in an error. Please examine error specification when test results are printed."
-        err_dict["$(test)"] = "$(e)"
-        #terminate_when_first_error && (@warn "'terminate_when_first_error' set to true. The error: $(e)")
-        terminate_when_first_error && break
+        err_dict["$(test)"] = "$(e)" # Save the error message to the err_dict Dictionary, with the test start file as key
+        terminate_when_first_error && redirect_stdout(oldstdout) # Re-direct prints back to old I/O channel (i.e. the default, visible channel)
+        terminate_when_first_error && break # Break from the 'for test in test_list' for-loop
     end
 
-    SUPPRESS_SUBTEST_PRINT && redirect_stdout(oldstdout) # Re-direct prints to old I/O channel (i.e. the default, visible channel)
+    SUPPRESS_SUBTEST_PRINT && redirect_stdout(oldstdout) # Re-direct prints back to old I/O channel (i.e. the default, visible channel)
     test_prog += 1 # Test completed!
 end
 println("- All tests completed (total run_tests.jl progress: $(round(100*test_prog/NUMBER_OF_TESTS,digits=3)) %)... ")
@@ -252,7 +251,7 @@ if clear_test_outputs_folder_when_done
     end
     println("Done!")
 else
-    println("- The $(folderpath_OWCF)tests/outputs/ folder contains all test output files. Please inspect and clear folder prior to running run_tests.jl again.")
+    println("- The $(folderpath_OWCF)tests/outputs/ folder contains all test output files. Please inspect files in folder prior to running run_tests.jl again.")
 end
 ###------------------------------------------------------------------------------------------------###
 
@@ -271,7 +270,8 @@ if tot_number_o_errs==0
 else
     println("- Printing error specification(s)... ")
     for key in keys(err_dict)
-        println(" --->  $(key): $(err_dict[key])")
+        println(" --->  $(key): $(err_dict[key]). To re-run this specific test, please do 'julia $(folderpath_OWCF*"tests/start_files/$(key)")'")
+        println("")
         println("")
     end
     println("")

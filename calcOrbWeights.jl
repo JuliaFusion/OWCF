@@ -171,6 +171,8 @@ projVel = false
 if getReactionForm(reaction)==3 # If fusion reaction is specified as a single particle species..
     projVel = true # ...orbit weight functions will be computed using projected velocities!
 end
+@everywhere projVel = $projVel # Export 'projVel' variable to all external CPU processors
+
 ## ---------------------------------------------------------------------------------------------
 # Loading thermal information and TRANSP RUN-ID, and perform checks
 if fileext_thermal=="jld2"
@@ -726,7 +728,7 @@ for iii=1:iiimax
             write(myfile_s,"instrumental_response_output",instrumental_response_output)
             write(myfile_s,"instrumental_response_matrix",instrumental_response_matrix)
         else
-            write(myfile_s,"Ed_array_units",analyticalOWs ? "m_s^-1" : "keV") # Otherwise, the output abscissa of calcSpec.jl is always in m/s or keV
+            write(myfile_s,"Ed_array_units",projVel ? "m_s^-1" : "keV") # Otherwise, the output abscissa of calcSpec.jl is always in m/s or keV
         end
         write(myfile_s, "reaction", reaction)
         if projVel
