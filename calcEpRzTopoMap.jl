@@ -66,7 +66,7 @@
 # If saveXYZJacobian==true,
 #   jacobian - The Jacobian from (x,y,z,vx,vy,vz) to (E,p,R,z) for all (E,p,R,z) points - Array{Float64,4}
 
-# Script written by Henrik Järleblad. Last maintained 2025-05-29.
+# Script written by Henrik Järleblad. Last maintained 2025-06-02.
 ########################################################################################
 
 ## ------
@@ -256,7 +256,7 @@ println("The results will be saved to the following output file:")
 println("$(filepath_tm).jld2")
 println("")
 println("If you would like to change any settings, please edit the start_calcEpRzTopoMap_template.jl file or equivalent.")
-println("Written by Henrik Järleblad. Last maintained 2025-05-29.")
+println("Written by Henrik Järleblad. Last maintained 2025-06-02.")
 println("------------------------------------------------------------------------------------------------")
 println("")
 
@@ -479,11 +479,39 @@ end ###########################################
 
 ## ------
 # Plot the results (if requested)
-if plot_results
-    # CONTINUE CODING HERE!!!
-    # CONTINUE CODING HERE!!!
-    # CONTINUE CODING HERE!!!
-    #png(OWCF_plot4DArrayAs2DSlices(topoMap_tottot,))
+if plot_results && false # STILL UNDER DEVELOPMENT
+    verbose && println("Plotting results... ")
+
+    R_axis, z_axis = magnetic_axis(M)
+    iR_axis = argmin(abs.(R_array .- R_axis)); iz_axis = argmin(abs.(R_array .- z_axis))
+    iR_array = Int64.(range(1, stop=length(R_array), length=5)[2:4])
+    iz_array = Int64.(range(1, stop=length(z_array), length=5)[2:4])
+    Rz_indices = [
+        # CONTINUE CODING HERE!!!
+        # CONTINUE CODING HERE!!!
+        # CONTINUE CODING HERE!!!
+        CartesianIndex(iR_axis, iz_axis),
+        CartesianIndex(iR_array[1], iz_array[2]), # (R,z) point at midplane, HFS
+        CartesianIndex(i)
+    ]
+
+    flux_R = range(extrema(wall.r)...,length=101); dR = diff(flux_R)[1]
+    flux_z = range(extrema(wall.z)...,length=102); dz = diff(flux_z)[1]
+    inds = CartesianIndices((length(flux_R),length(flux_z)))
+    psi_rz = [M(flux_R[ind[1]], flux_z[ind[2]]) for ind in inds]
+    psi_mag, psi_bdry = psi_limits(M); wall_dR = maximum(wall.r)-minimum(wall.r)
+    
+    plt_crs = Plots.contour(flux_R, flux_z, transpose(psi_rz), levels=collect(range(psi_mag, stop=psi_bdry,length=7)), color=:gray, linewidth=2.5, label="", colorbar=false)
+    plt_crs = Plots.plot!(wall.r,wall.z,label="Tokamak first wall",linewidth=2.5,color=:black)
+    plt_crs = Plots.scatter!([magnetic_axis(M)[1]],[magnetic_axis(M)[2]],label="Mag. axis",markershape=:xcross,markercolor=:black,markerstrokewidth=4)
+    plt_crs = Plots.plot!(aspect_ratio=:equal,xlabel="R [m]",ylabel="z [m]", xlims=(minimum(wall.r)-0.1*wall_dR,maximum(wall.r)+wall_dR))
+    plt_crs = Plots.plot!(xtickfontsize=14,ytickfontsize=14,xguidefontsize=16,yguidefontsize=16)
+    plt_crs = Plots.plot!(legend=:bottomright,legendfontsize=13)
+
+    plt1, plt2, plt3, plt4, plt5 = OWCF_plot4DArrayAs2DSlices(topoMap_tottot, E_array, p_array, R_array, z_array; abscissas=(1,2), indices=Rz_indices, topoMap=true)
+    myplt = Plots.plot(plt_crs, plt1, plt2, plt3, plt4, pl5, layout=(2,3))
+    display(myplt)
+    png(myplt, filepath_tm)
 end
 
 ## ------

@@ -16,10 +16,12 @@
 # FI_species - The fast-ion particle species that the topological map is to be computed for - String
 # filepath_distr - The path to the .jld2/.h5 weights file to extract particle grid info from (if useDistrFile) - String
 # filepath_equil - The path to the .eqdsk-file (or .geqdsk/.jld2-file) with the tokamak magnetic equilibrium and geometry - String
-# folderpath_o - The path to the folder where the results will be saved - String
-# plot_results - If true, (a selection of) the results will be plotted when computations are completed. Since the results are 4D,
-#                the plots will show f(E, p, R_i, z_j) where 'f' is e.g. the topological map, the poloidal transit times etc. 'i' 
-#                and 'j' are indices centered around, and including, the point (R_mid, z_mid) i.e. the (R,z) point in the middle 
+# filename_o  - The name of the output file in which the results will be saved. If left unspecified (""), the default OWCF naming 
+#               convention for output files from the calcEpRzTopoMap.jl script will be used - String
+# folderpath_o - The path to the folder where the output file (and plots, if requested) will be saved - String
+# plot_results - If true, (a selection of) the results will be plotted and saved when computations are completed. Since the results 
+#                are 4D, the plots will show f(E, p, R_i, z_j) where 'f' is e.g. the topological map, the poloidal transit times etc. 
+#                'i' and 'j' are indices centered around, and including, the point (R_mid, z_mid) i.e. the (R,z) point in the middle 
 #                of the (R,z) grid - Bool
 # saveTransitTimeMaps - If set to true, the poloidal and toroidal transit times will be saved for every valid orbit - Bool
 # saveXYZJacobian - If true, the Jacobian from (x,y,z,vx,vy,vz) to (E,p,R,z) will be computed - Bool
@@ -114,8 +116,9 @@ end
     FI_species = "D" # for example "D" for deuterium, "p" for proton, "T" for tritium, "3he" for helium-3
     filepath_distr = ""
     filepath_equil = ""
+    filename_o = ""
     folderpath_o = "../OWCF_results/template/" # Output folder path. Finish with '/'
-    plot_results = false # Set to true, if (a selection of) the results are to be plotted upon completion of the computations
+    plot_results = false # Set to true, if (a selection of) the results are to be plotted and saved upon completion of the computations
     saveTransitTimeMaps = false # If true, then calcEpRzTopoMap.jl will save 4D data of the poloidal and toroidal transit times for the valid orbits
     saveXYZJacobian = false # Set to true, if Jacobian from (x,y,z,vx,vy,vz) to (E,p,R,z) should be computed and saved
     timepoint = nothing # If unknown, just leave as nothing. The algorithm will try to figure it out automatically.

@@ -1,13 +1,31 @@
 ############---------------------------------------------------------------------------------------###
 # A script to test a lot of the tools in the OWCF/extra/dependencies.jl script
-
-# PLEASE NOTE! THIS SCRIPT IS UNDER ACTIVE DEVELOPMENT!!!
-# PLEASE NOTE! THIS SCRIPT IS UNDER ACTIVE DEVELOPMENT!!!
-# PLEASE NOTE! THIS SCRIPT IS UNDER ACTIVE DEVELOPMENT!!!
 ###------------------------------------------------------------------------------------------------###
 
+############---------------------------------------------------------------------------------------###
+# If running this script independently (not as a part of the OWCF/tests/run_tests.jl)
+if !(@isdefined folderpath_OWCF)
+    folderpath_OWCF = reduce(*,map(x-> "/"*x,split(@__DIR__,"/")[2:end-2]))*"/" # We know that the test start file is located in the OWCF/tests/start_files/ folder. Deduce the full OWCF folder path from that information
+end
+if !(@isdefined plot_test_results)
+    plot_test_results = false
+end
+if !isdir(folderpath_OWCF*"tests/outputs/")
+    print("The folder $(folderpath_OWCF)tests/outputs/ does not exist. Creating... ")
+    mkdir(folderpath_OWCF*"tests/outputs")
+    println("ok!")
+end
+@everywhere begin
+    using Pkg
+    cd(folderpath_OWCF)
+    Pkg.activate(".")
+end
+###------------------------------------------------------------------------------------------------###
+
+############---------------------------------------------------------------------------------------###
 include(folderpath_OWCF*"extra/dependencies.jl")
 plot_test_results = plot_test_results # SET TO TRUE, VIA THE plot_test_results INPUT VARIABLE IN THE OWCF/tests/run_tests.jl SCRIPT
+###------------------------------------------------------------------------------------------------###
 
 ############---------------------------------------------------------------------------------------###
 μ = [100.0, 0.6, 3.3]

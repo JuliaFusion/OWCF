@@ -96,7 +96,22 @@
 using Distributed # Needed, even though distributed might be set to false. This is to export all inputs to all workers right away, if needed.
 #batch_job = false
 distributed = false
-#folderpath_OWCF = "" # OWCF folder path. Finish with '/'
+if !(@isdefined folderpath_OWCF)
+    folderpath_OWCF = reduce(*,map(x-> "/"*x,split(@__DIR__,"/")[2:end-2]))*"/" # We know that the test start file is located in the OWCF/tests/start_files/ folder. Deduce the full OWCF folder path from that information
+end
+if !(@isdefined plot_test_results)
+    plot_test_results = false
+end
+if !isdir(folderpath_OWCF*"tests/outputs/")
+    print("The folder $(folderpath_OWCF)tests/outputs/ does not exist. Creating... ")
+    mkdir(folderpath_OWCF*"tests/outputs")
+    println("ok!")
+end
+@everywhere begin
+    using Pkg
+    cd(folderpath_OWCF)
+    Pkg.activate(".")
+end
 #numOcores = 4 # When executing script via HPC cluster job, make sure you know how many cores you have requested for your batch job
 
 ## Navigate to the OWCF folder and activate the OWCF environment
@@ -192,16 +207,6 @@ distributed = false
     # a correct specification of the tokamak variable becomes necessary. 
     tokamak = "JET"
 end
-
-## -----------------------------------------------------------------------------
-# Change directory to OWCF-folder on all external processes. Activate the environment there to ensure correct package versions
-# as specified in the Project.toml and Manuscript.toml files. Do this for every 
-# CPU processor (@everywhere)
-#@everywhere begin
-#    using Pkg
-#    cd(folderpath_OWCF)
-#    Pkg.activate(".")
-#end
 
 ## -----------------------------------------------------------------------------
 # Then you execute the script
