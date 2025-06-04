@@ -52,7 +52,7 @@
 # - The tenth column corresponds to toroidal phi angle points
 # - The eleventh column corresponds to solid angles OMEGA
 
-# Script written by Henrik Järleblad. Last maintained 2025-06-02.
+# Script written by Henrik Järleblad. Last maintained 2025-06-03.
 ###############################################################################################################
 
 ## ---------------------------------------------------------------------------------------------
@@ -60,6 +60,7 @@ println("Loading Julia packages... ")
 @everywhere begin
     using Dates
     using FileIO
+    using JLD2
     using LinearAlgebra
     using Equilibrium
     plot_LOS && (using Plots)
@@ -116,33 +117,13 @@ verbose && println("It's $(case)!")
 verbose && println("Loading tokamak equilibrium... ")
 if ((split(filepath_equil,"."))[end] == "eqdsk") || ((split(filepath_equil,"."))[end] == "geqdsk")
     M, wall = read_geqdsk(filepath_equil,clockwise_phi=false) # Assume counter-clockwise phi-direction
-    jdotb = M.sigma # The sign of the dot product between the plasma current and the magnetic field
-
-    # Extract timepoint information from .eqdsk/.geqdsk file
-    eqdsk_array = split(filepath_equil,".")
-    try
-        global timepoint # Declare global scope
-        XX = (split(eqdsk_array[end-2],"-"))[end] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
-        YYYY = eqdsk_array[end-1] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
-        timepoint = XX*","*YYYY # Format XX,YYYY to avoid "." when including in filename of saved output
-    catch
-        global timepoint # Declare global scope
-        timepoint = "00,0000"
-    end
 else # Otherwise, assume magnetic equilibrium is a saved .jld2 file
     myfile = jldopen(filepath_equil,false,false,false,IOStream)
-    M = myfile["S"]
-    wall = myfile["wall"]
+    M, wall = myfile["S"], myfile["wall"]
     close(myfile)
-    jdotb = (M.sigma_B0)*(M.sigma_Ip)
-
-    if typeof(timepoint)==String && length(split(timepoint,","))==2
-        timepoint = timepoint
-    else
-        timepoint = "00,0000" # Unknown timepoint for magnetic equilibrium
-    end
 end
 wall_dR = maximum(wall.r)-minimum(wall.r)
+wall_dz = maximum(wall.z)-minimum(wall.z)
 
 ## ---------------------------------------------------------------------------------------------
 # Define the function that returns a rotation matrix that can rotate a 3D vector an angle 'theta' about an arbitrary axis (defined by the unit vector 'u')
@@ -233,7 +214,7 @@ function visible_by_detector(wall::Boundary, point::AbstractVector, detector_loc
     for l in round.(cumsum(0.1 .*ones(length(0.0:0.1:distance_to_detector)-1)),digits=3) # For every decimeter (except for the first one) from the point to the detector location...
         point_to_check = point + (l .*u)
         R = sqrt(point_to_check[1]*point_to_check[1] + point_to_check[2]*point_to_check[2])
-        if !in_boundary(wall, R, point_to_check[3]) && (R-prev_R)<0 && R<R_detector && R<min_R_wall
+        if !in_boundary(wall, R, point_to_check[3]) && (R-prev_R)<0 && R<R_detector && R<min_R_wall # This is an approximation. It should really be R_wall(z) where R_wall is the R value as a function of z for R<argmax(z(R))
             verbose && println("visible_by_detector(): Point $(round.([R,point_to_check[3]],digits=2)) is outside of the tokamak wall and has ∂s/∂R<0 (R: $(round(R,digits=2)), prev_R: $(round(prev_R,digits=2))). Returning false... ")
             return false
         end
@@ -294,9 +275,9 @@ else # case must be 5
         error("z_of_interest specified incorrectly! Please correct and re-try.")
     end
     B_vec = Bfield(M, R_of_interest, z_of_interest)
-    R = getRotationMatrix([1.0,0.0,0.0], LOS_vec[1] *(pi/180)) # Get a rotation matrix that can rotate any vector θ_u degrees
-    LOS_vec = B_vec ./ norm(B_vec)
-    LOS_vec = R*LOS_vec # Rotate θ_u degrees around the R_axis to get LOS_vec with θ_u degrees relative to B-field
+    R = getRotationMatrix([0.0,1.0,0.0], LOS_vec[1] *(pi/180)) # Get a rotation matrix that can rotate any vector θ_u degrees
+    b_vec = B_vec ./ norm(B_vec)
+    LOS_vec = R*b_vec # Rotate B-field unit vector θ_u degrees around the y_axis to get LOS_vec with θ_u degrees relative to B-field
 
     # Now, assume we are at phi=0. Because of toroidal symmetry, it does not matter where we are.
     # At phi=0, the (x,y,z) and (R,phi,z) coordinate systems overlap.
@@ -369,9 +350,15 @@ end
 
 ## ---------------------------------------------------------------------------------------------
 # Create LOS via 3D array storing solid angles, which represents a uniform (R,phi,z) grid
+# If user requested plot of the LOS, or debugging, set the plot font to Computer modern
 if plot_LOS || debug
     plot_font = "Computer Modern"
     my_plt = Plots.default(fontfamily=plot_font)
+end
+# If debugging, pre-allocate a Vector for storing plot frames to create debug .gif of LOS creation process
+if debug
+    plt_frames = Vector{Plots.Plot}(undef,101)
+    plt_ind = 1
 end
 
 verbose && println("Creating LOS... ")
@@ -462,21 +449,21 @@ if collimated
 
         # Process plotting, for debug purposes
         if debug_plot
-            global my_plt
+            global my_plt; global plt_frames; global plt_ind
             LOS_Rphi = dropdims(sum(omega_3D_array,dims=3),dims=3)
             LOS_Rz = dropdims(sum(omega_3D_array,dims=2),dims=2)
             LOS_phiz = dropdims(sum(omega_3D_array,dims=1),dims=1)
 
             plt_Rphi = Plots.heatmap(R_grid, (180/pi) .*phi_grid, transpose(LOS_Rphi), colorbar=false, label="", xlabel="R [m]", ylabel="phi [degrees]", fillcolor=:blues)
             plt_Rz = Plots.heatmap(R_grid, z_grid, transpose(LOS_Rz), colorbar=false, label="", xlabel="R [m]", ylabel="z [-]", fillcolor=:blues)
-            plt_Rz = Plots.scatter!([detector_location_R],[detector_location[3]], label="Detector location", markershape=:star, markercolor=:purple, markerstrokewidth=2)
+            #plt_Rz = Plots.scatter!([detector_location_R],[detector_location[3]], label="Detector location", markershape=:star, markercolor=:purple, markerstrokewidth=2)
             plt_Rz = Plots.plot!(wall.r,wall.z,label="Tokamak first wall",linewidth=2.5,color=:gray)
-            plt_Rz = Plots.scatter!([magnetic_axis(M)[1]],[magnetic_axis(M)[2]],label="Mag. axis",markershape=:xcross,markercolor=:slategray1,markerstrokewidth=4)
-            plt_Rz = Plots.plot!(aspect_ratio=:equal, xlims=(minimum(wall.r)-0.1*wall_dR,maximum(wall.r)+wall_dR),title="Creating LOS... ")
+            plt_Rz = Plots.scatter!([magnetic_axis(M)[1]],[magnetic_axis(M)[2]],label="Mag. axis",markershape=:xcross,markercolor=:red,markerstrokewidth=4)
+            plt_Rz = Plots.plot!(title="Creating LOS... ", aspect_ratio=:equal, xlims=(minimum(wall.r)-0.1*wall_dR,maximum(wall.r)+wall_dR), ylims=extrema(wall.z))
             plt_phiz = Plots.heatmap(z_grid, (180/pi) .*phi_grid, LOS_phiz, colorbar=false, label="", xlabel="z [m]", ylabel="phi [degrees]", fillcolor=:blues)
             plt2 = Plots.plot(plt_Rphi, plt_phiz)
             my_plt = Plots.plot(plt_Rz, plt2, layout=(1,2))
-            display(my_plt)
+            plt_frames[plt_ind] = my_plt; plt_ind += 1
         end
     end
 else
@@ -508,28 +495,32 @@ else
 
         # Process plotting, for debug purposes
         if debug_plot
-            global my_plt
+            global my_plt; global plt_frames; global plt_ind
             LOS_Rphi = dropdims(sum(omega_3D_array,dims=3),dims=3)
             LOS_Rz = dropdims(sum(omega_3D_array,dims=2),dims=2)
             LOS_phiz = dropdims(sum(omega_3D_array,dims=1),dims=1)
 
             plt_Rphi = Plots.heatmap(R_grid, (180/pi) .*phi_grid, transpose(LOS_Rphi), colorbar=false, label="", xlabel="R [m]", ylabel="phi [degrees]", fillcolor=:blues)
             plt_Rz = Plots.heatmap(R_grid, z_grid, transpose(LOS_Rz), colorbar=false, label="", xlabel="R [m]", ylabel="z [-]", fillcolor=:blues)
-            plt_Rz = Plots.scatter!([detector_location_R],[detector_location[3]], label="Detector location", markershape=:star, markercolor=:purple, markerstrokewidth=2)
+            #plt_Rz = Plots.scatter!([detector_location_R],[detector_location[3]], label="Detector location", markershape=:star, markercolor=:purple, markerstrokewidth=2)
             plt_Rz = Plots.plot!(wall.r,wall.z,label="Tokamak first wall",linewidth=2.5,color=:gray)
-            plt_Rz = Plots.scatter!([magnetic_axis(M)[1]],[magnetic_axis(M)[2]],label="Mag. axis",markershape=:xcross,markercolor=:slategray1,markerstrokewidth=4)
-            plt_Rz = Plots.plot!(aspect_ratio=:equal, xlims=(minimum(wall.r)-0.1*wall_dR,maximum(wall.r)+wall_dR),title="Creating LOS... ")
+            plt_Rz = Plots.scatter!([magnetic_axis(M)[1]],[magnetic_axis(M)[2]],label="Mag. axis",markershape=:xcross,markercolor=:red,markerstrokewidth=4)
+            plt_Rz = Plots.plot!(title="Creating LOS... ", aspect_ratio=:equal, xlims=(minimum(wall.r)-0.1*wall_dR,maximum(wall.r)+wall_dR), ylims=extrema(wall.z))
             plt_phiz = Plots.heatmap(z_grid, (180/pi) .*phi_grid, LOS_phiz, colorbar=false, label="", xlabel="z [m]", ylabel="phi [degrees]", fillcolor=:blues)
             plt2 = Plots.plot(plt_Rphi, plt_phiz)
             my_plt = Plots.plot(plt_Rz, plt2, layout=(1,2))
-            display(my_plt)
+            plt_frames[plt_ind] = my_plt; plt_ind += 1
         end
     end
 end
 
 if debug
-    verbose && println("--- DEBUG ---> Saving .png file of debug plot as $(folderpath_o)$(LOS_name)_debug_plot.png... ")
-    png(my_plt, folderpath_o*"$(LOS_name)_debug_plot")
+    verbose && println("--- DEBUG ---> Saving .gif file of LOS creation process as $(folderpath_o)$(LOS_name)_debug.gif... ")
+    anim = @animate for frame in plt_frames[1:plt_ind-1]
+        anim_plt = Plots.plot(frame)
+        anim_plt
+    end
+    gif(anim, folderpath_o*"$(LOS_name)_debug.gif",fps=5)
 end
 
 ## ---------------------------------------------------------------------------------------------
@@ -560,7 +551,7 @@ LOS_in = Array{Bool,1}(undef,length(nz_coords)) # To keep track of points inside
 # Loop through non-zero indices
 prog_proc = []
 for (inz, nz_coord) in enumerate(nz_coords)
-    local R
+    local R; local phi; local z; local x; local y
 
     iR, iphi, iz = nz_coord[1], nz_coord[2], nz_coord[3]
     R, phi, z = R_grid[iR], phi_grid[iphi], z_grid[iz]
@@ -679,9 +670,9 @@ if plot_LOS
     plt_crs = Plots.heatmap(flux_R, flux_z, transpose(LOS_Rz_proj), title="Poloidal proj. $(LOS_name) LOS", fillcolor=cgrad(color_array, categorical=true), colorbar=false)
     plt_crs = Plots.contour!(flux_R, flux_z, transpose(psi_rz), levels=collect(range(psi_mag, stop=psi_bdry,length=7)), color=:lightgray, clims=clims, linewidth=2.5, label="", colorbar=false)
     plt_crs = Plots.plot!(wall.r,wall.z,label="Tokamak first wall",linewidth=2.5,color=:black)
-    plt_crs = Plots.scatter!([detector_location_R],[detector_location[3]], label="Detector location", markershape=:star, markercolor=:purple, markerstrokewidth=2)
-    plt_crs = Plots.scatter!([magnetic_axis(M)[1]],[magnetic_axis(M)[2]],label="Mag. axis",markershape=:xcross,markercolor=:black,markerstrokewidth=4)
-    plt_crs = Plots.plot!(aspect_ratio=:equal,xlabel="R [m]",ylabel="z [m]", xlims=(minimum(wall.r)-0.1*wall_dR,maximum(wall.r)+wall_dR))
+    #plt_crs = Plots.scatter!([detector_location_R],[detector_location[3]], label="Detector location", markershape=:star, markercolor=:purple, markerstrokewidth=2)
+    plt_crs = Plots.scatter!([magnetic_axis(M)[1]],[magnetic_axis(M)[2]],label="Mag. axis",markershape=:xcross,markercolor=:red,markerstrokewidth=4)
+    plt_crs = Plots.plot!(aspect_ratio=:equal,xlabel="R [m]",ylabel="z [m]", xlims=(minimum(wall.r)-0.1*wall_dR,maximum(wall.r)+wall_dR), ylims=extrema(wall.z))
     plt_crs = Plots.plot!(xtickfontsize=14,ytickfontsize=14,xguidefontsize=16,yguidefontsize=16)
     plt_crs = Plots.plot!(legend=:bottomright,legendfontsize=13)
 

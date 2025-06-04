@@ -41,6 +41,7 @@ verbose && println("Loading Julia packages... ")
 using Equilibrium
 using JLD2
 using Dates
+plot_equilibrium && (using Plots)
 
 ## --------------------------------------------------------------------------
 # Creating Solov'ev equilibrium from inputs
@@ -86,7 +87,7 @@ end
 
 ## --------------------------------------------------------------------------
 # Plot the magnetic equilibrium (and wall), if requested
-if plot_LOS
+if plot_equilibrium
     flux_r = range(extrema(wall.r)...,length=100)
     flux_z = range(extrema(wall.z)...,length=100)
     inds = CartesianIndices((length(flux_r),length(flux_z)))
@@ -104,11 +105,11 @@ if plot_LOS
     plt_crs = Plots.plot!(legend=:bottomright,legendfontsize=13)
     plt_crs = Plots.plot!(title="Mag. equil. (pol. proj) $(date_and_time)",titlefontsize=14)
     plt_crs = Plots.plot!(dpi=200)
-    display(myplt)
+    display(plt_crs)
 
     if save_equil_plot
         verbose && println("Saving magnetic equilibrium plot in .png file format... ")
-        png(plt_crs,filepath_output)
+        png(plt_crs, filepath_output)
     end
 end
 

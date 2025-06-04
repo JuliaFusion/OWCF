@@ -19,7 +19,9 @@
 # κ - The elongation of the plasma
 # α - The constant relating beta regime (This must be chosen manually to achieve desired total plasma β-value)
 # qstar - The kink safety factor (1.57 in ITER for example)
-# filepath_wall - The filepath to a .jld2 file containing (optional) data for the tokamak wall - String
+# filepath_wall - The filepath to a .jld2 file containing (optional) data for the tokamak wall. The .jld2 file needs to have 
+#                 the keys "R" (major radius coordinates in meters) and "z" (vertical coordinates in meters). The lengths of 
+#                 R and z need to be equal. For every R_i element in R, the corresponding z value is assumed to be z_i in z. - String
 # filename_out - The name of the magnetic equilibrium output data .jld2 file. By default, it is unspecified ("") and the default 
 #                filename format is used to name the output data .jld2 file 
 #                (see OWCF/extra/createCustomMagneticEquilibrium.jl for more info).
