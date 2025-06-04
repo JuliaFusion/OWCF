@@ -85,6 +85,7 @@ verbose && println("Loading Julia packages... ")
     using LinearAlgebra
     using Interpolations
     using Dates
+    using ProgressMeter
     include(folderpath_OWCF*"misc/temp_n_dens.jl")
     if save_plots
         using Plots
@@ -229,18 +230,23 @@ else # If !constant_Rz
         verbose && println("Creating (E,p,R,z) Gaussian FI distribution... ")
         Sigmam = diagm(Sigma) # Only the correlation lengths in (E,p) matter, because of constant_Rz. diagm(x) creates a matrix with x as diagonal 
         X_peak = [peak_E, peak_p, peak_R, peak_z] # The mean (peak) of the Gaussian
+        F_max = (1/(4*pi^2)) * (det(Sigmam)^(-1/2)) # We already now the maximum value of f(E,p,R,z)
+        F_min = floor_level*F_max # The numerical threshold. All f(E,p,R,z) values below this value will be set to 0
         F_EpRz = zeros(length(E_array),length(p_array),length(R_array),length(z_array)) # The pre-allocated fast-ion distribution
-        progress_length = reduce(*,[length(E_array),length(p_array),length(R_array),length(z_array)]) # The product of all (E,p,R,z) vector lengths
-        progress = 1
+        progress_length = length(F_EpRz) # Total number of (E,p,R,z) grid points
+
+        num_o_good_points = 0 # Keep track of the number of (E,p,R,z) where f(E,p,R,z)>F_min
+        prog_proc = Progress(progress_length; dt=0.5, desc="Creating (E,p,R,z) Gaussian FI distribution...", color=:blue) # Progress bar
+        generate_showvalues(E, p, R, z, f, gpp) = () -> [("E [keV]",Int64(round(E))), ("p [-]",round(p,digits=2)), ("R [m]",round(R,digits=1)), ("z [m]",round(z,digits=1)), ("f(E,p,R,z) [keV^-3 m^-3]",round(f,sigdigits=3)), ("Points above threshold [%]",round(gpp,digits=2))] # Progress bar function
         for (iE,E) in enumerate(E_array), (ip,p) in enumerate(p_array), (iR,R) in enumerate(R_array), (iz,z) in enumerate(z_array)
-            global progress
+            global num_o_good_points 
             X = [E,p,R,z]
-            F_EpRz[iE,ip,iR,iz] = (1/(4*pi^2)) * (det(Sigmam)^(-1/2)) * exp(-0.5*transpose(X .- X_peak)*inv(Sigmam)*(X .- X_peak)) # The 4D Gaussian formula
-            verbose && println("Creating (E,p,R,z) Gaussian FI distribution: $(round(100*progress/progress_length,sigdigits=4)) %... ")
-            progress += 1
+            F = F_max * exp(-0.5*transpose(X .- X_peak)*inv(Sigmam)*(X .- X_peak)) # The 4D Gaussian formula
+            above_threshold = F > F_min # Is f(E,p,R,z) above the threshold?
+            above_threshold && (F_EpRz[iE,ip,iR,iz] = F) # If so, replace 0.0 with f(E,p,R,z) value
+            above_threshold && (num_o_good_points += 1)
+            ProgressMeter.next!(prog_proc; showvalues = generate_showvalues(E, p, R, z, F, 100*num_o_good_points/progress_length))
         end
-        verbose && println("Setting all values below $(round(floor_level*maximum(F_EpRz),sigdigits=4)) to 0 in the (E,p,R,z) Gaussian FI distribution... ")
-        F_EpRz = map(x-> x<floor_level*maximum(F_EpRz) ? 0.0 : x, F_EpRz) # Set everything below floor_level*maximum(F_EpRz) to 0.0, to avoid extremely small, unstable values.
     elseif distribution_type==:collisional
         error("!constant_Rz and distribution_type==:collisional not yet supported. Please correct and re-try.")
     elseif distribution_type==:custom
@@ -260,7 +266,7 @@ else # If !constant_Rz
     else
         error("distribution_type input variable not correctly specified (:gaussian, :collisional, :custom). Please correct and re-try.")
     end
-    verbose && println("Success! Normalizing FI distribution... ")
+    verbose && println("Success! Re-normalizing FI distribution to have $(tot_N_FI)=∫ f(E,p,R,z) 2*pi*R dEdpdRdz... ")
     F_EpRz = tot_N_FI .*F_EpRz ./ sum((2*pi*dE*dp*dR*dz) .*reshape(R_array,(1,1,nR,1)) .*F_EpRz) # Re-normalize so that F_EpRz integrate to tot_N_FI
 end
 
@@ -290,8 +296,8 @@ if save_plots # If plots should be saved of the computed distribution function..
         F_Ep = dropdims(sum((2*pi*dR*dz) .* reshape(R_array,(1,1,length(R_array),1)) .*F_EpRz,dims=(3,4)),dims=(3,4))
         F_Rz = dropdims(sum((dE*dp) .*F_EpRz,dims=(1,2)),dims=(1,2))
 
-        myplt_Ep = Plots.heatmap(E_array,p_array,F_Ep',xlabel="Energy [keV]",ylabel="Pitch [-]",title="f(E,p) [keV^-1]",dpi=600)
-        myplt_Rz = Plots.heatmap(R_array,z_array,F_Rz',xlabel="R [m]",ylabel="z [m]",title="f(R,z) [m^-3]",aspect_ratio=:equal,dpi=600)
+        myplt_Ep = Plots.heatmap(E_array,p_array,F_Ep',xlabel="Energy [keV]",ylabel="Pitch [-]",title="f(E,p) [keV^-1]",dpi=600, xlims=extrema(E_array), ylims=extrema(p_array))
+        myplt_Rz = Plots.heatmap(R_array,z_array,F_Rz',xlabel="R [m]",ylabel="z [m]",title="f(R,z) [m^-3]", xlims=extrema(R_array), ylims=extrema(z_array), aspect_ratio=:equal, dpi=600)
 
         png(myplt_Ep,filepath_output*"_Ep_plot")
         png(myplt_Rz,filepath_output*"_Rz_plot")
