@@ -517,7 +517,7 @@ end
 if debug
     verbose && println("--- DEBUG ---> Saving .gif file of LOS creation process as $(folderpath_o)$(LOS_name)_debug.gif... ")
     anim = @animate for frame in plt_frames[1:plt_ind-1]
-        anim_plt = Plots.plot(frame)
+        anim_plt = Plots.plot(frame, dpi=100)
         anim_plt
     end
     gif(anim, folderpath_o*"$(LOS_name)_debug.gif",fps=5)
@@ -684,7 +684,7 @@ if plot_LOS
     plt_top = Plots.plot!(xtickfontsize=14,ytickfontsize=14,xguidefontsize=16,yguidefontsize=16)
 
     myplt = Plots.plot(plt_top,plt_crs,layout=(1,2),left_margin=5Plots.mm,bottom_margin=5Plots.mm, size=(1000,500))
-    myplt = Plots.plot!(dpi=200)
+    myplt = Plots.plot!(dpi=100)
     display(myplt)
 
     if save_LOS_plot
