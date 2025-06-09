@@ -92,7 +92,7 @@
 ### Other
 # 
 
-# Script written by Henrik Järleblad. Last maintained 2025-05-02.
+# Script written by Henrik Järleblad. Last maintained 2025-06-07.
 ###########################################################################################################
 
 # A dictionary to keep a record of the names of all sections and their respective execution times
@@ -193,7 +193,7 @@ for (i,S_unit) in enumerate(S_units)
     if !(S_unit==S_errs_units[i])
         global ok; ok = false
         verbose && println("")
-        verbose && print("Units of signal $(i): $(S_unit). Units of err $(i): $(err_units[i]). Attempting to convert err to match S units... ")
+        verbose && print("Units of signal $(i): $(S_unit). Units of err $(i): $(S_errs_units[i]). Attempting to convert err to match S units... ")
         S_errs[i] = units_conversion_factor(S_errs_units[i],S_unit) .*S_errs[i]
         S_errs_units[i] = S_unit
         verbose && println("Success!")
@@ -1079,43 +1079,47 @@ dictionary_of_sections[prnt-1] = ("Enforcing a noise floor on the measurement un
 # SECTION: EXCLUDE UNWANTED MEASUREMENT BINS
 println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
 
-if !(length(excluded_measurement_intervals)==length(excluded_measurement_units)==length(filepaths_S))
+if !(length(excluded_measurement_intervals)==length(excluded_measurement_units)==length(filepaths_S)) && !isempty(excluded_measurement_units) && !isempty(excluded_measurement_intervals)
     @warn "The lengths of input variables 'excluded_measurement_intervals' and 'excluded_measurement_units' were not equal to 'filepaths_S'. Cannot execute exclusion of unwanted measurement bins. All measurement bins will be included for all diagnostics."
 else
-    verbose && println("Performing exclusion of unwanted measurement bins... ")
-    for i in eachindex(excluded_measurement_units)
-        verbose && println("---> For diagnostic $(i)... ")
-        excluded_measurement_intervals_i = excluded_measurement_intervals[i]
-        excluded_measurement_units_i = excluded_measurement_units[i]
-        W_i = W[i]
-        S_i = S[i]
-        S_errs_i = S_errs[i]
-        S_abscissas_units_i = S_abscissas_units[i]
-        S_abscissas_i = S_abscissas[i]
-        ucf_i = units_conversion_factor(excluded_measurement_units_i,S_abscissas_units_i)
-        bad_inds_i = []
-        for interval in excluded_measurement_intervals_i
-            interval_min = ucf_i*interval[1]
-            interval_max = ucf_i*interval[2]
-            bad_inds_ii = findall(xx-> (xx>=interval_min && xx<=interval_max),S_abscissas_i)
-            verbose && println("------> Identified $(length(bad_inds_ii)) measurements in excluded region (min,max)=($(interval_min),$(interval_max)) $(S_abscissas_units_i)") 
-            append!(bad_inds_i, bad_inds_ii)
-        end
-        bad_inds_i_nozero = deepcopy(bad_inds_i)
-        if exclude_zero_measurements
-            zero_inds = findall(x-> x==0.0, S_i)
-            if !isempty(zero_inds)
-                verbose && println("---> For diagnostic $(i), found $(length(zero_inds)) measurements equal to 0")
-                append!(bad_inds_i, zero_inds)
+    if !isempty(excluded_measurement_units) && !isempty(excluded_measurement_intervals)
+        verbose && println("Performing exclusion of unwanted measurement bins... ")
+        for i in eachindex(excluded_measurement_units)
+            verbose && println("---> For diagnostic $(i)... ")
+            excluded_measurement_intervals_i = excluded_measurement_intervals[i]
+            excluded_measurement_units_i = excluded_measurement_units[i]
+            W_i = W[i]
+            S_i = S[i]
+            S_errs_i = S_errs[i]
+            S_abscissas_units_i = S_abscissas_units[i]
+            S_abscissas_i = S_abscissas[i]
+            ucf_i = units_conversion_factor(excluded_measurement_units_i,S_abscissas_units_i)
+            bad_inds_i = []
+            for interval in excluded_measurement_intervals_i
+                interval_min = ucf_i*interval[1]
+                interval_max = ucf_i*interval[2]
+                bad_inds_ii = findall(xx-> (xx>=interval_min && xx<=interval_max),S_abscissas_i)
+                verbose && println("------> Identified $(length(bad_inds_ii)) measurements in excluded region (min,max)=($(interval_min),$(interval_max)) $(S_abscissas_units_i)") 
+                append!(bad_inds_i, bad_inds_ii)
             end
+            bad_inds_i_nozero = deepcopy(bad_inds_i)
+            if exclude_zero_measurements
+                zero_inds = findall(x-> x==0.0, S_i)
+                if !isempty(zero_inds)
+                    verbose && println("---> For diagnostic $(i), found $(length(zero_inds)) measurements equal to 0")
+                    append!(bad_inds_i, zero_inds)
+                end
+            end
+            bad_inds_i = unique(bad_inds_i) # The indices of the excluded measurement intervals
+            good_inds_i = filter(xx -> !(xx in bad_inds_i), collect(1:length(S_abscissas_i))) # The indices of all measurement bins to keep
+            verbose && println("---> A total of $(length(bad_inds_i)) ($(length(bad_inds_i_nozero))+$(length(zero_inds))) measurement bin centers will be excluded for diagnostic $(i)...")
+            S[i] = S_i[good_inds_i] # Update measurements
+            S_errs[i] = S_errs_i[good_inds_i] # Update errors/uncertainties
+            S_abscissas[i] = S_abscissas_i[good_inds_i] # Update measurement abscissa
+            W[i] = W_i[good_inds_i,:] # Update weight function matrix
         end
-        bad_inds_i = unique(bad_inds_i) # The indices of the excluded measurement intervals
-        good_inds_i = filter(xx -> !(xx in bad_inds_i), collect(1:length(S_abscissas_i))) # The indices of all measurement bins to keep
-        verbose && println("---> A total of $(length(bad_inds_i)) ($(length(bad_inds_i_nozero))+$(length(zero_inds))) measurement bin centers will be excluded for diagnostic $(i)...")
-        S[i] = S_i[good_inds_i] # Update measurements
-        S_errs[i] = S_errs_i[good_inds_i] # Update errors/uncertainties
-        S_abscissas[i] = S_abscissas_i[good_inds_i] # Update measurement abscissa
-        W[i] = W_i[good_inds_i,:] # Update weight function matrix
+    else
+        verbose && println("Input variables 'excluded_measurement_intervals' and 'excluded_measurement_units' not specified (empty). All measurements will be included when solving the inverse problem.")
     end
 end
 
@@ -1153,9 +1157,9 @@ if "firsttikhonov" in lowercase.(String.(regularization))
     verbose && println(":FIRSTTIKHONOV included in 'regularization' input variable. Adding 1st order Tikhonov regularization to the inverse solving algorithm... ")
     first_tikhonov_reg = true
     L1 = forward_difference_matrix(rec_space_size) # The forward difference matrix of size (length(rec_space_size) * reduce(*,rec_space_size), reduce(*,rec_space_size))
-    !append(L,[L1])
-    !append(priors, [zeros(size(L1,1))])
-    !append(priors_name, ["1st order Tikhonov"])
+    append!(L,[L1])
+    append!(priors, [zeros(size(L1,1))])
+    append!(priors_name, ["1st order Tikhonov"])
 end
 
 icrf_physics_reg = false
@@ -1231,9 +1235,9 @@ if "icrf" in lowercase.(String.(regularization))
     end
     verbose && println("ok!")
 
-    !append(L,[L_ICRF])
-    !append(priors, [zeros(size(L_ICRF,1))])
-    !append(priors_name, ["ICRF"])
+    append!(L,[L_ICRF])
+    append!(priors, [zeros(size(L_ICRF,1))])
+    append!(priors_name, ["ICRF"])
 end
 
 # The check below is only relevant in future versions where a general prior can be used!
@@ -1539,6 +1543,7 @@ if plot_solutions || gif_solutions
         plt_L_curve = Plots.scatter!(plt_L_curve, [sdf[end]],[srn[end]],label="End")
         plt_L_curve = Plots.scatter!(plt_L_curve, [sdf[ilm]],[srn[ilm]],label="Max curvature")
         plt_L_curve = Plots.scatter!(plt_L_curve, [sdf[i]],[srn[i]],label="", title="$(i): log10(λ)=$(round.(log10.(vcat(hp...)),sigdigits=4))")
+        plt_L_curve = Plots.plot!(xlabel="||WF-S||", ylabel="||F||")
         subfig_L_curve = Plots.plot(plt_L_curve, plt_dummy, layout=(1,2))
 
         # CREATE THE S vs WF SUBFIGURE, which will be in the middle of the plot stack
@@ -1613,7 +1618,7 @@ if plot_solutions || gif_solutions
         lwf = layout_WF[1]
         lf = layout_F[1]
         ltot = Plots.@layout([a; b; c]) 
-        fig_tot = Plots.plot(subfig_L_curve, subfig_WF, subfig_F, size=(800,400+400*lwf+400*lf), layout=ltot, left_margin=6Plots.mm, dpi=600)
+        fig_tot = Plots.plot(subfig_L_curve, subfig_WF, subfig_F, size=(800,400+400*lwf+400*lf), layout=ltot, left_margin=6Plots.mm, dpi=100)
         display(fig_tot)
 
         if plot_solutions

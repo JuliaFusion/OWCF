@@ -74,7 +74,7 @@
 # Finally, this script has many 'if' statements and I would expect it to be able to be
 # optimized beyond its current state. This will be done in future version of the OWCF.
 
-# Script written by Henrik Järleblad. Last maintained 2025-01-07.
+# Script written by Henrik Järleblad. Last maintained 2025-06-05.
 ################################################################################################
 
 ## ---------------------------------------------------------------------------------------------
@@ -161,8 +161,8 @@ end
 ## ---------------------------------------------------------------------------------------------
 verbose && println("Checking fusion reaction... ")
 reaction_full = deepcopy(reaction) # Make a fully independent copy of the fusion reaction variable
-#@everywhere reaction_full = $reaction_full # Not yet necessary. Might be necessary when two-step fusion reactions can be computed with the OWCF via the DRESS code
-reaction = full2reactsOnly(reaction; projVelocity=calcProjVel) # Converts from 'a(b,c)d' format to 'a-b' format (reactants only)
+@everywhere reaction_full = $reaction_full # Not yet necessary. Might be necessary when two-step fusion reactions can be computed with the OWCF via the DRESS code
+reaction = full2reactsOnly(reaction) # Converts from 'a(b,c)d' format to 'a-b' format (reactants only)
 @everywhere reaction = $reaction # Transfer to all external processes
 emittedParticleHasCharge = false # By default, assume that the emitted particle 'c' in a(b,c)d does NOT have charge (is neutral)
 RHEPWC = ["D-3He", "3He-D"] # RHEPWC means 'reaction has emitted particle with charge'
@@ -309,6 +309,9 @@ else # Otherwise, assume magnetic equilibrium is a saved .jld2 file
         timepoint = "00,0000" # Unknown timepoint for magnetic equilibrium
     end
 end
+psi_axis, psi_bdry = psi_limits(M)
+@everywhere psi_axis = $psi_axis
+@everywhere psi_bdry = $psi_bdry
 
 if fileext_FI=="cdf"
     # If the user has specified a TRANSP .cdf file with pertaining NUBEAM fast-ion distribution data...
@@ -464,7 +467,7 @@ println("Please remove previously saved files with the same file name (if any) p
 println("")
 println("If you would like to change any settings, please edit the start_calcSpec_template.jl file or similar.")
 println("")
-println("Written by Henrik Järleblad. Last maintained 2023-11-07.")
+println("Written by Henrik Järleblad. Last maintained 2025-06-05.")
 println("------------------------------------------------------------------------------------------------------------------------------")
 println("")
 ## ---------------------------------------------------------------------------------------------
@@ -497,6 +500,7 @@ verbose && println("Defining the thermal species distribution (and TRANSP output
 @everywhere begin
     py"""
     reaction = $reaction
+    reaction_full = $reaction_full
     forwardmodel = forward.Forward($diagnostic_filepath) # Pre-initialize the forward model
 
     thermal_species = (reaction.split("-"))[0] # Assume first species specified in reaction to be the thermal species. For example, in 'p-t' the 'p' will be assumed thermal. [0] is the first element in Python...
@@ -625,9 +629,9 @@ if distributed # If parallel computating is desired...
                         thermal_temp = Array{Float64}(undef,(mc_sample_chunk,)) # Pre-allocate an empty vector of length mc_sample_chunk for thermal temperatures
                         thermal_dens = Array{Float64}(undef,(mc_sample_chunk,)) # Pre-allocate an empty vector of length mc_sample_chunk for thermal densities
                         for i=1:mc_sample_chunk
-                            B[:,i] = collect(reshape(Bfield(M,R[i],z[i]),3,1)) # Calculating magnetic field for R,z samples. Need to do this in Julia, not Python, because of need to include poloidal magnetic field
-                            ψ_rz = M.psi_rz(R[i],z[i]) # Get the interpolated poloidal flux function at the R,z point
-                            ρ_pol_rz = sqrt(ψ_rz-M.psi[1])/(M.psi[end]-M.psi[1]) # The formula for the normalized flux coordinate ρ_pol = (ψ-ψ_axis)/(ψ_edge-ψ_axis)
+                            B[:,i] = collect(reshape(Equilibrium.Bfield(M,R[i],z[i]),3,1)) # Calculating magnetic field for R,z samples. Need to do this in Julia, not Python, because of need to include poloidal magnetic field
+                            ψ_rz = M(R[i],z[i]) # Get the interpolated poloidal flux function at the R,z point
+                            ρ_pol_rz = sqrt(max(0.0, (ψ_rz-psi_axis)/(psi_bdry-psi_axis))) # The formula for the normalized flux coordinate ρ_pol = (ψ-ψ_axis)/(ψ_edge-ψ_axis)
 
                             if fileext_thermal=="jld2"
                                 thermal_temp[i] = thermal_temp_etp(ρ_pol_rz) # Interpolate onto ρ_pol_rz using the data from the .jld2 file
@@ -649,7 +653,7 @@ if distributed # If parallel computating is desired...
 
                     # Compute the spectra from the E,p,R,z MC sample
                     py"""
-                    spec_i = forwardmodel.calc($E, $p, $R, $z, $w, thermal_dist, Ed_bins, $B, n_repeat=50, reaction=reaction, bulk_temp=$thermal_temp, bulk_dens=$thermal_dens, flr=$include_flr_effects)
+                    spec_i = forwardmodel.calc($E, $p, $R, $z, $w, thermal_dist, Ed_bins, $B, n_repeat=50, reaction=reaction_full, bulk_temp=$thermal_temp, bulk_dens=$thermal_dens, flr=$include_flr_effects)
                     """
 
                     put!(channel, true) # Update the progress bar
@@ -696,8 +700,8 @@ if distributed # If parallel computating is desired...
                 thermal_dens = Array{Float64}(undef,(mc_sample_chunk,)) # Pre-allocate an empty vector of length mc_sample_chunk for thermal densities
                 for i=1:mc_sample_chunk
                     B[:,i] = collect(reshape(Bfield(M,R[i],z[i]),3,1)) # Calculating magnetic field for R,z samples. Need to do this in Julia, not Python, because of need to include poloidal magnetic field
-                    ψ_rz = M.psi_rz(R[i],z[i]) # Get the interpolated poloidal flux function at the R,z point
-                    ρ_pol_rz = sqrt(ψ_rz-M.psi[1])/(M.psi[end]-M.psi[1]) # The formula for the normalized flux coordinate ρ_pol = (ψ-ψ_axis)/(ψ_edge-ψ_axis)
+                    ψ_rz = M(R[i],z[i]) # Get the interpolated poloidal flux function at the R,z point
+                    ρ_pol_rz = sqrt(max(0.0, (ψ_rz-psi_axis)/(psi_bdry-psi_axis))) # The formula for the normalized flux coordinate ρ_pol = (ψ-ψ_axis)/(ψ_edge-ψ_axis)
 
                     if fileext_thermal=="jld2"
                         thermal_temp[i] = thermal_temp_etp(ρ_pol_rz) # Interpolate onto ρ_pol_rz using the data from the .jld2 file
@@ -719,7 +723,7 @@ if distributed # If parallel computating is desired...
 
             # Compute the spectra from the E,p,R,z MC sample
             py"""
-            spec_i = forwardmodel.calc($E, $p, $R, $z, $w, thermal_dist, Ed_bins, $B, n_repeat=50, reaction=reaction, bulk_temp=$thermal_temp, bulk_dens=$thermal_dens, flr=$include_flr_effects)
+            spec_i = forwardmodel.calc($E, $p, $R, $z, $w, thermal_dist, Ed_bins, $B, n_repeat=50, reaction=reaction_full, bulk_temp=$thermal_temp, bulk_dens=$thermal_dens, flr=$include_flr_effects)
             """
             spec_i = vec(py"spec_i") # Convert from Python to Julia (and vectorize, just in case)
             spec_i # Declare this spectrum to be added to the parallel computing reduction (@distributed (+))
@@ -763,8 +767,8 @@ else # ... if you do not use multiple cores, good luck!
             thermal_dens = Array{Float64}(undef,(mc_sample_chunk,)) # Pre-allocate an empty vector of length mc_sample_chunk for thermal densities
             for i=1:mc_sample_chunk
                 B[:,i] = collect(reshape(Bfield(M,R[i],z[i]),3,1)) # Calculating magnetic field for R,z samples. Need to do this in Julia, not Python, because of need to include poloidal magnetic field
-                ψ_rz = M.psi_rz(R[i],z[i]) # Get the interpolated poloidal flux function at the R,z point
-                ρ_pol_rz = sqrt(ψ_rz-M.psi[1])/(M.psi[end]-M.psi[1]) # The formula for the normalized flux coordinate ρ_pol = (ψ-ψ_axis)/(ψ_edge-ψ_axis)
+                ψ_rz = M(R[i],z[i]) # Get the interpolated poloidal flux function at the R,z point
+                ρ_pol_rz = sqrt(max(0.0, (ψ_rz-psi_axis)/(psi_bdry-psi_axis))) # The formula for the normalized flux coordinate ρ_pol = (ψ-ψ_axis)/(ψ_edge-ψ_axis)
 
                 if fileext_thermal=="jld2"
                     thermal_temp[i] = thermal_temp_etp(ρ_pol_rz) # Interpolate onto ρ_pol_rz using the data from the .jld2 file
@@ -786,7 +790,7 @@ else # ... if you do not use multiple cores, good luck!
 
         # Compute the spectra from the E,p,R,z MC sample
         py"""
-        spec_tot = forwardmodel.calc($E, $p, $R, $z, $w, thermal_dist, Ed_bins, $B, n_repeat=50, reaction=reaction, bulk_temp=$thermal_temp, bulk_dens=$thermal_dens, flr=$include_flr_effects)
+        spec_tot = forwardmodel.calc($E, $p, $R, $z, $w, thermal_dist, Ed_bins, $B, n_repeat=50, reaction=reaction_full, bulk_temp=$thermal_temp, bulk_dens=$thermal_dens, flr=$include_flr_effects)
         """
 
         global spec_tot .+= vec(py"spec_tot") # Convert from Python to Julia, vectorize and add spectrum sample to total spectrum
@@ -854,7 +858,7 @@ end
 if addNoise
     write(myfile,"S_clean",S_clean)
     write(myfile,"err",noise)
-    write(myfile,"err_units",instrumental_response ? units_inverse(instrumental_response_output_units) : calcProjVel ? "m_s^-1" : "keV")
+    write(myfile,"err_units",instrumental_response ? units_inverse(instrumental_response_output_units) : calcProjVel ? units_inverse("m_s^-1") : units_inverse("keV"))
 end
 if fileext_FI=="h5" || fileext_FI=="jld2"
     write(myfile,"nfast",nfast)

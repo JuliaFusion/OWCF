@@ -43,7 +43,7 @@ class Forward(object):
             return 'Forward model with spherical 4*pi emission'
 
 
-    def calc(self, E, p, R, z, weights, bulk_dist, Ed_bins, B_vec, n_repeat=1, reaction='D(T,n)4He', 
+    def calc(self, E, p, R, z, weights, bulk_dist, Ed_bins, B_vec, n_repeat=1, reaction='D(D,n)3He', 
              bulk_temp='', bulk_dens='', flr=False, v_rot=np.reshape(np.array([0.0,0.0,0.0]),(3,1))):
         """
         Compute the (total) expected energy spectrum of fusion product particles of interest, given
@@ -108,6 +108,10 @@ class Forward(object):
         All input arrays are assumed to be numpy arrays. 
         """
 
+        reaction = reaction.lower() # Turn reaction into lowercase
+        E = np.array([max(0.0, x) for x in E]) # Enforce a minimum of 0 for the energy. In case some sampling algorithm has sampled energy values slightly below 0. 2025-06-05
+        p = np.array([max(-1.0,x) for x in [min(1.0,x) for x in p]]) # Clamping the pitch between -1.0 and 1.0. In case some sampling algorithm has sampled pitch values slightly outside of the [-1.0,1.0] range. 2025-06-05
+
         # Check fusion reaction input. Deduce thermal ion, fast ion and the nucleus energy level of the fusion product particle of interest.
         reaction_form = getReactionForm(reaction)
 
@@ -159,6 +163,8 @@ class Forward(object):
             z = np.squeeze(x[2,:]) # New z-coordinates, corresponding to gyro-radius points
         else:
             v = tokapart.add_gyration(E, p, m, B_vec) # Add gyro-motion to the guiding centre, via randomness. Don't return actual gyro-orbit positions (x)
+        #print(np.sum(np.isnan(B_vec)))
+        #print(np.sum(np.isnan(v)))
 
         if not (np.sum(v_rot) == 0.0):
             v = v + v_rot # Add plasma rotation to fast-ion velocities
