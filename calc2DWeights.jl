@@ -197,6 +197,7 @@ projVel = false
 if getReactionForm(reaction)==3 # If fusion reaction is specified as a single particle species..
     projVel = true # ...2D weight functions will be computed using projected velocities!
 end
+@everywhere projVel = $projVel # Export to all external CPU processes
 
 ## ---------------------------------------------------------------------------------------------
 # Loading tokamak information and TRANSP RUN-ID

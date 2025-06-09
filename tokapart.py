@@ -49,7 +49,6 @@ def get_vpar_vperp(E, p, m):
     """
 
     v = get_speed(E, m)
-    #p = max(-1.0,min(1.0,p)) # Clamping, to avoid weird stuff
     v_par  = v*p
     v_perp = v*np.sqrt(1-p**2)
 
@@ -182,8 +181,16 @@ def add_gyration(E, p, m, B, theta_g=None, flr=False, Z=None, Rg=None, zg=None):
     # Local coordinate system that aligns with B
     e1, e2, e3 = get_basis_vectors(B)
 
+    #print("tokapart.add_gyration(): ")
+    #print(np.sum(np.isnan(e1))) # 0
+    #print(np.sum(np.isnan(e2))) # 0
+    #print(np.sum(np.isnan(e3))) # 0
+
     # Compute the velocity vector in the local coordinate system.
     v_par, v_perp = get_vpar_vperp(E, p, m)    # speeds
+    #print("tokapart.add_gyration(): ")
+    #print(np.sum(np.isnan(v_par))) # 0
+    #print(np.sum(np.isnan(v_perp))) # Not 0!!!
 
     if theta_g == None:
         theta_g = sample_gyro_angle(len(E))

@@ -34,14 +34,12 @@
 #                                measurement intervals can be excluded for the same diagnostic. If no measurement intervals are 
 #                                to be excluded for a particular diagnostic, simply let the inner Vector be empty for that diagnostic.
 #                                If no measurement intervals are to be excluded for any diagnostic, please specify the 
-#                                'excluded_measurement_intervals' input variable as a Vector of empty Vectors. The number of (empty) 
-#                                Vectors in the outermost Vector should be equal to the length of the 'filepaths_W' and 'filepaths_S'
-#                                input variables - Vector{Vector{Tuple{Real,Real}}}
+#                                'excluded_measurement_intervals' input variable as an empty Vector- Vector{Vector{Tuple{Real,Real}}}
 # excluded_measurement_units - A Vector of Strings. The units of the elements of the 'excluded_measurement_intervals' input variable.
 #                              Please see OWCF/misc/convert_units.jl for lists of all accepted units of measurement in the OWCF.
 #                              For each element in 'excluded_measurement_units', the tuples of the Vector with the corresponding 
 #                              index in the 'excluded_measurement_intervals' input variable are assumed to have the specified units. 
-#                              That is, the units of the tuples in excluded_measurement_intervals[i] are assumed to be 
+#                              That is, the units of the Vector elements (tuples) in excluded_measurement_intervals[i] are assumed to be 
 #                              excluded_measurement_units[i] - Vector{String}
 # exclude_zero_measurements - If true, measurements equal to 0 will be excluded from the reconstruction - Bool
 # filepath_start - The path to the start file. This is set automatically, and saved in the calc2DWeights.jl output file. LEAVE UNCHANGED. - String
@@ -335,9 +333,10 @@ end
 include("solveInverseProblem.jl")
 
 ## -----------------------------------------------------------------------------
+#CURRENTLY NOT AVAILABLE FOR solveInverseProblem.jl
 # Then you clean up after yourself
-if batch_job && distributed
-    for i in workers()
-        rmprocs(i)
-    end
-end
+#if batch_job && distributed
+#    for i in workers()
+#        rmprocs(i)
+#    end
+#end
