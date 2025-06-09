@@ -277,7 +277,7 @@ def sigma_diff(E, costheta, reaction='d-d', product_state='gs', anisotropic=True
         # Define energy,cosCM interpolating grid
         low_bound = 0.9 * np.min(E)*(constants.md+constants.mt)/constants.mt
         max_bound = 1.1 * np.max(E)*(constants.md+constants.mt)/constants.mt
-        x, y = np.linspace(low_bound, max_bound,1000), np.linspace(-1,1,300)
+        x, y = np.linspace(low_bound, max_bound, 1000), np.linspace(-1,1,300)
 
         sigma_totale = sigma_tot(constants.mt/(constants.md+constants.mt)*x,'d-t')
         A = interp1d(df[0].to_numpy(dtype=np.float64),
