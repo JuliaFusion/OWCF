@@ -115,15 +115,13 @@ using HDF5
 using Interpolations
 using JLD2
 using LinearAlgebra
+using Plots # If macros (@animate) did not expand at parse time, this would only need to be loaded if plot_solutions || gif_solutions
 using SparseArrays
 using Statistics
 using SCS, Convex
 include("extra/constants.jl")
 include("misc/convert_units.jl")
 
-if plot_solutions || gif_solutions
-    using Plots
-end
 if "collisions" in lowercase.(String.(regularization))
     verbose && println("Collision physics included in list of regularization ---> Loading OWCF dependencies... ")
     include("extra/dependencies.jl")
@@ -1444,6 +1442,9 @@ for (i,hp) in enumerate(hyper_points)
     sols_datafit[i] = norm(W_hh*sol_i - S_hh)
 end
 
+# Collect hyper_points iterators, for element indexing purposes in plot and save sections
+hyper_points = collect(hyper_points)
+
 append!(timestamps,time()) # The timestamp when the inverse problem has been solved
 dictionary_of_sections[prnt-1] = ("Solving the inverse problem",diff(timestamps)[end])
 ###########################################################################################################
@@ -1478,9 +1479,6 @@ date_and_time = split("$(Dates.now())","T")[1]*"at"*split("$(Dates.now())","T")[
 if plot_solutions || gif_solutions
     verbose && plot_solutions && println("Creating .png files of solutions... ")
     verbose && gif_solutions && println("Creating .gif file of solutions... ")
-
-    # Collect hyper_points iterators, for element indexing purposes
-    hyper_points = collect(hyper_points)
 
     # Pre-compute these quantities, needed for plots
     sdf0, sdfN = extrema(sdf); sdf_diff = abs(sdfN-sdf0) # sdf = sols_datafit ||S-WF|| (please see above)
@@ -1630,6 +1628,8 @@ if plot_solutions || gif_solutions
         verbose && println("---> Saving .gif file... ")
         gif(anim,folderpath_out*"solInvProb_$(date_and_time).gif",fps=2)
     end
+else
+    verbose && println("Plots (.png or .gif output files) of the solutions have NOT been requested.")
 end
 
 append!(timestamps,time()) # The timestamp when the results figures have been plotted
