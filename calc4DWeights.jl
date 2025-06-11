@@ -122,7 +122,7 @@
 # WARNING! Please note that the output files of calc4DWeights.jl will be LARGE. This is due to the relatively high dimensionality
 # of the weight functions.
 
-# Script written by Henrik Järleblad. Last maintained 2025-05-29.
+# Script written by Henrik Järleblad. Last maintained 2025-06-11.
 ################################################################################################
 
 ## ---------------------------------------------------------------------------------------------
@@ -130,6 +130,8 @@ verbose && println("Loading Julia packages... ")
 @everywhere begin
     cd(folderpath_OWCF) # Necessary to move all the workers to the correct folder
     using PyCall # For using Python code in Julia
+    using Printf # To be able to print specific formats
+    plot_results && (using Plots)
     include("misc/species_func.jl") # To map particle species labels to particle mass etc
     include("misc/availReacts.jl") # To examine fusion reaction and extract thermal and fast-ion species
     include("misc/rewriteReacts.jl") # To rewrite a fusion reaction from e.g. the a(b,c)d format to the a-b=c-d format

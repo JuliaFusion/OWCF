@@ -85,29 +85,56 @@
 # and thermal_dens_axis variables will be used to scale the polynomial profiles to match the specified
 # thermal temperature and thermal density at the magnetic axis. Please see the /misc/temp_n_dens.jl script for info.
 
-# Script written by Henrik Järleblad. Last maintained 2025-03-12.
+# Script written by Henrik Järleblad. Last maintained 2025-06-11.
 ######################################################################################################
 
 ## First you have to set the system specifications
 using Distributed # Needed, even though distributed might be set to false. This is to export all inputs to all workers right away, if needed.
 #batch_job = false
 distributed = false
+
+############---------------------------------------------------------------------------------------###
+# We need to thoroughly deduce if the user wants the 'plot_test_results' input variable to be true or false
+
+# First, check if the length of the Julia input arguments list is greater than 1
+if length(ARGS)>1
+    if "plot_test_results" in lowercase.(ARGS) # If the argument list contains the 'plot_test_results' input variable
+        # Assume that the boolean value for the 'plot_test_results' input variable is provided as the input argument directly after the 'plot_test_results' input argument
+        i_bool = findfirst(x-> x=="plot_test_results", lowercase.(ARGS))+1
+        try 
+            # Declare global scope. To be able to use the 'plot_test_results' input variable outside of this try-catch statement
+            global plot_test_results = parse(Bool, ARGS[i_bool])
+        catch
+            # If anything goes wrong, assume that the 'plot_test_results' input variable should be set to false
+            global plot_test_results = false
+        end
+    end
+elseif @isdefined plot_test_results # If not, check if the 'plot_test_results' variable has already been defined
+    plot_test_results = plot_test_results # Use that value (might have been set in a super script, with this script run via 'include("OWCF/start_files/start_..._test....jl")')
+else # If nothing else, assume that the 'plot_test_results' input variable should be set to false
+    plot_test_results = false
+end
+###------------------------------------------------------------------------------------------------###
+
+############---------------------------------------------------------------------------------------###
+# Define the folderpath_OWCF variable, if not already defined in a super script
 if !(@isdefined folderpath_OWCF)
     folderpath_OWCF = reduce(*,map(x-> "/"*x,split(@__DIR__,"/")[2:end-2]))*"/" # We know that the test start file is located in the OWCF/tests/start_files/ folder. Deduce the full OWCF folder path from that information
 end
-if !(@isdefined plot_test_results)
-    plot_test_results = false
-end
+# Create the OWCF/tests/outputs/ folder, if it does not already exist
 if !isdir(folderpath_OWCF*"tests/outputs/")
     print("The folder $(folderpath_OWCF)tests/outputs/ does not exist. Creating... ")
     mkdir(folderpath_OWCF*"tests/outputs")
     println("ok!")
 end
+# Change the working directory to the OWCF/ folder, and activate the OWCF Julia environment
 @everywhere begin
     using Pkg
     cd(folderpath_OWCF)
     Pkg.activate(".")
 end
+###------------------------------------------------------------------------------------------------###
+
 #numOcores = 4 # When executing script via HPC cluster job, make sure you know how many cores you have requested for your batch job
 
 ## Navigate to the OWCF folder and activate the OWCF environment
