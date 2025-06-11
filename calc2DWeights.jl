@@ -304,6 +304,20 @@ else
 end
 
 ## ---------------------------------------------------------------------------------------------
+# Python code (load Python packages for DRESS code)
+# This is how you write Python code in Julia: py""" [Python code] """
+verbose && println("Loading Python modules... ")
+@everywhere begin
+    py"""
+    import os.path
+    import numpy as np
+    import forward
+    import spec
+    import vcone
+    """
+end
+
+## ---------------------------------------------------------------------------------------------
 # If available, load instrumental response and process it accordingly
 global instrumental_response # Declare global scope
 instrumental_response = false
@@ -512,20 +526,6 @@ println("")
 println("Written by Henrik Järleblad. Last maintained 2025-05-23.")
 println("--------------------------------------------------------------------------------------------------")
 println("")
-
-## ---------------------------------------------------------------------------------------------
-# Python code (essentially calling the forward model black box)
-# This is how you write Python code in Julia: py""" [Python code] """
-verbose && println("Loading Python modules... ")
-@everywhere begin
-    py"""
-    import os.path
-    import numpy as np
-    import forward
-    import spec
-    import vcone
-    """
-end
 
 ## ---------------------------------------------------------------------------------------------
 # If no thermal distribution file was specified, and default temp. and dens. profiles were specified,
