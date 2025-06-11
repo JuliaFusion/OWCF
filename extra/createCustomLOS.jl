@@ -260,7 +260,7 @@ elseif case==4
     detector_location_y = detector_location[1]*sin(detector_location[2]*pi/180)
     detector_location = [detector_location_x, detector_location_y, detector_location[3]] # Cartesian
 else # case must be 5
-    verbose && println("LOS specified as angle w.r.t. the magnetic field. Computing (x,y,z) LOS vecotrs... ")
+    verbose && println("LOS specified as angle w.r.t. the magnetic field. Computing (x,y,z) LOS vector... ")
     # The most complicated one...
     if R_of_interest==:mag_axis
         R_of_interest = magnetic_axis(M)[1]
@@ -275,7 +275,7 @@ else # case must be 5
         error("z_of_interest specified incorrectly! Please correct and re-try.")
     end
     B_vec = Bfield(M, R_of_interest, z_of_interest)
-    R = getRotationMatrix([0.0,1.0,0.0], LOS_vec[1] *(pi/180)) # Get a rotation matrix that can rotate any vector θ_u degrees
+    R = getRotationMatrix([1.0,0.0,0.0], LOS_vec[1] *(pi/180)) # Get a rotation matrix that can rotate any vector θ_u degrees
     b_vec = B_vec ./ norm(B_vec)
     LOS_vec = R*b_vec # Rotate B-field unit vector θ_u degrees around the y_axis to get LOS_vec with θ_u degrees relative to B-field
 
@@ -668,7 +668,7 @@ if plot_LOS
     end
 
     plt_crs = Plots.heatmap(flux_R, flux_z, transpose(LOS_Rz_proj), title="Poloidal proj. $(LOS_name) LOS", fillcolor=cgrad(color_array, categorical=true), colorbar=false)
-    plt_crs = Plots.contour!(flux_R, flux_z, transpose(psi_rz), levels=collect(range(psi_mag, stop=psi_bdry,length=7)), color=:lightgray, clims=clims, linewidth=2.5, label="", colorbar=false)
+    plt_crs = Plots.contour!(flux_R, flux_z, transpose(psi_rz), levels=collect(range(psi_mag, stop=psi_bdry,length=7)), color=:gray, clims=clims, linewidth=2.5, label="", colorbar=false, α=0.5)
     plt_crs = Plots.plot!(wall.r,wall.z,label="Tokamak first wall",linewidth=2.5,color=:black)
     #plt_crs = Plots.scatter!([detector_location_R],[detector_location[3]], label="Detector location", markershape=:star, markercolor=:purple, markerstrokewidth=2)
     plt_crs = Plots.scatter!([magnetic_axis(M)[1]],[magnetic_axis(M)[2]],label="Mag. axis",markershape=:xcross,markercolor=:red,markerstrokewidth=4)
