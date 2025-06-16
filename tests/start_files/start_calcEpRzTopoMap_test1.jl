@@ -172,11 +172,11 @@ end
 
     # \/ Only necessary if E_array, p_array, R_array and/or z_array are set to nothing
     Emin = 1.0 # keV
-    Emax = 10.0 # keV
-    nE = 11
-    np = 12
+    Emax = 1000.0 # keV
+    nE = 13
+    np = 14
     nR = 5
-    nz = 6
+    nz = 10
     p_min = -1.0
     p_max = 1.0
     R_min = nothing # Automatically HFS wall to LFS wall. Override by specifying together with R_max
@@ -187,7 +187,7 @@ end
     # /\ Only necessary if !(useDistrFile)
 
     # EXTRA KEYWORD ARGUMENTS BELOW
-    extra_kw_args = Dict(:limit_phi => true, :max_tries => 0)
+    extra_kw_args = Dict(:limit_phi => true, :toa => true)
     # limit_phi limits the number of toroidal turns for orbits
     # The orbit integration algorithm will try progressively smaller timesteps max_tries number of times
 end
