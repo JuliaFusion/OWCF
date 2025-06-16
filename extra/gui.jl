@@ -23,7 +23,7 @@
 # 
 # This is performed in e.g. every OWCF start template file.
 #
-# Written by H. Järleblad. Last updated 2023-09-26.
+# Written by H. Järleblad. Last updated 2025-06-13.
 ###################################################################################################
 
 println("Loading the Julia packages for the grahpical user interfaces (GUI) of the OWCF... ")
@@ -251,8 +251,8 @@ function plot_F_Ep(F_EpRz::Array{Float64,4}, energy::Array{Float64,1}, pitch::Ar
 end
 
 """
-    plot_fEp(filepath_distr)
-    plot_fEp(filepath_distr,verbose=true, kwargs... )
+    plot_F_Ep(filepath_distr)
+    plot_F_Ep(filepath_distr,verbose=true, kwargs... )
 
 Load the F_EpRz (E,p,R,z) fast-ion distribution from file (.h5/.hdf5/.jld2), integrate over (R,z) and plot the E,p-dependance, i.e. f(E,p).
 If input is an .h5/.hdf5 file and the file was saved using a row-major programming language (e.g. C/C++/NumPy in Python), set the 'rowmajor' 
@@ -336,6 +336,100 @@ function plot_F_Rz(filepath_distr::String; rowmajor::Bool=false, verbose::Bool=f
     end
 end
 
+"""
+    OWCF_plot4DArrayAs2DSlices(x1_array, x2_array, x3_array, x4_array, Q, i1, i2)
+    OWCF_plot4DArrayAs2DSlices(-||-; data_coords=nothing, topoMap=false, verbose=false)
+
+Plot a 4D Array as a set of (heatmap) plots of 2D slices. Return the plots as a Vector{Plots.Plot}.
+The input arguments are as follows:
+
+- x1_array: The grid points corresponding to the first axis of Q (see below) - Vector{Real}
+- x2_array: The grid points corresponding to the second axis of Q (see below) - Vector{Real}
+- x3_array: The grid points corresponding to the third axis of Q (see below) - Vector{Real}
+- x4_array: The grid points corresponding to the fourth axis of Q (see below) - Vector{Real}
+- Q: The 4D array to be visualized. axes(Q,i)==eachindex(x{i}_array) is true for i ∈ [1,4] - Array{Real,4}
+- i1: The index of the function input grid points to be used as the x-axis abscissa in the heatmap plots.
+      That is, the x-axis abscissa will be x{i1}_array - Int64
+- i2: The index of the function input grid points to be used as the y-axis abscissa in the heatmap plots.
+      That is, the y-axis abscissa will be x{i2}_array - Int64
+
+The keyword input arguments include:
+
+- data_coords: Let x{i3}_array and x{i4}_array be the input grid points vectors that are not selected as 
+               x-axis (x{i1}_array) and y-axis (x{i2}_array) abscissas. Let i3<i4. Then, data_coords is a 
+               Vector{CartesianIndex} where each element identifies a point in (x{i3},x{i4}) space. It is 
+               the 2D slices at these points that will be plotted. By default, plot 4 random points in 
+               (x{i3},x{i4}) space. - Union{Nothing, Vector{CartesianIndex}}
+- topoMap: If set to true, the colormap of the heatmap plots will be :Set1_9. Otherwise, the following 
+           colormap will be used cgrad([:white, :darkblue, :green, :yellow, :orange, :red, black]) - Bool
+- verbose: If set to true, the function will be very talkative! - Bool             
+"""
+function OWCF_plot4DArrayAs2DSlices(x1_array::AbstractVector, x2_array::AbstractVector, x3_array::AbstractVector, x4_array::AbstractVector, Q::Array{T,4} where {T<:Real}, i1::Int64, i2::Int64;
+                                    data_coords::Union{Nothing, Vector{CartesianIndex{2}}}=nothing, topoMap::Bool=false, verbose::Bool=false)
+    # Safety checks
+    if !(length(x1_array)==size(Q,1))
+        error("length(x1_array) is $(length(x1_array)) but size(Q,1) is $(size(Q,1)). Vectors containing the grid points for the axes of Q might have been input in wrong order?")
+    end
+    if !(length(x2_array)==size(Q,2))
+        error("length(x2_array) is $(length(x2_array)) but size(Q,2) is $(size(Q,2)). Vectors containing the grid points for the axes of Q might have been input in wrong order?")
+    end
+    if !(length(x3_array)==size(Q,3))
+        error("length(x3_array) is $(length(x3_array)) but size(Q,3) is $(size(Q,3)). Vectors containing the grid points for the axes of Q might have been input in wrong order?")
+    end
+    if !(length(x4_array)==size(Q,4))
+        error("length(x4_array) is $(length(x4_array)) but size(Q,4) is $(size(Q,4)). Vectors containing the grid points for the axes of Q might have been input in wrong order?")
+    end
+    if i1==i2
+        error("Input i1 is $(i1) and i2 is $(i2). i1==i2 is not allowed. Please correct input and re-try.")
+    end
+    if i1<1 || i1>4
+        error("Input i1 $(i1). 1<=i1<=4 must hold. Please correct input and re-try.")
+    end
+    if i2<1 || i2>4
+        error("Input i2 $(i2). 1<=i2<=4 must hold. Please correct input and re-try.")
+    end
+
+    axes_array = [x1_array, x2_array, x3_array, x4_array]
+
+    # Determine indices of axes that are not abscissas 
+    i3, i4 = filter(x-> !(x in (i1, i2)), (1,2,3,4))
+    verbose && println("OWCF_plot4DArrayAs2DSlices(): Indices of axes that are not abscissas: ($(i3),$(i4))")
+
+    x_abscissa = axes_array[i1]
+    y_abscissa = axes_array[i2]
+
+    xlims = extrema(x_abscissa)
+    ylims = extrema(y_abscissa)
+
+    if isnothing(data_coords) 
+        # Pick 4 random points
+        data_coords = map(x-> CartesianIndex(rand(1:size(Q,i3)),rand(1:size(Q,i4))), 1:4)
+    end
+    verbose && println("OWCF_plot4DArrayAs2DSlices(): data_coords: $(data_coords)")
+
+    mycmap = cgrad([:white, :darkblue, :green, :yellow, :orange, :red, :black])
+    if topoMap
+        mycmap = :Set1_9
+        # Extend one more row, to ensure correct color coding
+        y_abscissa = vcat(y_abscissa[1]-diff(y_abscissa)[1], y_abscissa)
+    end
+    verbose && println("OWCF_plot4DArrayAs2DSlices(): color map: $(mycmap)")
+
+    myplts = Vector{Plots.Plot}(undef, length(data_coords))
+    for (ip,coord) in enumerate(data_coords)
+        j3, j4 = Tuple(coord) # The indices of the CartesianIndex() in (x{i3}, x{i4}) space
+        Q_2D_slice = transpose(Matrix(selectdim(selectdim(Q,i4,j4), i3, j3))) # A 2D slice in 4D space
+        if topoMap
+            # Add extra row, to ensure correct coloring
+            Q_2D_slice = vcat(transpose(vcat([1,2,3,4,5,6,7,8,9], ones(length(x_abscissa)-9))), Q_2D_slice)
+        end
+        plt = Plots.heatmap(x_abscissa, y_abscissa, Q_2D_slice, color=mycmap, colorbar=false, title="$(ip)", xlims=xlims, ylims=ylims)
+        myplts[ip] = plt
+    end
+
+    return myplts
+end
+
 ################################################################################################
 # Define the orbit pile plot function that will be able to plot split of diagnostic signals
 # into their orbit-type constituents (as in Figure 10 and 11 in H. Järleblad et al, NF, 2022)
@@ -345,7 +439,7 @@ end
     weights, returns = of.args
     weights = cumsum(weights,dims=2)
     seriestype := :shape
-    for c=1:size(weights,2)
+    for c in axes(weights,2)
         sx = vcat(weights[:,c], c==1 ? zeros(length(returns)) : reverse(weights[:,c-1]))
         sy = vcat(returns, reverse(returns))
         @series begin
@@ -559,7 +653,7 @@ function plotSignalOrbSplits(S_WF::AbstractVector, Ed_WF::AbstractVector, WFO_E:
 
     verbose && println("Computing plot weights for signal split plot... ")
     weights = zeros(size(EdvsOrbs_WFOE))
-    for i=1:size(EdvsOrbs_WFOE,1)
+    for i in axes(EdvsOrbs_WFOE,1)
         rowsum = sum(EdvsOrbs_WFOE[i,:])
         if rowsum != 0.0
             rowsum = (normalize ? rowsum : 1.0)
