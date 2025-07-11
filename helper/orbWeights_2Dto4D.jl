@@ -31,7 +31,7 @@
 # You should delete the orbWeights4D file once you're done with it. These files are massive and take
 # up an unnessecary amount of space in general.
 
-# Script written by Henrik Järleblad. Last maintained 2024-10-30.
+# Script written by Henrik Järleblad. Last maintained 2025-07-11.
 ###################################################################################################
 
 ## ------
@@ -128,7 +128,7 @@ if (@isdefined reaction_full)
     thermal_species, FI_species = getFusionReactants(reaction_full)
     @everywhere FI_species = $FI_species # Transfer variable to all external processes
 elseif (@isdefined reaction)
-    FI_species = (split(reaction,"-"))[1] # Assume first species specified in reaction to be the fast-ion species. For example, in 'p-t' the 'p' will be assumed the fast ion species.
+    thermal_species, FI_species = getFusionReactants(reaction)
     @everywhere FI_species = $FI_species # Transfer variable to all external processes
 else
     FI_species = FI_species # If no reaction has been specified, assume fast-ion species to be deuterium
@@ -212,15 +212,17 @@ println("Extra keyword arguments specified: ")
 println(extra_kw_args)
 println("")
 println("If you would like to change any settings, please edit the start_2Dto4D_template.jl file.")
-println("Written by Henrik Järleblad. Last maintained 2022-10-09.")
+println("Written by Henrik Järleblad. Last maintained 2025-07-11.")
 println("--------------------------------------------------------------------------------------")
 println("")
 
 ## ---------------------------------------------------------------------------------------------
 # Computing orbit orbit grid
-verbose && println("Computing orbit grid... ")
-og_orbs, og = orbit_grid(M, E_array, pm_array, Rm_array; q=getSpeciesEcu(FI_species), amu=getSpeciesAmu(FI_species), wall=wall,extra_kw_args...)
-og_orbs=nothing
+if !(@isdefined og) || isnothing(og)
+    verbose && println("Computing orbit grid... ")
+    og_orbs, og = orbit_grid(M, E_array, pm_array, Rm_array; q=getSpeciesEcu(FI_species), amu=getSpeciesAmu(FI_species), wall=wall,extra_kw_args...)
+    og_orbs=nothing
+end
 
 ## ---------------------------------------------------------------------------------------------
 # Converting orbit weight function
@@ -229,6 +231,7 @@ dE = abs(E_array[2]-E_array[1]) # Assume equidistant orbit-space grid
 dpm = abs(pm_array[2]-pm_array[1]) # Assume equidistant orbit-space grid
 dRm = abs(Rm_array[2]-Rm_array[1]) # Assume equidistant orbit-space grid
 sort!(Edi_array) # Sort the extracted diagnostic energy bin indices, to ensure W4D is consistent
+global W4D # Global scope to propagate it upwards if this script is run as an include(...)
 W4D = zeros(length(Edi_array),length(E_array),length(pm_array),length(Rm_array))
 for (i,Edi) in enumerate(Edi_array)
     verbose && println("Converting orbit weight function for diagnostic energy bin with energy $(round(Ed_array[Edi],digits=2)) keV ($(i)/$(length(Edi_array)))... ")

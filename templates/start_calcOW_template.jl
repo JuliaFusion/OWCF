@@ -46,15 +46,16 @@
 # filepath_FI_cdf - Can be specified, if filepath_thermal_distr is a TRANSP .cdf shot file. See below for specifications - String
 # filepath_thermal_distr - The path to the thermal distribution file to extract thermal species data from. Must be TRANSP .cdf, .jld2 file format or "" - String
 # folderpath_o - The path to the folder where the results will be saved - String
-# flr_effects - If set to true, finite Larmor radius effects will be taken into account when computing the weight function(s) - Bool
 # iiimax - If specified to be greater than 1, several copies of weight functions will be calculated. For comparison. - Int64
 # inclPrideRockOrbs - If true, then counter-stagnation (pride-rock) orbits will be included. Otherwise, minimum(Rm) = magnetic axis by default - Bool
 # include2Dto4D - If true, then (in addition) the 2D orbit weight functions will be enflated to their 4D form (channels,nE,npm,nRm) and saved in the folderpath_o folder as well - Bool
+# include_FLR_effects - If set to true, finite Larmor radius effects will be taken into account when computing the weight function(s) - Bool
 # n_gyro - The number of points by which to (randomly, uniform sampling) discretize the gyro-motion of the guiding-centre into - Int64
 # nE - The number of fast-ion energy grid points in orbit space - Int64
 # npm - The number of fast-ion pm grid points in orbit space - Int64
 # nRm - The number of fast-ion Rm grid points in orbit space - Int64
 # og_filepath - The path to a .jld2 file containing the output of the calcOrbGrid.jl script. If specified, the values of E_array, pm_array, Rm_array, nE, npm, nRm, Emin, pm_min, Rm_min, Emax, pm_max and Rm_max won't matter. Leave as 'nothing' to use them instead - String
+# plot_results - If set to true, 6 plots of slices of constant energy, i.e. slices where (x,y)=(Rm,pm), will be plotted to visualize the results - Bool
 # pm_array - The fast-ion pm grid points of your (E,pm,Rm) grid. If set to 'nothing': npm, pm_min and pm_max must be specified - Vector
 # pm_min - The lower boundary for the orbit-grid pm values - Float64
 # pm_max - THe upper boundary for the orbit-grid pm values - Float64
@@ -63,15 +64,12 @@
 # Rm_min - The lower boundary for the orbit-grid Rm values - Float64
 # Rm_max - The upper boundary for the orbit-grid Rm values - Float64
 # timepoint - The timepoint of the tokamak shot for the magnetic equilibrium. Format XX,YYYY where XX are seconds and YYYY are decimals - String
-# thermal_dens_axis - The density of the thermal species distribution on axis, if filepath_thermal_distr is not specified - Float64
-# thermal_profiles_type - If 'filepath_thermal_distr' has not been specified (""), choose between options for thermal temperature and density profiles. 
-#                         The options are: 
-#                           - :FLAT - The 'thermal_temp_axis' and 'thermal_dens_axis' will be the (constant) values for the thermal temperature and thermal 
-#                                     density across the entire plasma, respectively.
-#                           - :DEFAULT - The 'thermal_temp_axis' and 'thermal_dens_axis' will be the values for the thermal temperature and thermal density
-#                                        at the magnetic axis, and the OWCF default temperature and density profiles will be used. Please see the 
-#                                        OWCF/misc/temp_n_dens.jl function collection, as well as the OWCF/misc/default_temp_n_dens.png plot.
-#                         typeof(thermal_profiles_type) is a 'Symbol'.
+# thermal_dens_axis - Should be specified if filepath_thermal_distr is not specified. The bulk (thermal) plasma density on-axis. In m^-3 - Float64
+# thermal_dens_profile_type - The bulk (thermal) plasma density profile type to be used. Currently available options are :DEFAULT and :FLAT.
+#                             Please see OWCF/misc/temp_n_dens.jl for more info - Symbol
+# thermal_temp_axis - Should be specified if filepath_thermal_distr is not specified. The bulk (thermal) plasma temperature on-axis. In keV - Float64
+# thermal_temp_profile_type - The bulk (thermal) plasma temperature profile type to be used. Currently available options are :DEFAULT and :FLAT.
+#                             Please see OWCF/misc/temp_n_dens.jl for more info - Symbol
 # verbose - If true, lots of information will be printed during execution - Bool
 # visualizeProgress - If false, progress bar will not be displayed during computations - Bool
 #
@@ -87,7 +85,7 @@
 #
 # PLEASE NOTE! The 'analytic' input variable cannot be set to true, if the 'reaction' input variable is specified on form (3).
 
-# Script written by Henrik Järleblad. Last maintained 2025-03-25.
+# Script written by Henrik Järleblad. Last maintained 2025-07-11.
 #################################################################################################################################################################
 
 ## First you have to set the system specifications
@@ -141,17 +139,18 @@ end
     filepath_equil = "" # for example "equilibrium/JET/g96100/g96100_0-53.0012.eqdsk" or "myOwnSolovev.jld2"
     filepath_FI_cdf = "" # If filepath_thermal_distr=="96100J01.cdf", then filepath_FI_cdf could be "96100J01_fi_1.cdf" for example. To auto-extract timepoint
     filepath_thermal_distr = "" # for example "96100J01.cdf", "myOwnThermalDistr.jld2" or ""
-    flr_effects = false
     folderpath_o = "../OWCF_results/template/" # Output folder path. Finish with '/'
     folderpath_OWCF = $folderpath_OWCF # Set path to OWCF folder to same as main process (hence the '$')
     iiimax = 1 # The script will calculate iiimax number of weight functions. They can then be examined in terms of similarity (to determine MC noise influence etc).
     inclPrideRockOrbs = true # If true, then pride rock orbits will be included. Otherwise, minimum(Rm) = magnetic axis.
     include2Dto4D = true # If true, then the 2D orbit weight functions will be enflated to their 4D form
+    include_FLR_effects = false # If set to true, weight functions will be more accurate, but computations more expensive
     n_gyro = 50 # 50 is default and enough for most common applications of orbit weight functions
     nE = 0
     npm = 0
     nRm = 0
     og_filepath = "" # "", by default. Specify a string with the path to a .jld2 file computed with the calcOrbGrid.jl to use that orbit grid
+    plot_results = false # Set to true, if 6 (pm,Rm) slices spaced equally in the (Emin,Emax) range (or extrema(E_array) range) should be plotted, to visualize the results
     pm_array = nothing # Array can be specified manually. Otherwise, leave as 'nothing'
     pm_min = -1.0
     pm_max = 1.0
@@ -174,8 +173,9 @@ end
     Rm_max = nothing # Automatically use LFS wall. Override by specifying together with Rm_min. Meter
     timepoint = nothing # String. If unknown, just leave as nothing. The algorithm will try to figure it out automatically. Should be the absolute time. I.e. in JET, the 40 second start-up time should be included.
     thermal_dens_axis = 0.0e20 # m^-3. Please specify this if filepath_thermal_distr and filepath_FI_cdf are not specified
+    thermal_dens_profile_type = :DEFAULT # Currently available options are :DEFAULT and :FLAT
     thermal_temp_axis = 0.0 # keV. Please specify this if filepath_thermal_distr and filepath_FI_cdf are not specified
-    thermal_profiles_type = :DEFAULT # Currently available options are :DEFAULT and :FLAT
+    thermal_temp_profile_type = :DEFAULT # Currently available options are :DEFAULT and :FLAT
     verbose = true # If true, then the program will be very talkative!
     visualizeProgress = false # If false, progress bar will not be displayed for computations
 
