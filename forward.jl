@@ -15,7 +15,7 @@
 #    implemented to have achieve full equivalence. In most cases, it is negligible, since it leads to 
 #    minimal modification of the spectral shape.
 #
-# Written by Andrea Valentini, with smaller changes by Henrik Järleblad. Last maintained 2025-03-25
+# Written by Andrea Valentini, with smaller changes by Henrik Järleblad. Last maintained 2025-07-11.
 ######################################################################################################
 
 using NaNMath # To avoid errors when NaN values are encountered in arrays
@@ -183,14 +183,14 @@ function dn_dtdγ(γ_b, l_d, m_d, n_b, E_b, l_b, m_b, n_t, m_t, m_r, dSigma_dcos
 
     costanti = @. n_b * n_t * v_b / π
 
-    dSigma_dcosLAB = dSigma_dcosCM(E_b, clamp.(cosCM,-1,1)) .* abs.(dcosCM_dcosLAB)
+    dSigma_dcosLAB = dSigma_dcosCM(E_b, clamp.(cosCM,-0.999999999,0.999999999)) .* abs.(dcosCM_dcosLAB)
 
     # Return the differential rate AND the corresponding energies of the detected particles (remember γ_b <-> E_d)
     return costanti .* dSigma_dcosLAB, E_d
 end
 
 """
-dn_dtdE(E_d::Vector{Float64}, l_d::Vector{Float64}, m_d::Float64, n_b::Vector{Float64}, E_b::Vector{Float64}, l_b::Vector{Float64}, m_b::Float64, n_t::Vector{Float64}, m_t::Float64, m_r::Float64, dSigma_dcosCM::Function)
+dn_dtdE(E_d::T where {T<:Real}, l_d::Vector{Float64}, m_d::Float64, n_b::Vector{Float64}, E_b::Vector{Float64}, l_b::Vector{Float64}, m_b::Float64, n_t::Vector{Float64}, m_t::Float64, m_r::Float64, dSigma_dcosCM::Function)
 
 Method to calculate differential rate of excited product emitted per unit detected particle energy E_d (subscript omitted for brevity).
 See https://doi.org/10.1088/1741-4326/ad9bc8 and https://doi.org/10.1063/5.0216680 for thorough explanation on this.
@@ -203,7 +203,7 @@ The inputs are as follows
 - m_r - mass in keV of the residual particle
 - dSigma_dcosCM - differential cross section function in m^2 for specified reaction. NB it is not per unit steradian! Function of energy in keV and incoming angle
 """
-function dn_dtdE(E_d::Vector{Float64}, l_d::Vector{Float64}, m_d, n_b, E_b, l_b, m_b, n_t, m_t, m_r, dSigma_dcosCM::Function)
+function dn_dtdE(E_d, l_d, m_d, n_b, E_b, l_b, m_b, n_t, m_t, m_r, dSigma_dcosCM::Function)
     A = @. (E_b + m_b + m_t)^2 - E_b * (E_b + 2 * m_b) + m_d^2 - m_r^2
     B = @. E_b + m_b + m_t
 
@@ -226,7 +226,7 @@ function dn_dtdE(E_d::Vector{Float64}, l_d::Vector{Float64}, m_d, n_b, E_b, l_b,
     costanti = @. n_b * n_t * v_b / (2*π^2)
     jacobian = @. abs(real(Complex(1 - cosX^2)^(-0.5)) * (sin(l_b) * sin(l_d))^(-1) * abs(dEd_dcosLAB)^(-1) )
 
-    dSigma_dcosLAB = dSigma_dcosCM(E_b, clamp.(cosCM,-1,1)) .* abs.(dcosCM_dcosLAB)
+    dSigma_dcosLAB = dSigma_dcosCM(E_b, clamp.(cosCM,-0.999999999,0.999999999)) .* abs.(dcosCM_dcosLAB)
 
     return costanti .* dSigma_dcosLAB .* jacobian
 end
@@ -258,14 +258,14 @@ function SetReaction(reaction)
         # Define differential cross section anonymous function
         flip = (lowercase(products[1]) == "4he") ? -1 : 1 # If we look at the other reactant, the emission angle cosine needs flipping
         # Use fsrct (from DRESS) to get the total cross section and Pl (from LegendrePolynomials) to express the angular part (see fusreact.py) 
-        dSigma_dcosCM = (x, y) -> (fsrct.sigma_tot(mass_ratio .* x, "d-t") ./ (2 .* A[1].(x))) .* sum(A[l].(x) .* Pl.(flip .* y, l-1) for l in 1:length(A))
+        dSigma_dcosCM = (x, y) -> (fsrct.sigma_tot(mass_ratio .* x, "d-t") ./ (2 .* A[1].(x))) .* sum(A[l].(x) .* Pl.(flip .* y, l-1) for l in eachindex(A))
 
         masses = (lowercase.(reactants) == ["t","d"] && lowercase.(products) == ["n","4he"]) ? [cnst.md, cnst.mt, cnst.mn,   cnst.m4He] .* cnst.u_keV   :
                  (lowercase.(reactants) == ["d","t"] && lowercase.(products) == ["n","4he"]) ? [cnst.mt, cnst.md, cnst.mn,   cnst.m4He] .* cnst.u_keV   :
                  (lowercase.(reactants) == ["t","d"] && lowercase.(products) == ["4he","n"]) ?   [cnst.md, cnst.mt, cnst.m4He, cnst.mn  ] .* cnst.u_keV   :
                  (lowercase.(reactants) == ["d","t"] && lowercase.(products) == ["4he","n"]) ?   [cnst.mt, cnst.md, cnst.m4He, cnst.mn  ] .* cnst.u_keV   : error("Invalid reaction name")
 
-        return masses..., dSigma_dcosCM
+        return masses..., nothing, dSigma_dcosCM
     # Beware: fast and thermal reactants are re-mapped here according to a->t, b->b, c->d, d->r (see miscellaneous comments on top)    
     elseif lowercase.(reactants) == ["4he","9be"] || lowercase.(reactants) == ["9be","4he"]
         if nuclear_state == "1L"
@@ -309,8 +309,8 @@ function SetReaction(reaction)
 end
 
 """
-forward_calc(viewing_cone::ViewingCone, o_E::Vector{Float64}, o_p::Vector{Float64}, o_R::Vector{Float64}, o_z::Vector{Float64}, o_w::Vector{Float64}, Ed_bin_centers::Vector{Float64}, o_B::Matrix{Float64}; 
-            reaction::String="T(D,n)4He-GS", bulk_dens::Vector{Float64}=1.0e19)
+analytic_calc(viewing_cone::ViewingCone, o_E::Vector{Float64}, o_p::Vector{Float64}, o_R::Vector{Float64}, o_z::Vector{Float64}, o_w::Vector{Float64}, Ed_bin_centers::Vector{Float64}, o_B::Matrix{Float64}; 
+            reaction::String="T(D,n)4He-GS", bulk_dens::Vector{Float64}=1.0e19, verbose::Bool=false)
 
 For the input (E,p,R,z) points and weights (please see inputs explanation below), calculate expected diagnostic spectrum for 1- and 2-step fusion reactions using the analytic equations obtained when making the 
 beam-target approximation. Please see [https://doi.org/10.1088/1741-4326/adc1df] and [https://doi.org/10.1088/1741-4326/ad9bc8]. Since the approach is straight forward (no Monte Carlo computations needed), a 
@@ -324,10 +324,14 @@ The inputs are as follows
 - o_B - A (3,N) array containing the (R,phi,z) components of the magnetic field vector at all N (E,p,R,z) points (in Teslas)
 - reaction - Fusion reaction. Reaction format 1 and 2 is supported. Please see OWCF/misc/availReacts.jl for explanation.
 - bulk_dens - Number densities in m^-3 for target (thermal) particle species at the (E,p,R,z) points.
+- verbose - If set to true, the function might talk a lot!
 """
-function forward_calc(viewing_cone, o_E, o_p, o_R, o_z, o_w, Ed_bin_centers, o_B; reaction="T(D,n)4He-GS", bulk_dens=ones(length(o_E)).*1.0e19) 
+function analytic_calc(viewing_cone, o_E, o_p, o_R, o_z, o_w, Ed_bin_centers, o_B; reaction="T(D,n)4He-GS", bulk_dens=ones(length(o_E)).*1.0e19, verbose=false)
 
-    m_b,m_t,m_d,m_r,g_ray,dSigma_dcosCM = SetReaction(reaction) # Also checks whether reaction is analytically available in the OWCF
+    o_E = max.(0.0, o_E) # Ensure physically consistent energies
+    o_p = clamp.(o_p, -0.999999999, 0.999999999) # Ensure physically consistent pitches
+
+    m_b, m_t, m_d, m_r, g_ray, dSigma_dcosCM = SetReaction(reaction) # Also checks whether reaction is analytically available in the OWCF
 
     # Keep only (E,p,R,z) points inside diagnostic line-of-sight (LOS)
     i_voxels, i_points = map_points_voxels(viewing_cone, o_R, o_z) # Map the R,z sample points to the viewing cone voxels. See OWCF/vcone.jl
@@ -348,7 +352,7 @@ function forward_calc(viewing_cone, o_E, o_p, o_R, o_z, o_w, Ed_bin_centers, o_B
     ud = viewing_cone.U[:,i_voxels] ./ ud_norm # What is the emission direction of the viewing cone?
     
     mag_B_vc = sqrt.(sum(B_vc.^2, dims=1))
-    lambda_d = vec( acos.( clamp.( sum(ud .* B_vc, dims=1)./mag_B_vc, -1, 1 ) ) )
+    lambda_d = vec( acos.( clamp.( sum(ud .* B_vc, dims=1)./mag_B_vc, -0.999999999, 0.999999999) ) )
     expected_spectrum = zeros(length(Ed_bin_centers))
 
     if !(getEmittedParticleEnergyLevel(reaction)=="GS")
@@ -387,12 +391,10 @@ function forward_calc(viewing_cone, o_E, o_p, o_R, o_z, o_w, Ed_bin_centers, o_B
             end
         end
     else 
-        for i in eachindex(Ed_bin_centers)
-            expected_spectrum[i] += sum(dn_dtdE(   Ed_bin_centers[i], lambda_d, m_d, 
-                                                10. ^ 0 .* weights_vc .* omega , E_b_vc, acos.(p_b_vc), m_b, 
-                                                bulk_dens_vc, m_t, 
-                                                m_r, 
-                                                dSigma_dcosCM)) * (dphi/(2*π))
+        @inbounds for i in eachindex(Ed_bin_centers)
+            #println("analytic_calc(): Computing measurement for bin $(i) of $(length(Ed_bin_centers))... ")
+            expected_spectrum[i] += sum(dn_dtdE(Ed_bin_centers[i], lambda_d, m_d, weights_vc .* omega , E_b_vc, acos.(p_b_vc), m_b, 
+                                                bulk_dens_vc, m_t, m_r, dSigma_dcosCM)) * (dphi/(2*π))
         end
     end
 
