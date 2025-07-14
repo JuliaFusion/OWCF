@@ -27,7 +27,7 @@
 #
 # DO NOT ALTER THIS SCRIPT. More fusion reactions might be added in the future.
 #
-# Script written by Henrik Järleblad. Last maintained 2025-03-03.
+# Script written by Henrik Järleblad. Last maintained 2025-07-11.
 ######################################################################################################
 
 include("species_func.jl")
@@ -117,7 +117,7 @@ function getFusionReactants(fusion_reaction::String)
     end
     reactants = split(split(fusion_reaction,",")[1],"(")
     thermal_particle = reactants[1]; fast_particle = reactants[2]
-    return thermal_particle, fast_particle
+    return String(thermal_particle), String(fast_particle)
 end
 
 function getFusionProducts(fusion_reaction::String)

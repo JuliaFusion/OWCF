@@ -4,7 +4,7 @@
 #
 # pretty2scpok()
 # This function converts a fusion reaction of the format a(b,c)d to 
-# the format a-b=c-d. This is simply to allow for Linux and Windows file browsers (terminal/Powershell) 
+# the format a-b--c-d. This is simply to allow for Linux and Windows file browsers (terminal/Powershell) 
 # to be able to reconize file names containing fusion reactions without producing errors.
 # For example, if I would try to securely copy the file
 #
@@ -12,20 +12,25 @@
 #
 # across computers, I would get an error. Because, as soon as the Linux or Windows file browsers
 # see the '(' or the ')' symbol, they think it's an escape sequence of its own. Therefore, to be 
-# able to transfer files effectively across computers, the format a-b=c-d is used instead for
+# able to transfer files effectively across computers, the format a-b--c-d is used instead for
 # fusion reactions. At least when they need to be included in the name of a file. So, the file
 #
-# orbWeights_JET_96100J01_TOFOR_D-d=n-3He_13x11x12.jld2
+# orbWeights_JET_96100J01_TOFOR_D-d--n-3He_13x11x12.jld2
 #
 # would produce no errors and would be able to be copied perfectly across computers.
+# If the energy level of the emitted particle (c) is included in the fusion reaction (i.e. if the 
+# fusion reaction is given on the form 2 (see OWCF/misc/availReacts.jl)), then the energy level 
+# will be included after a "---". That is, the fusion reaction D(D,n)3He-GS would be saved with a 
+# file named
 #
+# orbWeights_JET_96100J01_TOFOR_D-d--n-3He---GS_13x11x12.jld2
 #
 # thermalSpecies_OWCFtoTRANSP()
 # This function converts a particle species notation from OWCF to TRANSP standard.
 # For example, the OWCF would write helium-3 as 3he, while TRANSP would write it as HE3.
 # This conversion function is simply to be able to let the OWCF seemlessly interact with TRANSP.
 #
-# Written by Henrik Järleblad. Last maintained 2025-03-05
+# Written by Henrik Järleblad. Last maintained 2025-07-11
 ##################################################################################################
 
 include("availReacts.jl")
@@ -37,7 +42,7 @@ include("availReacts.jl")
 Assume that reaction is written in the format a(b,c)d, or a(b,c)d-l, where a is thermal ion, b is 
 fast ion, c is fusion product particle of interest, d is fusion product particle of disinterest and 
 l is the nuclear energy state of c. l can be GS, 1L or 2L, corresponding to Ground State (GS), 
-1st excited energy level (1L) and 2nd excited energy level (2L). Rewrite to A-b=c-D, or A-b=c-d+l, format.
+1st excited energy level (1L) and 2nd excited energy level (2L). Rewrite to A-b--c-D, or A-b--c-d---l, format.
 'scpok' stands for 'secure copy protocol (is) ok'. Basically, that the file can be identified via a 
 terminal/Powershell interface without any problems. If projVel, then there is no fusion reaction 
 and we simply return 'proj-reaction'.
@@ -48,12 +53,12 @@ function pretty2scpok(reaction::String; projVel::Bool=false)
 
     thermal_reactant, fast_reactant = getFusionReactants(reaction)
     product_of_interest, product_of_disinterest = getFusionProducts(reaction)
-    reaction_scpok = thermal_reactant*"-"*fast_reactant*"="*product_of_interest*"-"*product_of_disinterest
+    reaction_scpok = thermal_reactant*"-"*fast_reactant*"--"*product_of_interest*"-"*product_of_disinterest
 
     if getReactionForm(reaction)==1
         return reaction_scpok
     elseif getReactionForm(reaction)==2
-        return reaction_scpok*"+"*getEmittedParticleEnergyLevel(reaction)
+        return reaction_scpok*"---"*getEmittedParticleEnergyLevel(reaction)
     else
         return "proj-"*reaction
     end

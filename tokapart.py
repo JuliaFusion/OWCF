@@ -192,7 +192,7 @@ def add_gyration(E, p, m, B, theta_g=None, flr=False, Z=None, Rg=None, zg=None):
     #print(np.sum(np.isnan(v_par))) # 0
     #print(np.sum(np.isnan(v_perp))) # Not 0!!!
 
-    if theta_g == None:
+    if np.size(theta_g) == 1: # More robust than None check
         theta_g = sample_gyro_angle(len(E))
 
     v = get_velocity(v_par, v_perp, e1, e2, e3, theta_g)    # velocity vectors

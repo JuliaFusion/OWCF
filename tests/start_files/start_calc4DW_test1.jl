@@ -41,14 +41,17 @@
 # E_array - The fast-ion energy (keV) grid points of your (E,p,R,z) grid. If set to 'nothing': nE, Emin and Emax must be specified - Vector
 # Emin - The lower boundary for the fast-ion energy in orbit space - Float64
 # Emax - The upper boundary for the fast-ion energy in orbit space - Float64
+# filename_o - If specified, e.g. "myCustomName", the output file will be saved as "myCustomName.jld2". Otherwise, leave as "" to have the OWCF 
+#              use the default output file naming convention (please see the OWCF/calc4DWeights.jl script) - String
 # filepath_equil - The path to the file with the tokamak magnetic equilibrium and geometry - String
 # filepath_FI_cdf - To be specified, if filepath_thermal_distr is a TRANSP .cdf shot file. See below for specifications - String
 # filepath_thermal_distr - The path to the thermal distribution file to extract thermal species data from. Must be a valid TRANSP .cdf file, a valid .jld2 file or "".
 #                          Please see the file description of the OWCF/calc4DWeights.jl script for more info - String
 # folderpath_o - The path to the folder where the results will be saved - String
-# gyro_samples - The number of points to discretize the gyro-motion for computation of synthetic spectra - Int64
 # iiimax - If specified to be greater than 1, several copies of weight functions will be calculated. For comparison. - Int64
 # iii_average - If set to true, an average of all the copies of weight functions will be computed. Saved without the "_i" suffix. - Bool
+# include_FLR_effects - If set to true, finite-Larmor radius effects will be taken into account, but computations are more expenseive - Bool
+# n_gyro - The number of points to discretize the gyro-motion for computation of synthetic spectra - Int64
 # nE - The number of fast-ion energy grid points in (E,p,R,z) space - Int64
 # np - The number of fast-ion pitch grid points in (E,p,R,z) space - Int64
 # nR - The number of fast-ion major radius grid points in (E,p,R,z) space - Int64
@@ -85,7 +88,7 @@
 # and thermal_dens_axis variables will be used to scale the polynomial profiles to match the specified
 # thermal temperature and thermal density at the magnetic axis. Please see the /misc/temp_n_dens.jl script for info.
 
-# Script written by Henrik Järleblad. Last maintained 2025-06-11.
+# Script written by Henrik Järleblad. Last maintained 2025-07-11.
 ######################################################################################################
 
 ## First you have to set the system specifications
@@ -183,9 +186,10 @@ end
     filepath_thermal_distr = "" # for example "96100J01.cdf", "myOwnThermalDistr.jld2" or ""
     folderpath_o = ($folderpath_OWCF)*"tests/outputs/" # Output folder path. Finish with '/'
     folderpath_OWCF = $folderpath_OWCF # Set path to OWCF folder to same as main process (hence the '$')
-    gyro_samples = 50 # 50 is the default discretization number for the gyro-motion
     iiimax = 2 # The script will calculate iiimax number of weight matrices. They can then be examined in terms of similarity (to determine MC noise influence etc).
     (iiimax > 1) && (iii_average = true) # If true, the average of all weight matrices will be computed and saved. Without the "_i" suffix.
+    include_FLR_effects = false # Set to false, by default. Will result in more physically accurate weight functions, at the expense of computational speed
+    n_gyro = 50 # 50 is the default discretization number for the gyro-motion
     nE = 11 # Please specify, if E_array is set to nothing
     np = 12 # Please specify, if p_array is set to nothing
     nR = 5 # Please specify, if R_array is set to nothing

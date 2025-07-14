@@ -39,8 +39,10 @@
 # filepath_thermal_distr - The path to the thermal species distribution file. Must be .cdf (TRANSP) or .jld2 file format. Otherwise "" - String
 # filepath_TRANSP_shot - The path to the TRANSP .cdf shot file, if filepath_FI_distr or filepath_thermal_distr is specified as a .cdf TRANSP file - String
 # folderpath_o - The path to the folder where the results will be saved - String
+# include_FLR_effects - If set to true, finite-Larmor radius effects will be taken into account, but computations are more expenseive - Bool
 # mc_samples - The number of Monte-Carlo samples to use for the signal computation (sample from the fast-ion distribution) - Int64
 # mc_chunk - The number of Monte-Carlo samples in a single sample-partitioned chunk - Int64
+# n_gyro - The number by which to discretize the gyro-motion into, for the purpose of projecting the fast-ion velocity vectors onto the diagnostic line-of-sight - Int64
 # noiseLevel_b - The level of the background noise for the synthetic signal, if addNoise is set to true - Float64
 # noiseLevel_s - The level of the signal noise for the synthetic signal, if addNoise is set to true - Float64
 # phase_space_point_of_interest - Specific E-, p-, R- and/or z-values can specified. This is done by specifying a Float64 value in place of the corresponding 'nothing' vector element (see below).
@@ -53,10 +55,13 @@
 #                                 Furthermore, PLEASE NOTE that the R and/or z grid values in the .h5 or .jld2 file might be given in centimeters or meters.
 #                                 So please specify the R- and/or z-values accordingly. E- values should always be given in keV. - Vector{Union{Nothing,Float64}}
 # reaction - The nuclear fusion reaction that you want to simulate. Please see OWCF/misc/availReacts.jl for available fusion reactions - String
-# calcProjVel - If true, then the synthetic diagnostic spectrum will be the result of projected fast-ion velocities. Remember to set 'reaction' to 'proj-X' where 'X' is the fast-ion species which projected velocity you want to compute - Bool
 # timepoint - The timepoint of the tokamak shot for the magnetic equilibrium. Format XX,YYYY where XX are seconds and YYYY are decimals - String
-# thermal_temp_axis - The temperature of the thermal species distribution on axis, if filepath_thermal_distr is not specified - Float64
 # thermal_dens_axis - The density of the thermal species distribution on axis, if filepath_thermal_distr is not specified - Float64
+# thermal_dens_profile_type - The bulk (thermal) plasma density profile type to be used. Currently available options are :DEFAULT and :FLAT.
+#                             Please see OWCF/misc/temp_n_dens.jl for more info - Symbol
+# thermal_temp_axis - The temperature of the thermal species distribution on axis, if filepath_thermal_distr is not specified - Float64
+# thermal_temp_profile_type - The bulk (thermal) plasma temperature profile type to be used. Currently available options are :DEFAULT and :FLAT.
+#                             Please see OWCF/misc/temp_n_dens.jl for more info - Symbol
 # verbose - If true, lots of information will be printed during execution. Fun! - Boolean
 # visualizeProgress - If false, progress bar will not be displayed during computations - Boolean
 #
@@ -86,7 +91,7 @@
 # file has been specified, the algorithm needs to know the fast-ion time window to extract data from.
 # That is only stored in the TRANSP .cdf fast-ion file
 
-# Script written by Henrik Järleblad. Last maintained 2025-01-07.
+# Script written by Henrik Järleblad. Last maintained 2025-07-11.
 ######################################################################################################
 
 ## First you have to set the system specifications
@@ -141,25 +146,27 @@ end
     filepath_TRANSP_shot = "" # As an example, if filepath_FI_distr=="96100J01_fi_1.cdf" then this variable should be "96100J01.cdf". If filepath_thermal_distr=="96100J01.cdf", then filepath_TRANSP_shot==filepath_thermal_distr.
     folderpath_o = "../OWCF_results/template/" # Output folder path. Finish with '/'
     folderpath_OWCF = $folderpath_OWCF # Set path to OWCF folder to same as main process (hence the '$')
-    include_flr_effects = false
+    include_FLR_effects = false # Set to false, by default. Will result in more physically accurate synthetic measurements, at the expense of computational speed
     mc_samples = 1_000_000
     mc_chunk = 10_000 # Should be smaller than mc_samples. If unsure, do not alter from default value of 10_000
+    n_gyro = 50 # The number by which to discretize the gyro motion, for velocity projection onto the diagnostic line-of-sight
     noiseLevel_b = 0.05 # Background noise level. As a decimal fraction of 1.0. Could also be greater than 1.0 but why would you want that?
     noiseLevel_s = 0.05 # Signal noise level. As a decimal fraction of 1.0. Could also be greater than 1.0 but why would you want that?
     phase_space_point_of_interest = [nothing,nothing,nothing,nothing] # To specify a specific E-, p-, R- and/or z-value, change the corresponding 'nothing' element to a Float64 value. Check the .h5 or .jld2 fast-ion file to decide on meters or cm for the R- and/or z-values [keV, -, meters or centimeters, meters or centimeters]
     reaction = "D(d,n)3He" # Specified on the form a(b,c)d where a is thermal ion, b is fast ion, c is emitted particle and d is the product nucleus.
     # PLEASE NOTE! Specify alpha particles as '4he' or '4He' (NOT 'he4' or 'He4'). Same goes for helium-3 (specify as '3he', NOT 'he3')
-    calcProjVel = false # If true, the synthetic diagnostic spectrum will be computed from projected velocities. If true, remember to set the 'reaction' input variable to the format 'proj-X' where 'X' is the fast-ion species of interest. If true, remember to also leave the thermal species input variables unspecified.
     timepoint = nothing # If unknown, just leave as nothing. The algorithm will try to figure it out automatically.
-    thermal_temp_axis = nothing # keV. Please specify if filepath_thermal_distr is not specified.
-    thermal_dens_axis = nothing # m^-3. Please specify if filepath_thermal_distr is not specified.
+    thermal_dens_axis = 0.0e20 # m^-3. Please specify this if filepath_thermal_distr is not specified
+    thermal_dens_profile_type = :DEFAULT # Currently available options are :DEFAULT and :FLAT
+    thermal_temp_axis = 0.0 # keV. Please specify this if filepath_thermal_distr is not specified
+    thermal_temp_profile_type = :DEFAULT # Currently available options are :DEFAULT and :FLAT
     verbose = true # If set to true, the script will talk a lot! Yay!
     visualizeProgress = false # If set to true, a progress bar will be displayed during distributed computation
 
     # If you would like to have the fast-ion loaded from .h5/.jld2 file interpolated onto specific grid dimensions
     # If any specific E-, p-, R- or z-values have been specified in the input variable phase_space_point_of_interest,
     # the interpolation will be performed before using a specific f(p,R,z), f(E,p), f(z) etc
-    interp = true
+    interp = false
     nE_ps = 201
     np_ps = 61
     nR_ps = 59

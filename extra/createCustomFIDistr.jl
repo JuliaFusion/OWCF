@@ -71,7 +71,7 @@
 #### Other:
 #
 
-# Script written by Henrik Järleblad. Last maintained 2025-04-24.
+# Script written by Henrik Järleblad. Last maintained 2025-07-10.
 #################################################################################################################################################
 
 ################################################################################
@@ -151,8 +151,11 @@ if constant_Rz
             n_e = n_i_vec[1] # Initially assume that n_e == n_i
             verbose && println("Successfully computed Ti, ni and ne from OWCF default formulas.")
         elseif lowercase(filepath_thermal_profiles[end-2:end])=="cdf" # If the thermal profiles data is a TRANSP file...
-            T_i_vec = [(getTempProfileFromTRANSP(timepoint,filepath_thermal_profiles,thermal_species))(rho_of_temp_n_dens)] # The thermal ion temperature at the (R,z) point and timepoint of interest, extracted from a TRANSP .cdf file, and put into a single-element vector
-            n_i_vec = [(getDensProfileFromTRANSP(timepoint,filepath_thermal_profiles,thermal_species))(rho_of_temp_n_dens)] # The thermal ion density at the (R,z) point and timepoint of interest, extracted from a TRANSP .cdf file, and put into a single-element vector
+            if typeof(timepoint)==String
+                tp = parse(Float64,replace(timepoint, "," => "."))
+            end
+            T_i_vec = [(getTempProfileFromTRANSP(tp,filepath_thermal_profiles,thermal_species))(rho_of_temp_n_dens)] # The thermal ion temperature at the (R,z) point and timepoint of interest, extracted from a TRANSP .cdf file, and put into a single-element vector
+            n_i_vec = [(getDensProfileFromTRANSP(tp,filepath_thermal_profiles,thermal_species))(rho_of_temp_n_dens)] # The thermal ion density at the (R,z) point and timepoint of interest, extracted from a TRANSP .cdf file, and put into a single-element vector
             n_e = n_i_vec[1] # Initially assume that n_e == n_i
             verbose && println("Successfully computed Ti, ni and ne from TRANSP .cdf file.")
         elseif lowercase(filepath_thermal_profiles[end-3:end])=="jld2" # If the thermal profiles data is an output file of the helper/createCustomThermalProfiles.jl script
@@ -177,7 +180,10 @@ if constant_Rz
         if !assume_Ti_equalTo_Te # If Te==Ti should not be assumed...
             verbose && println("T_e=T_i will not be assumed.")
             if lowercase(filepath_thermal_profiles[end-2:end])=="cdf" # If the thermal profiles data is a TRANSP file...
-                T_e = (getTempProfileFromTRANSP(timepoint,filepath_thermal_profiles,"e"))(rho_of_temp_n_dens)
+                if typeof(timepoint)==String
+                    tp = parse(Float64,replace(timepoint, "," => "."))
+                end
+                T_e = (getTempProfileFromTRANSP(tp,filepath_thermal_profiles,"e"))(rho_of_temp_n_dens)
                 verbose && println("---> Successfully computed T_e from TRANSP .cdf file.")
             else
                 myfile = jldopen(filepath_thermal_electron_profiles,false,false,false,IOStream)
@@ -195,7 +201,10 @@ if constant_Rz
         if !assume_ni_equalTo_ne # If ne==ni should not be assumed...
             verbose && println("n_e=n_i will not be assumed.")
             if lowercase(filepath_thermal_profiles[end-2:end])=="cdf" # If the thermal profiles data is a TRANSP file...
-                n_e = (getDensProfileFromTRANSP(timepoint,filepath_thermal_profiles,"e"))(rho_of_temp_n_dens)
+                if typeof(timepoint)==String
+                    tp = parse(Float64,replace(timepoint, "," => "."))
+                end
+                n_e = (getDensProfileFromTRANSP(tp,filepath_thermal_profiles,"e"))(rho_of_temp_n_dens)
                 verbose && println("---> Successfully computed n_e from TRANSP .cdf file.")
             else
                 myfile = jldopen(filepath_thermal_electron_profiles,false,false,false,IOStream)

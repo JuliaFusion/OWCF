@@ -23,7 +23,7 @@
 #
 # Finally, please note that some functions in dependencies.jl might be under construction. Hence, the bad code.
 #
-# Written by H. Järleblad. Last updated 2025-05-05.
+# Written by H. Järleblad. Last maintained 2025-07-11.
 ###################################################################################################
 
 println("Loading the Julia packages for the OWCF dependencies... ")
@@ -822,50 +822,15 @@ function mu_func(energy::T, B::T, Pϕ::T, Ψ::T, RBϕ::T; energy_in_keV::Bool=tr
 end
 
 """
-    get_orbel_volume(myOrbitGrid, os_equidistant)
+    get_orbel_volume(og)
 
-Get the orbit element volume of this specific orbit-grid.
-If os_equidistant=false, then return a 3D array with all the orbit volumes.
-Otherwise, just a scalar.
+Get the volume elements of the orbit-space grid voxels. 
+Return a 3D array with all the volumes elements.
 """
-function get_orbel_volume(og::OrbitGrid, os_equidistant::Bool)
-
-    if os_equidistant
-        dRm = abs(og.r[2]-og.r[1]) # The difference between the first and second element should be representative for the whole grid, due to equidistancy
-        dE = abs(og.energy[2]-og.energy[1])
-        dpm = abs(og.pitch[2]-og.pitch[1])
-        dO = dE*dpm*dRm
-        return dO
-    else
-        dO = zeros(length(og.energy), length(og.pitch), length(og.r)) # If not equidistant, create a 3D array with zeros
-        for Ei=1:length(og.energy) # For all energies...
-            if Ei==length(og.energy) # If at the edge of the orbit grid...
-                # Assume edge orbit-element volume to be same as next-to-edge
-                dEi = abs(og.energy[end]-og.energy[end-1])
-            else
-                dEi = abs(og.energy[Ei+1]-og.energy[Ei])
-            end
-            for pmi=1:length(og.pitch)
-                if pmi==length(og.pitch)
-                    dpmi = abs(og.pitch[end]-og.pitch[end-1])
-                else
-                    dpmi = abs(og.pitch[pmi+1]-og.pitch[pmi])
-                end
-                for Rmi=1:length(og.r)
-                    if Rmi==length(og.r)
-                        dRmi = abs(og.r[end]-og.r[end-1])
-                    else
-                        dRmi = abs(og.r[Rmi+1]-og.r[Rmi])
-                    end
-
-                    dO[Ei, pmi, Rmi] = dEi*dpmi*dRmi # Replace the zero-element in the 3D array with the resulting orbit-element volume
-                end
-            end
-        end
-
-        return dO
-    end
+function get_orbel_volume(og::OrbitGrid)
+    return get3DVols(og.energy, og.pitch, og.r)
 end
+get_orbel_volume(og::OrbitGrid, dummy_bool::Bool) = get_orbel_volume(og) # For backwards compatibility
 
 ###### Inverse problem (fast-ion tomography) solving related functions
 
@@ -891,15 +856,17 @@ function is_energy_pitch(abscissas::Vector{Vector{T}} where {T<:Real}, abscissas
         return (returnExtra ? (false, 0, 0) : false)
     end
 
+    verbose && println("is_energy_pitch(): abscissas_units: $(abscissas_units)")
+
     units_1 = abscissas_units[1]
-    units_2 = abscissas_units[1]
+    units_2 = abscissas_units[2]
     units_tot = vcat(units_1, units_2)
     
     energy_ind = findall(x-> x in keys(ENERGY_UNITS) || x in keys(ENERGY_UNITS_LONG), units_tot)
     pitch_ind = findall(x-> x in keys(DIMENSIONLESS_UNITS) || x in keys(DIMENSIONLESS_UNITS_LONG), units_tot)
 
     if !(length(energy_ind)==1 && length(pitch_ind)==1)
-        verbose && println("is_energy_pitch(): (E,p) coordinates not found. Returning false... ")
+        verbose && println("is_energy_pitch(): (E,p) coordinates not found (length(energy_ind)=$(length(energy_ind)))(length(pitch_ind)=$(length(pitch_ind))). Returning false... ")
         return (returnExtra ? (false, 0, 0) : false)
     end
 
@@ -2132,27 +2099,6 @@ end
 
 
 """
-    get_orbel_volume(myOrbitGrid, equidistant)
-
-Get the orbit element volume of this specific orbit-grid.
-If equidistant=false, then return a 3D array with all the orbit volumes.
-Otherwise, just a scalar.
-"""
-function get_orbel_volume(og::OrbitGrid, equidistant::Bool)
-
-    if equidistant
-        dRm = abs(og.r[2]-og.r[1])
-        dE = abs(og.energy[2]-og.energy[1])
-        dpm = abs(og.pitch[2]-og.pitch[1])
-        dO = dE*dpm*dRm
-        return dO
-    else
-        return get3DVols(og.energy, og.pitch, og.r)
-    end
-end
-
-
-"""
     get3DDiffs(E, pm, Rm)
 
 Calculate and return 3D-array of the diffs of orbit-space coordinates. Assume edge diff to be same as next-to-edge diff.
@@ -2371,28 +2317,26 @@ function class2int(M::AbstractEquilibrium, o::GuidingCenterOrbits.Orbit; sigma::
 end
 
 """
-    OWCF_map_orbits(og, f, equidistant)
+    OWCF_map_orbits(og, f)
     OWCF_map_orbits(-||-;weights=false)
 
 This function is the OWCF version of the original function map_orbits which already exists in the OrbitTomography.jl package.
-It has the ability to take non-equidistant 3D grid-points into account. If weights, then do not divide by phase-space volume.
+It takes non-equidistant 3D grid-points into account, as well as weights (then do not divide by orbit-space volume).
 """
-function OWCF_map_orbits(mygrid::OrbitGrid, f::Vector, equidistant::Bool; weights::Bool=false)
-    if equidistant
-        return OrbitTomography.map_orbits(mygrid,f) # Use the normal map_orbits function
-    else
-        if length(mygrid.counts) != length(f)
-            throw(ArgumentError("Incompatible sizes"))
-        end
+function OWCF_map_orbits(og::OrbitGrid, f::Vector; weights::Bool=false)
+    if length(og.counts) != length(f)
+        throw(ArgumentError("Incompatible sizes for input og and f"))
+    end
 
-        if !(weights)
-            dorb = get_orbel_volume(mygrid, equidistant) # Get the volumes of the voxels of the orbit grid
-            return [i == 0 ? zero(f[1]) : f[i]/(mygrid.counts[i]*dorb[i]) for i in mygrid.orbit_index] # This line is complicated...
-        else
-            return [i == 0 ? zero(f[1]) : f[i]/(mygrid.counts[i]*1.0) for i in mygrid.orbit_index] # This line is complicated...
-        end
+    if !(weights)
+        dorb = get_orbel_volume(og) # Get the volumes of the voxels of the orbit grid
+        return [i == 0 ? zero(f[1]) : f[i]/(og.counts[i]*dorb[i]) for i in og.orbit_index] # This line is complicated...
+    else
+        return [i == 0 ? zero(f[1]) : f[i]/(og.counts[i]*1.0) for i in og.orbit_index] # This line is complicated...
     end
 end
+
+OWCF_map_orbits(og::OrbitGrid, f::Vector, dummy_bool::Bool; kwargs...) = OWCF_map_orbits(og, f; kwargs...) # For backwards compatibility
 
 """
     ps2os_streamlined(filepath_distr, filepath_equil, og; numOsamples)
@@ -3034,7 +2978,7 @@ function unmap_orbits(og::OrbitGrid, F_os_3D::AbstractArray; verbose::Bool=false
         throw(ArgumentError("Dimensions of fast-ion distribution does not correspond to orbit-grid dimensions!"))
     end
 
-    dorbs = get_orbel_volume(og,false) # Should always be false for safety and applicability
+    dorbs = get_orbel_volume(og)
     if verbose
         println("Unmapping the orbits... ")
     end

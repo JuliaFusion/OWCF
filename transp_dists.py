@@ -327,7 +327,7 @@ class FBM:
         return i_spatial, in_vol
 
 
-    def sample(self, n_samples=None, R=None, Z=None):
+    def sample(self, n_samples=None, R=None, Z=None, verbose=False):
         """
         Sample from the distribution. Must input either 'n_samples',
         (in which case the positions are sampled), or both 'R' and 'Z',
@@ -335,7 +335,7 @@ class FBM:
         """
 
         if (R is None) and (Z is None):
-            print('Sampling positions...')
+            verbose and print('Sampling positions...')
             sample_pos = True
 
             # Draw random positions
@@ -355,7 +355,7 @@ class FBM:
 
         # Check in which volumes the sampled/requested positions reside,
         # and sample E and p from the appropriate distributions.
-        print('Sampling energy and pitch...')
+        verbose and print('Sampling energy and pitch...')
 
         i_spatial, in_vol = self.get_spatial_index(R, Z)
 
@@ -397,7 +397,7 @@ class FBM:
             dp = np.interp(p, self.A, self.dA) / 2.0
             p = np.random.uniform(low=p-dp, high=p+dp) 
 
-        print('Done!')
+        verbose and print('Done!')
 
         if sample_pos:
             return R, Z, E, p
