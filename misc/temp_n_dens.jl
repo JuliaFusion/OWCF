@@ -36,7 +36,7 @@
 ### Other
 # -
 
-# Script written by Henrik Järleblad. Last maintained 2024-06-25.
+# Script written by Henrik Järleblad. Last maintained 2025-07-11.
 ###################################################################################################
 
 using NetCDF
@@ -110,12 +110,12 @@ extract the temperature data at that timepoint, for the specified species. Retur
 represents the temperature profile at that point.
 
 --- Input:
-timepoint - The timepoint of interest (seconds) - Float64
+timepoint - The timepoint of interest (seconds) - Real
 filepath_thermal_distr - The file path to the TRANSP .cdf pulse file - String
 species - The particle species of interest ("D","T","e" etc) - String
 verbose - If true, the function will talk a lot! - Bool
 """
-function getTempProfileFromTRANSP(timepoint::Float64,filepath_thermal_distr::String, species::String; verbose::Bool=false)
+function getTempProfileFromTRANSP(timepoint::T where {T<:Real},filepath_thermal_distr::String, species::String; verbose::Bool=false)
     T_identifier = ""
     if lowercase(species) in OWCF_SPECIES
         if species=="e"
@@ -129,23 +129,6 @@ function getTempProfileFromTRANSP(timepoint::Float64,filepath_thermal_distr::Str
     verbose && println("getTempProfileFromTRANSP(): T_identifier="*T_identifier)
     verbose && println("getTempProfileFromTRANSP(): Creating interpolation object... ")
     return getTRANSPInterpObject(T_identifier, timepoint, filepath_thermal_distr; verbose=verbose, temperature_eV=true)
-end
-
-"""
-    getTempProfileFromTRANSP(timepoint::String, filepath_thermal_distr::String,species::String)
-    getTempProfileFromTRANSP(-||-; kwargs... )
-
-Given a timepoint (seconds, including decimals), load the TRANSP .cdf pulse file at filepath_thermal_distr and 
-extract the temperature data at that timepoint. Return an interpolation object that represents the thermal 
-temperature profile at that point.
-
---- Input:
-timepoint - The timepoint of interest (seconds). Format "XX,YYYY" - String
-filepath_thermal_distr - The file path to the TRANSP .cdf pulse file - String
-verbose - If true, the function will talk a lot! - Bool
-"""
-function getTempProfileFromTRANSP(timepoint::String, filepath_thermal_distr::String,species::String; kwargs...)
-    return getTempProfileFromTRANSP(parse(Float64,replace(timepoint,","=>".")), filepath_thermal_distr,species::String; kwargs...)
 end
 
 """
@@ -176,35 +159,18 @@ extract the density data at that timepoint, for a specific species 'species'. Re
 that represents the density profile at that point.
 
 --- Input:
-timepoint - The timepoint of interest (seconds) - Float64
+timepoint - The timepoint of interest (seconds) - Real
 filepath_thermal_distr - The file path to the TRANSP .cdf pulse file - String
 species - The species of interest, e.g. "D", "T", "e" - String
 verbose - If true, the function will talk a lot! - Bool
 """
-function getDensProfileFromTRANSP(timepoint::Float64,filepath_thermal_distr::String, species::String; verbose::Bool=false)
+function getDensProfileFromTRANSP(timepoint::T where {T<:Real},filepath_thermal_distr::String, species::String; verbose::Bool=false)
     verbose && println("getDensProfileFromTRANSP(): OWCF species label: "*species)
     species_TRANSP = thermalSpecies_OWCFtoTRANSP(species) # Convert from OWCF convention (e.g. 3he for Helium-3) to TRANSP convention (e.g. HE3 for Helium-3)
     verbose && println("getDensProfileFromTRANSP(): TRANSP species label: "*species_TRANSP)
     
     verbose && println("getDensProfileFromTRANSP(): Creating interpolation object... ")
     return getTRANSPInterpObject("N"*species_TRANSP, timepoint, filepath_thermal_distr; verbose=verbose, density_cm=true)
-end
-
-"""
-    getDensProfileFromTRANSP(timepoint::String, filepath_thermal_distr::String, species::String)
-    getDensProfileFromTRANSP(-||-; kwargs... )
-
-Given a timepoint (seconds, including decimals), load the TRANSP .cdf output file 'filepath_thermal_distr' and 
-extract the density data at that timepoint, for a specific species 'species'. Return an interpolation object 
-that represents the density profile at that point.
-
---- Input:
-timepoint - The timepoint of interest (seconds). Format "XX,YYYY" - String
-filepath_thermal_distr - The file path to the TRANSP .cdf pulse file - String
-species - The species of interest, e.g. "D", "T", "e" - String
-"""
-function getDensProfileFromTRANSP(timepoint::String, filepath_thermal_distr::String, species::String; kwargs...)
-    return getDensProfileFromTRANSP(parse(Float64,replace(timepoint,","=>".")), filepath_thermal_distr, species; kwargs...)
 end
 
 """

@@ -23,7 +23,7 @@
 # 
 # This is performed in e.g. every OWCF start template file.
 #
-# Written by H. Järleblad. Last updated 2025-06-13.
+# Written by H. Järleblad. Last maintained 2025-07-11.
 ###################################################################################################
 
 println("Loading the Julia packages for the grahpical user interfaces (GUI) of the OWCF... ")
@@ -699,10 +699,10 @@ function plotSafetyPlot(S_WF::AbstractVector, Ed_WF::AbstractVector, WFO_E::Arra
     S_WF_WFORm = dropdims(dRm .*sum(WFO_Rm,dims=(2,3)),dims=(2,3)) # Sum over all Rm values and orbit types
 
     verbose && println("Plotting safety plot... ")
-    my_plt = Plots.plot(Ed_WF,S_WF,label="S_WF",linewidth=8)
-    my_plt = Plots.plot!(my_plt, Ed_WF,S_WF_WFOE,label="S_WF_WFOE",linewidth=6)
-    my_plt = Plots.plot!(my_plt, Ed_WF,S_WF_WFOpm,label="S_WF_WFOpm",linewidth=4)
-    my_plt = Plots.plot!(my_plt, Ed_WF,S_WF_WFORm,label="S_WF_WFORm",linewidth=2)
+    my_plt = Plots.plot(Ed_WF, S_WF ,label="S_WF", linewidth=8)
+    my_plt = Plots.plot!(my_plt, Ed_WF, S_WF_WFOE, label="S_WF_WFOE", linewidth=6)
+    my_plt = Plots.plot!(my_plt, Ed_WF, S_WF_WFOpm, label="S_WF_WFOpm", linewidth=4)
+    my_plt = Plots.plot!(my_plt, Ed_WF, S_WF_WFORm, label="S_WF_WFORm", linewidth=2)
     Plots.display(my_plt)
 
     if save_plot

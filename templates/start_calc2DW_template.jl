@@ -47,12 +47,12 @@
 # filepath_FI_cdf - To be specified, if filepath_thermal_distr is a TRANSP .cdf shot file. See below for specifications - String
 # filepath_thermal_distr - The path to the thermal distribution file to extract thermal species data from. Must be TRANSP .cdf, .jld2 file format or "" - String
 # filepath_start - The path to the start file. This is set automatically, and saved in the calc2DWeights.jl output file. LEAVE UNCHANGED. - String
-# flr_effects - If set to true, finite Larmor radius effects will be included in the weight function computations - Bool
 # folderpath_o - The path to the folder where the results will be saved - String
 # folderpath_OWCF - The path to the folder on your computer where the OWCF is installed - String
-# gyro_samples - The number of points to discretize the gyro-motion for computation of synthetic spectra - Int64
 # iiimax - If specified to be greater than 1, several copies of weight functions will be calculated. For comparison. - Int64
 # iii_average - If set to true, an average of all the copies of weight functions will be computed. Saved without the "_i" suffix. - Bool
+# include_FLR_effects - If set to true, results will be more accurate, but computations more expensive/slow - Bool
+# n_gyro - The number of points to discretize the gyro-motion for computation of synthetic spectra - Int64
 # nE - The number of fast-ion energy grid points in (E,p) space - Int64
 # np - The number of fast-ion p grid points in (E,p) space - Int64
 # p_array - The fast-ion p grid points of your (E,p) grid. If set to 'nothing': np, p_min and p_max must be specified - Vector
@@ -69,16 +69,12 @@
 # reaction - Fusion reaction, on any of the forms described in the OWCF/misc/availReacts.jl script - String
 # saveVparaVperpWeights - If set to true, the weight functions will be saved on a (vpara,vperp) grid, in addition to (E,p) - Bool
 # timepoint - The timepoint of the tokamak shot for the magnetic equilibrium. Format XX,YYYY where XX are seconds and YYYY are decimals - String
-# thermal_temp_axis - The temperature of the thermal species distribution on axis, if filepath_thermal_distr is not specified - Float64
-# thermal_dens_axis - The density of the thermal species distribution on axis, if filepath_thermal_distr is not specified - Float64
-# thermal_profiles_type - If 'filepath_thermal_distr' has not been specified (""), choose between options for thermal temperature and density profiles. 
-#                         The options are: 
-#                           - :FLAT - The 'thermal_temp_axis' and 'thermal_dens_axis' will be the (constant) values for the thermal temperature and thermal 
-#                                     density across the entire plasma, respectively.
-#                           - :DEFAULT - The 'thermal_temp_axis' and 'thermal_dens_axis' will be the values for the thermal temperature and thermal density
-#                                        at the magnetic axis, and the OWCF default temperature and density profiles will be used. Please see the 
-#                                        OWCF/misc/temp_n_dens.jl function collection, as well as the OWCF/misc/default_temp_n_dens.png plot.
-#                         typeof(thermal_profiles_type) is a 'Symbol'.
+# thermal_dens_axis - Should be specified if filepath_thermal_distr is not specified. The bulk (thermal) plasma density on-axis. In m^-3 - Float64
+# thermal_dens_profile_type - The bulk (thermal) plasma density profile type to be used. Currently available options are :DEFAULT and :FLAT.
+#                             Please see OWCF/misc/temp_n_dens.jl for more info - Symbol
+# thermal_temp_axis - Should be specified if filepath_thermal_distr is not specified. The bulk (thermal) plasma temperature on-axis. In keV - Float64
+# thermal_temp_profile_type - The bulk (thermal) plasma temperature profile type to be used. Currently available options are :DEFAULT and :FLAT.
+#                             Please see OWCF/misc/temp_n_dens.jl for more info - Symbol
 # verbose - If true, lots of information will be printed during execution - Bool
 # visualizeProgress - If false, progress bar will not be displayed during computations - Bool
 # z_of_interest - The vertical coordinate of interest, for the (E,p) weight functions. Specified in meters or symbol (see below) - Float64 or symbol
@@ -91,7 +87,7 @@
 # and thermal_dens_axis variables will be used to scale the polynomial profiles to match the specified
 # thermal temperature and thermal density at the magnetic axis. Please see the /misc/temp_n_dens.jl script for info.
 
-# Script written by Henrik Järleblad. Last maintained 2025-03-25.
+# Script written by Henrik Järleblad. Last maintained 2025-07-11.
 ######################################################################################################
 
 ## First you have to set the system specifications
@@ -147,12 +143,12 @@ end
     filepath_FI_cdf = "" # If filepath_thermal_distr=="96100J01.cdf", then filepath_FI_cdf should be "96100J01_fi_1.cdf" for example
     filepath_thermal_distr = "" # for example "96100J01.cdf", "myOwnThermalDistr.jld2" or ""
     filepath_start = Base.source_path() # For saving in output file, for posterity and reproducibility
-    flr_effects = false
     folderpath_o = "../OWCF_results/template/" # Output folder path. Finish with '/'
     folderpath_OWCF = $folderpath_OWCF # Set path to OWCF folder to same as main process (hence the '$')
-    gyro_samples = 50 # 50 is the default discretization number for the gyro-motion
     iiimax = 1 # The script will calculate iiimax number of weight matrices. They can then be examined in terms of similarity (to determine MC noise influence etc).
     (iiimax > 1) && (iii_average = false) # If true, the average of all weight matrices will be computed and saved. Without the "_i" suffix.
+    include_FLR_effects = false # If true, finite Larmor radius (FLR) effects will be taken into account
+    n_gyro = 50 # For every (E,p, R_of_interest, z_of_interest) point, this number of velocity vectors will be sampled
     nE = 0
     np = 0
     p_array = nothing # Array can be specified manually. Otherwise, leave as 'nothing'
@@ -181,9 +177,10 @@ end
     reaction = "9Be(4He,12C)n-1L"
     ################################################################################
     timepoint = nothing # If unknown, just leave as nothing. The algorithm will try to figure it out automatically.
-    thermal_temp_axis = 0.0 # keV. Please specify this if filepath_thermal_distr and filepath_FI_cdf are not specified
     thermal_dens_axis = 0.0e20 # m^-3. Please specify this if filepath_thermal_distr and filepath_FI_cdf are not specified
-    thermal_profiles_type = :DEFAULT # Currently available options are :DEFAULT and :FLAT
+    thermal_dens_profile_type = :DEFAULT # Currently available options are :DEFAULT and :FLAT
+    thermal_temp_axis = 0.0 # keV. Please specify this if filepath_thermal_distr and filepath_FI_cdf are not specified
+    thermal_temp_profile_type = :DEFAULT # Currently available options are :DEFAULT and :FLAT
     verbose = true # If true, then the program will be very talkative!
     visualizeProgress = false # If false, progress bar will not be displayed for computations
     z_of_interest = :z_mag # The vertical coordinate of interest. Specify in meters e.g. "0.3", "0.4" etc. Can also be specified as a symbol :z_mag, then the vertical coordinate of the magnetic axis will automatically be used

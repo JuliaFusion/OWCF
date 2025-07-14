@@ -92,7 +92,7 @@
 ### Other
 # 
 
-# Script written by Henrik Järleblad. Last maintained 2025-06-07.
+# Script written by Henrik Järleblad. Last maintained 2025-07-11.
 ###########################################################################################################
 
 # A dictionary to keep a record of the names of all sections and their respective execution times
@@ -123,17 +123,25 @@ include("extra/constants.jl")
 include("misc/convert_units.jl")
 
 if "collisions" in lowercase.(String.(regularization))
-    verbose && println("Collision physics included in list of regularization ---> Loading OWCF dependencies... ")
+    verbose && println("Collision physics included in list of regularization!")
+    verbose && print("---> ")
     include("extra/dependencies.jl")
     include("misc/temp_n_dens.jl")
     include("misc/species_func.jl")
 end
-if rescale_W
-    verbose && println("rescale_W set to true ---> Loading OWCF dependencies... ")
+if ("icrf" in lowercase.(String.(regularization)))
+    verbose && println("ICRF physics included in list of regularization!")
+    verbose && print("---> ")
     include("extra/dependencies.jl")
 end
-if ("icrf" in lowercase.(String.(regularization)))
-    verbose && println("ICRF physics included in list of regularization ---> Loading OWCF dependencies... ")
+if ("firsttikhonov" in lowercase.(String.(regularization)))
+    verbose && println("1st order Tikhonov in list of regularization!")
+    verbose && print("---> ")
+    include("extra/dependencies.jl")
+end
+if rescale_W
+    verbose && println("rescale_W set to true!")
+    verbose && print("---> ")
     include("extra/dependencies.jl")
 end
 
@@ -721,7 +729,7 @@ println("------------------------------------------------ SECTION $(prnt) ------
 if "collisions" in lowercase.(String.(regularization))
     COMPATIBLE_OPTIONS = [is_energy_pitch, is_vpara_vperp] # ADD MORE CHECKS HERE IN FUTURE VERSIONS, IF NEEDED <---------------------------------------------------------------------
     verbose && print(":COLLISIONS included in 'regularization' input variable. Performing safety checks... ")
-    if sum([f(W_abscissas[1],W_abscissas_units[1]) for f in COMPATIBLE_OPTIONS])==0 # Is the reconstruction space NOT in any of the COMPATIBLE_OPTIONS?
+    if sum([f(W_abscissas[1][2:end], W_abscissas_units[1][2:end]) for f in COMPATIBLE_OPTIONS])==0 # Is the reconstruction space NOT in any of the COMPATIBLE_OPTIONS?
         error(":COLLISIONS was specified in 'regularization' input variable, but reconstruction space is not compatible. Current compatible options include (E,p) and (vpara,vperp). Please correct and re-try.")
     end
     if !(length(regularization_thermal_ion_temp)==length(regularization_thermal_ion_dens)==length(regularization_thermal_ion_species))
@@ -782,6 +790,9 @@ if "collisions" in lowercase.(String.(regularization))
                 else
                     error("regularization_timepoint input variable has invalid type. Expected Float64, Int64 or String. regularization_timepoint input variable needed to load ion temperature data from $(regularization_thermal_ion_temp[i]). Please correct and re-try.")
                 end
+                if typeof(t_mid)==String
+                    t_mid = parse(Float64,replace(t_mid, "," => "."))
+                end
                 local etp; etp = getTempProfileFromTRANSP(t_mid,regularization_thermal_ion_temp[i],regularization_thermal_ion_species[i])
                 T_is = etp.(rho_of_interests)
                 verbose && println("---------> Computed ion temperature(s) of $(T_is) keV")
@@ -831,6 +842,9 @@ if "collisions" in lowercase.(String.(regularization))
                     end
                 else
                     error("regularization_timepoint input variable has invalid type. Expected Float64, Int64 or String. regularization_timepoint input variable needed to load ion density data from $(regularization_thermal_ion_dens[i]). Please correct and re-try.")
+                end
+                if typeof(t_mid)==String
+                    t_mid = parse(Float64,replace(t_mid, "," => "."))
                 end
                 local etp; etp = getDensProfileFromTRANSP(t_mid,regularization_thermal_ion_dens[i],regularization_thermal_ion_species[i])
                 n_is = etp.(rho_of_interests)
@@ -937,6 +951,9 @@ if "collisions" in lowercase.(String.(regularization))
             else
                 error("regularization_timepoint input variable has invalid type. Expected Float64, Int64 or String. regularization_timepoint input variable needed to load electron density data from $(regularization_thermal_electron_dens). Please correct and re-try.")
             end
+            if typeof(t_mid)==String
+                t_mid = parse(Float64,replace(t_mid, "," => "."))
+            end
             etp = getDensProfileFromTRANSP(t_mid,regularization_thermal_electron_dens,"e")
             n_es = etp.(rho_of_interests)
             verbose && println("---------> Computed electron densities(s) of $(n_es) m^-3")
@@ -953,7 +970,7 @@ if "collisions" in lowercase.(String.(regularization))
     end
 
     verbose && print("---> Computing slowing-down (collision physics) basis functions...")
-    if is_energy_pitch(W_abscissas[1],W_abscissas_units[1])
+    if is_energy_pitch(W_abscissas[1][2:end],W_abscissas_units[1][2:end])
         n_e = thermal_electron_densities[1] # We know it must be a 1-element Vector because reconstruction space is (E,p)
         T_e = thermal_electron_temperatures[1] # -||-
         thermal_ion_densities_at_rho = thermal_ion_densities[:,1] # -||-
@@ -978,7 +995,7 @@ if "collisions" in lowercase.(String.(regularization))
             f_SD = f_SD ./sum((dE*dp) .*f_SD) # Normalize the basis function so they integrate to 1.0
             F_SD[:,ic] .= reshape(f_SD,(length(w_E_abscissa)*length(w_p_abscissa),1))
         end
-    elseif is_vpara_vperp(W_abscissas[1],W_abscissas_units[1])
+    elseif is_vpara_vperp(W_abscissas[1][2:end],W_abscissas_units[1][2:end])
         v2E_rel = (v-> inv(1000*GuidingCenterOrbits.e0)*getSpeciesMass(FI_species)*((GuidingCenterOrbits.c0)^2)*(sqrt(1/(1-(v/(GuidingCenterOrbits.c0))^(2)))-1)) # A one-line function to transform from relativistic speed (m/s) to energy (keV)
 
         n_e = thermal_electron_densities[1] # We know it must be a 1-element Vector because reconstruction space is (vpara,vperp)
@@ -1066,7 +1083,7 @@ for (i,s) in enumerate(S)
         verbose && println("no error values affected.")
     else
         println("")
-        verbose && println("------> Found $(length(below_noise_floor_inds)) error values smaller than $(noise_floor_i). Re-setting... ")
+        verbose && println("------> Found $(length(below_noise_floor_inds)) ($(round(100*length(below_noise_floor_inds)/length(S_errs[i]),digits=1))% of all) error values smaller than $(noise_floor_i). Re-setting... ")
         S_errs[i][below_noise_floor_inds] .= noise_floor_i
     end
 end
@@ -1076,6 +1093,26 @@ dictionary_of_sections[prnt-1] = ("Enforcing a noise floor on the measurement un
 ###########################################################################################################
 # SECTION: EXCLUDE UNWANTED MEASUREMENT BINS
 println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
+
+if exclude_zero_measurements
+    verbose && println("Performing exclusion of measurements equal to zero... ")
+    for i in eachindex(S)
+        verbose && println("---> For diagnostic $(i)... ")
+        W_i = W[i]
+        S_i = S[i]
+        S_errs_i = S_errs[i]
+        S_abscissas_i = S_abscissas[i]
+        zero_inds = findall(x-> x==0.0, S_i)
+        if !isempty(zero_inds)
+            verbose && println("------> Found $(length(zero_inds)) ($(round(100*length(zero_inds)/length(S_i),digits=1))% of all) measurements equal to 0. Excluding... ")
+            good_inds_i = filter(xx -> !(xx in zero_inds), collect(1:length(S_abscissas_i))) # The indices of all measurement bins to keep
+            S[i] = S_i[good_inds_i] # Update measurements
+            S_errs[i] = S_errs_i[good_inds_i] # Update errors/uncertainties
+            S_abscissas[i] = S_abscissas_i[good_inds_i] # Update measurement abscissa
+            W[i] = W_i[good_inds_i,:] # Update weight function matrix
+        end
+    end
+end
 
 if !(length(excluded_measurement_intervals)==length(excluded_measurement_units)==length(filepaths_S)) && !isempty(excluded_measurement_units) && !isempty(excluded_measurement_intervals)
     @warn "The lengths of input variables 'excluded_measurement_intervals' and 'excluded_measurement_units' were not equal to 'filepaths_S'. Cannot execute exclusion of unwanted measurement bins. All measurement bins will be included for all diagnostics."
@@ -1100,17 +1137,9 @@ else
                 verbose && println("------> Identified $(length(bad_inds_ii)) measurements in excluded region (min,max)=($(interval_min),$(interval_max)) $(S_abscissas_units_i)") 
                 append!(bad_inds_i, bad_inds_ii)
             end
-            bad_inds_i_nozero = deepcopy(bad_inds_i)
-            if exclude_zero_measurements
-                zero_inds = findall(x-> x==0.0, S_i)
-                if !isempty(zero_inds)
-                    verbose && println("---> For diagnostic $(i), found $(length(zero_inds)) measurements equal to 0")
-                    append!(bad_inds_i, zero_inds)
-                end
-            end
             bad_inds_i = unique(bad_inds_i) # The indices of the excluded measurement intervals
             good_inds_i = filter(xx -> !(xx in bad_inds_i), collect(1:length(S_abscissas_i))) # The indices of all measurement bins to keep
-            verbose && println("---> A total of $(length(bad_inds_i)) ($(length(bad_inds_i_nozero))+$(length(zero_inds))) measurement bin centers will be excluded for diagnostic $(i)...")
+            verbose && println("---> A total of $(length(bad_inds_i)) measurement bin centers will be excluded for diagnostic $(i)...")
             S[i] = S_i[good_inds_i] # Update measurements
             S_errs[i] = S_errs_i[good_inds_i] # Update errors/uncertainties
             S_abscissas[i] = S_abscissas_i[good_inds_i] # Update measurement abscissa
@@ -1294,13 +1323,11 @@ else
     verbose && println("---> No such reconstruction space points found.")
 end
 
-# BUG. THE SIZE OF THE REGULARIZATION MATRICES L AND W WILL NOT MATCH IF SD IS INCLUDED
-# BUG.
-# BUG. 
 append!(timestamps,time()) # The timestamp when reconstruction space points with zero sensitivity for all diagnostics have been excluded from the problem
 dictionary_of_sections[prnt-1] = ("Excluding reconstruction space points with zero sensitivity",diff(timestamps)[end])
 ###########################################################################################################
 # SECTION: INCLUDE COLLISIONAL PHYSICS BY MULTIPLYING THE WEIGHT MATRICES WITH THE SLOWING-DOWN BASIS FUNCTIONS
+# MODIFY THE OTHER REGULARIZATION MATRICES TO MATCH THE NUMBER OF SLOWING-DOWN BASIS FUNCTIONS 
 println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
 
 if "collisions" in lowercase.(String.(regularization)) # Don't need all the safety checks here, it was already taken care of in section 9
@@ -1309,6 +1336,23 @@ if "collisions" in lowercase.(String.(regularization)) # Don't need all the safe
         verbose && print("---> For diagnostic $(i)... ")
         W[i] = w*F_SD_safe
         verbose && println("ok!")
+    end
+
+    verbose && println("Modifying other regularization matrices to work with collision physics regularization... ")
+    for ir in eachindex(L)
+        if priors_name[ir]=="1st order Tikhonov"
+            L[ir] = forward_difference_matrix((size(F_SD_safe,2),))
+            priors[ir] = zeros(size(F_SD_safe,2))
+        end
+        if priors_name[ir]=="0th order Tikhonov"
+            L[ir] = diagm(ones(size(F_SD_safe,2)))
+            priors[ir] = zeros(size(F_SD_safe,2))
+        end
+        if priors_name[ir]=="ICRF"
+            @warn ":ICRF regularization is currently not supported together with :COLLISIONS regularization. Using 1st order Tikhonov regularization instead"
+            L[ir] = forward_difference_matrix((size(F_SD_safe,2),))
+            priors[ir] = zeros(size(F_SD_safe,2))
+        end
     end
 else
     verbose && println("No collision physics basis functions included.")
@@ -1327,6 +1371,8 @@ if rescale_W
         W[i] = r .*W[i]
         verbose && println("ok!")
     end
+else
+    verbose && println("No rescaling of weight matrices.")
 end
 
 append!(timestamps,time()) # The timestamp when the weight matrices have been rescaled
@@ -1379,15 +1425,20 @@ if !(length(nr_array)==length(regularization))
 end
 
 # nr_array[i] should specify the number of λ grid points for regularization[i]
-verbose && println("Preparing $(length(priors)) regularization strength (hyper-parameter) logarithmic range(s) from 10^-3 to 10^3... ")
+nop = length(priors)
+s = nop>1 ? "s" : ""
+verbose && println("Preparing $(nop) regularization strength (hyper-parameter) logarithmic range$(s) from 10^-3 to 10^3... ")
 hyper_arrays = []
 for ir in eachindex(priors) # For all regularizations/priors that require a hyper-parameter...
     nr = 0
     if priors_name[ir]=="1st order Tikhonov"
-        nr = nr_array[findfirst(x-> x=="firsttikhonov",lowercase.(String.(regularization)))]
+        nr = nr_array[findfirst(x-> x=="firsttikhonov", lowercase.(String.(regularization)))]
     end
     if priors_name[ir]=="0th order Tikhonov"
-        nr = nr_array[findfirst(x-> x=="zerotikhonov",lowercase.(String.(regularization)))]
+        nr = nr_array[findfirst(x-> x=="zerotikhonov", lowercase.(String.(regularization)))]
+    end
+    if priors_name[ir]=="ICRF"
+        nr = nr_array[findfirst(x-> x=="icrf", lowercase.(String.(regularization)))]
     end
     append!(hyper_arrays,[10 .^(range(-3.0,stop=3.0,length=nr))])
     verbose && println("---> $(priors_name[ir]) with $(nr) λ grid points... ")
@@ -1398,7 +1449,7 @@ verbose && println("Concatenating all priors into one long prior vector... ")
 prior = vcat(priors...)
 
 verbose && println("Pre-allocating solution arrays and L-curve quantities... ")
-sols = zeros(length(rec_space_coords),length(hyper_points))
+sols = zeros(size(W_hh,2), length(hyper_points))
 sols_rawnorm = zeros(length(hyper_points))
 sols_datafit = zeros(length(hyper_points))
 
@@ -1413,11 +1464,13 @@ if "collisions" in lowercase.(String.(regularization))
     collision_physics_reg = true # Just a bool to speed up computations
 end
 
-verbose && println("Solving inverse problem... ")
+verbose && println("")
+nip = length(hyper_points); s = nip>1 ? "s" : ""
+verbose && println("Solving $(nip) inverse problem$(s) (each with $(size(W_hh,2)) unknowns and $(size(W_hh,1)) measurements)... ")
 for (i,hp) in enumerate(hyper_points)
-    verbose && println("---> for regularization hyper-parameter point $(round.(vcat(hp...),sigdigits=4)) ($([pn for pn in priors_name]))... ")
+    verbose && println("---> ($(i)/$(nip)) for regularization hyper-parameter point $(round.(vcat(hp...),sigdigits=4)) ($([pn for pn in priors_name]))... ")
     L_i = Matrix(vcat((vcat(hp...) .*L)...)) # Multiply hyper-parameter values with the corresponding regularization matrices. Then, concatenate into one big regularization matrix
-    x = Convex.Variable(length(rec_space_coords))
+    x = Convex.Variable(size(W_hh,2))
 
     # In future versions, this will be coded more elegantly
     if !nonneg && !collision_physics_reg # Case 1
@@ -1468,6 +1521,16 @@ for i=1:size(sols,2)
     gamma[i] = (srnpp[i]*sdfp[i] - srnp[i]*sdfpp[i])/((srnp[i]*srnp[i] + sdfp[i]*sdfp[i])^(3/2)) # Curvature formula
 end
 ilm = argmax(gamma) # Index of L-curve maximum curvature
+if ilm in eachindex(gamma)[end-3:end] # If the point of maximum curvature is found to be at any of the 4 last points...
+    verbose && println("---> Signs of non-robustness found when computing L-curve curvature. Using minimum of sqrt(||S-WF||^2 + ||F||^2) instead... ")
+    # The curvature curve is likely unstable and the maximum curvature computation is not robust enough to identify 'ilm'
+    # Therefore, use the index of the point of minium P = sqrt(sols_datafit^2 + sols_rawnorm^2) instead
+    sdf_n = sols_datafit ./maximum(sols_datafit) # Normalize quantities to be able to accurately identify P
+    srn_n = sols_rawnorm ./maximum(sols_rawnorm) # Normalize quantities to be able to accurately identify P
+
+    P = map(i-> sqrt(sdf_n[i]^2 + srn_n[i]^2), eachindex(sdf_n))
+    ilm = argmin(P) # Point of minimum distance to origin
+end
 
 append!(timestamps,time()) # The timestamp when the optimal L-curve value has been computed
 dictionary_of_sections[prnt-1] = ("Computing optimal L-curve regularization strength",diff(timestamps)[end])
@@ -1534,15 +1597,18 @@ if plot_solutions || gif_solutions
 
         # CREATE THE L-CURVE SUBFIGURE, which will be at the top of the plot stack
         l_mag = sqrt(((sdf[i]-sdf0)^2)/(sdf_diff^2)+((srn[i]-srn0)^2)/(srn_diff^2))
-        plt_dummy = Plots.plot(axis=([], false)) # Dummy plot, for white space
-        plt_L_curve = Plots.plot([0,sdf[i]],[0,srn[i]],color=:black,title="||L_n||=$(round(l_mag,sigdigits=4))",label="")
+        plt_L_curvature = Plots.plot(axis=([],false))
+        #plt_L_curvature = Plots.plot(gamma, label="Curvature") # Dummy plot, for white space
+        #plt_L_curvature = Plots.scatter!([ilm],[gamma[ilm]], label="Max. curvature")
+        #plt_L_curvature = Plots.scatter!([i], [gamma[i]], label="")
+        plt_L_curve = Plots.plot([0,sdf[i]],[0,srn[i]],color=:black,label="")
         plt_L_curve = Plots.plot!(plt_L_curve, sdf,srn,xlims=(minimum(sdf)-0.05*sdf_diff, maximum(sdf)+0.05*sdf_diff),ylims=(minimum(srn)-0.05*srn_diff, maximum(srn)+0.05*srn_diff),label="")
         plt_L_curve = Plots.scatter!(plt_L_curve, [sdf[1]],[srn[1]],label="Start")
         plt_L_curve = Plots.scatter!(plt_L_curve, [sdf[end]],[srn[end]],label="End")
-        plt_L_curve = Plots.scatter!(plt_L_curve, [sdf[ilm]],[srn[ilm]],label="Max curvature")
+        plt_L_curve = Plots.scatter!(plt_L_curve, [sdf[ilm]],[srn[ilm]],label="Balanced F*")
         plt_L_curve = Plots.scatter!(plt_L_curve, [sdf[i]],[srn[i]],label="", title="$(i): log10(λ)=$(round.(log10.(vcat(hp...)),sigdigits=4))")
         plt_L_curve = Plots.plot!(xlabel="||WF-S||", ylabel="||F||")
-        subfig_L_curve = Plots.plot(plt_L_curve, plt_dummy, layout=(1,2))
+        subfig_L_curve = Plots.plot(plt_L_curve, plt_L_curvature, layout=(1,2))
 
         # CREATE THE S vs WF SUBFIGURE, which will be in the middle of the plot stack
         WF_plots = Vector{Any}(undef,length(W))

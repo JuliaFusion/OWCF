@@ -4,12 +4,14 @@
 # This script computes orbit weight functions, it's as simple as that. It can be considered the flagship
 # of the OWCF. As the rest of the OWCF, it utilizes Luke Stagner's orbit computation codes to compute
 # the guiding-center (drift) orbits of fast ions in toroidally symmetric fusion devices. The orbit computation
-# codes are (as of 2022-08-26) packaged into the Julia packages GuidingCenterOrbits.jl and OrbitTomography.jl.
+# codes are (as of 2025-07-11) packaged into the Julia packages GuidingCenterOrbits.jl and OrbitTomography.jl.
 # In the current version of the OWCF, the calcOrbWeights.jl script can compute orbit weight functions in 
 # the following ways:
+#
 #   - By sending (E,p,R,z) points into the DRESS code (J. Eriksson et al, CPC, 199, 40-46, 2016)
 #   - By using (E,p,R,z) points to compute projected fast-ion velocities
-#   - By using (E,p,R,z) points together with the equations in A. Valentini, Nucl. Fusion, Submitted (2025)
+#   - By using (E,p,R,z) points together with the equations in A. Valentini et al, Nucl. Fusion (2025)
+#
 # The (E,p,R,z) points are computed for each orbit, using the GuidingCenterOrbits.jl and OrbitTomography.jl 
 # packages. The orbit can be uniquely identified using an (E,pm,Rm) coordinate where E is the energy (in keV)
 # pm is the pitch (v/v_||) at the maximum major radius point Rm of the orbit. Regardless of which approach is 
@@ -27,9 +29,10 @@
 ### For the thermal species distribution (filepath_thermal_distr), you have three options.
 ## First, you can specify a TRANSP shot .cdf file (for example '94701V01.cdf'). The thermal
 # species temperature and density profiles will then be extracted from the file. Please note, if you
-# specify a .cdf TRANSP shot file as filepath_thermal_distr, you have to specify a .cdf TRANSP fast-ion file
+# specify a .cdf TRANSP shot file as filepath_thermal_distr, you have to (usually) specify a .cdf TRANSP fast-ion file
 # for filepath_FI_cdf as well. This is to let the script know the correct time windows to extract from
-# the TRANSP shot file.
+# the TRANSP shot file. Otherwise, the script will try to load the TRANSP bulk (thermal) plasma distribution 
+# data using either the .eqdsk-inferred timepoint, or (prioritized) user-specified timepoint (in seconds).
 #
 ## Secondly, you could instead specify a .jld2 file that contains information about the
 # thermal species temperature and density profiles as a function of normalized flux coordinate
@@ -51,8 +54,8 @@
 # -
 
 #### Saved files
-# orbWeights_[tokamak]_[TRANSP_id]_at[timepoint]s_[diagnostic_name]_[nE]x[npm]x[nRm].jld2 - If iiimax == 1
-# orbWeights_[tokamak]_[TRANSP_id]_at[timepoint]s_[diagnostic_name]_$(i).jld2 - If iiimax != 1
+# orbWeights_[FLR]_[tokamak]_[TRANSP_id]_at[timepoint]s_[diagnostic_name]_[nE]x[npm]x[nRm].jld2 - If iiimax == 1
+# orbWeights_[FLR]_[tokamak]_[TRANSP_id]_at[timepoint]s_[diagnostic_name]_$(i).jld2 - If iiimax != 1
 # Regardless of saved file name, this saved file will have the fields:
 #   W - The computed orbit weights. Dimensions are (channels, valid orbits) - Array{Float64,2}
 #   E_array - The fast-ion energy grid array used for orbit space - Array{Float64,1}
@@ -68,28 +71,33 @@
 # Please note that the diagnostic energy grid will be created as bin centers.
 # That is, the first diagnostic energy grid value will be (Ed_min+Ed_diff/2) and so on.
 
-# Script written by Henrik Järleblad. Last maintained 2025-03-19.
+# Script written by Henrik Järleblad. Last maintained 2025-07-11.
 ################################################################################################
 
 ## ---------------------------------------------------------------------------------------------
 verbose && println("Loading Julia packages... ")
 @everywhere begin
     cd(folderpath_OWCF) # Necessary to move all the workers to the correct folder
-    using PyCall # For using Python code in Julia
     using EFIT # For calculating magn½etic equilibrium quantities
     using Equilibrium # For loading flux function data, tokamak geometry data etc.
+    using FileIO # To write/open files in general
+    using JLD2 # To write/open .jld2 files (Julia files, basically)
     using GuidingCenterOrbits # For calculating guiding-center orbits
+    using Interpolations # To be able to interpolate, if no thermal distribution is specified
+    using LinearAlgebra # To be able to easily take the norm of arrays
+    using NetCDF # To enable write/open .cdf files
     using OrbitTomography # This is what all this is about!
     using ProgressMeter # To display computational progress during parallel computations
-    using JLD2 # To write/open .jld2 files (Julia files, basically)
-    using FileIO # To write/open files in general
+    using Printf # To be able to use specific String prints
+    using PyCall # For using Python code in Julia
     using SparseArrays # To enable utilization of sparse matrices/vectors
-    using NetCDF # To enable write/open .cdf files
-    using Interpolations # To be able to interpolate, if no thermal distribution is specified
-    include("misc/species_func.jl") # To convert species labels to particle mass and charge
-    include("misc/temp_n_dens.jl")
+    plot_results && (using LaTeXStrings) # If results are to be plotted, we need LaTeXStrings.jl for text formatting
+    plot_results && (using Plots) # If results are to be plotted, we need the Plots.jl package
     include("misc/availReacts.jl") # To examine fusion reaction and extract thermal and fast-ion species
     include("misc/rewriteReacts.jl") # To rewrite a fusion reaction from the A(b,c)D format to the A-b=c-D format
+    include("misc/species_func.jl") # To convert species labels to particle mass and charge
+    include("misc/temp_n_dens.jl")
+    (include2Dto4D || plot_results) && (include("extra/dependencies.jl")) # Load 2D-to-4D tool from the OWCF dependencies
     pushfirst!(PyVector(pyimport("sys")."path"), "") # To add the forward, transp_dists, transp_output and vcone modules (scripts in current path)
 end
 
@@ -137,6 +145,12 @@ if !(lowercase(getEmittedParticleEnergyLevel(reaction))=="gs")
     verbose && println("")
 end
 
+# Currently, the analytic equations in OWCF/forward.jl do not support 4*pi spherical emission. I.e. a synthetic diagnostic viewing cone model file 
+# must be specified. Otherwise, an error is thrown
+if analytic && !isfile(diagnostic_filepath)
+    error("Input variable 'analytic' was set to true, but the 'diagnostic_filepath' was not specified as a String with the file path to a valid diagnostic viewing cone model file (i.e. an output file of either the OWCF/extra/createCustomLOS.jl tool or the LINE21 code). 4*pi (spherical) emission is currently not supported for analytic==true. Please correct and re-try.")
+end
+
 ## ---------------------------------------------------------------------------------------------
 # Determine filepath_thermal_distr file extension
 fileext_thermal = lowercase((split(filepath_thermal_distr,"."))[end]) # Assume last part after final '.' is the file extension
@@ -155,22 +169,14 @@ if !(fileext_thermal=="cdf" || fileext_thermal=="jld2" || fileext_thermal=="")
     error("Unknown thermal distribution file format. Please re-specify file and re-try.")
 end
 
-# REWRITE THESE ERROR CHECKS TO TAKE THE DIFFERENT FILE EXTENSIONS INTO ACCOUNT
-if fileext_thermal=="cdf" && !(fileext_FI_cdf=="cdf")
-    error("filepath_thermal_distr specified as TRANSP .cdf file, but filepath_FI_cdf was wrongly specified. Please specify and re-try.")
-end
-
 ## ---------------------------------------------------------------------------------------------
 # Determine fast-ion and thermal species from inputs in start file
-thermal_species, FI_species = getFusionReactants(reaction) # Check the specified fusion reaction, and extract thermal and fast-ion species
-@everywhere thermal_species = $thermal_species # Transfer variable to all external processes
-@everywhere FI_species = $FI_species # Transfer variable to all external processes
+thermal_reactant, fast_reactant = getFusionReactants(reaction) # Check the specified fusion reaction, and extract thermal and fast-ion species
+@everywhere thermal_reactant = $thermal_reactant # Transfer variable to all external processes
+@everywhere fast_reactant = $fast_reactant # Transfer variable to all external processes
 
 # projVel variable. To clarify when orbit weight functions are computed from projected velocities, in code below
-projVel = false
-if getReactionForm(reaction)==3 # If fusion reaction is specified as a single particle species..
-    projVel = true # ...orbit weight functions will be computed using projected velocities!
-end
+projVel = getReactionForm(reaction)==3 ? true : false # If fusion reaction is specified as a single particle species..
 @everywhere projVel = $projVel # Export 'projVel' variable to all external CPU processors
 
 ## ---------------------------------------------------------------------------------------------
@@ -236,6 +242,12 @@ else # Otherwise, assume magnetic equilibrium is a saved .jld2 file
         timepoint = "TIMELESS" # Unknown timepoint for magnetic equilibrium
     end
 end
+psi_axis, psi_bdry = psi_limits(M) # The limits of the flux function
+@everywhere M = $M
+@everywhere wall = $wall
+@everywhere jdotb = $jdotb
+@everywhere psi_axis = $psi_axis
+@everywhere psi_bdry = $psi_bdry
 
 if (fileext_thermal=="cdf") && (fileext_FI_cdf=="cdf")
     # If the user has specified a TRANSP .cdf file with pertaining NUBEAM fast-ion distribution data...
@@ -246,6 +258,7 @@ if (fileext_thermal=="cdf") && (fileext_FI_cdf=="cdf")
     YYYY = TIME_array[2]
     timepoint = XX*","*YYYY # Format XX,YYYY to avoid "." when including in filename of saved output
 end
+@everywhere timepoint = $timepoint
 
 ## ---------------------------------------------------------------------------------------------
 # Defining orbit grid vectors
@@ -254,18 +267,17 @@ if isfile(og_filepath)
     myfile = jldopen(og_filepath,false,false,false,IOStream)
     og = myfile["og"]
     og_orbs = myfile["og_orbs"]
-    FI_species_loaded = myfile["FI_species"]
+    fast_reactant_loaded = myfile["fast_reactant"]
     extra_kw_args = myfile["extra_kw_args"]
     close(myfile)
     E_array = og.energy
     pm_array = og.pitch
     Rm_array = og.r
-    og = nothing # Clear memory, to minimize memory usage
-    if !(lowercase(FI_species)==lowercase(FI_species_loaded))
-        @warn "Fast-ion species ("*FI_species_loaded*") loaded from orbit-grid .jld2 file does not match fast-ion species in specified fusion reaction ("*FI_species*"). Did you confuse the thermal species ("*thermal_species*") for the fast-ion species ("*FI_species*")?"
+    if !(lowercase(fast_reactant)==lowercase(fast_reactant_loaded))
+        @warn "Fast-ion species ("*fast_reactant_loaded*") loaded from orbit-grid .jld2 file does not match fast-ion species in specified fusion reaction ("*fast_reactant*"). Did you confuse the thermal species ("*thermal_reactant*") for the fast-ion species ("*fast_reactant*")?"
     end
-    if !(lowercase(FI_species)==lowercase(FI_species_loaded)) && !(lowercase(thermal_species)==lowercase(FI_species_loaded))
-        error("Fast-ion species ("*FI_species_loaded*") loaded from orbit-grid .jld2 file does not match any reactants in specified fusion reaction ("*reaction*"). Please correct and re-try.")
+    if !(lowercase(fast_reactant)==lowercase(fast_reactant_loaded)) && !(lowercase(thermal_reactant)==lowercase(fast_reactant_loaded))
+        error("Fast-ion species ("*fast_reactant_loaded*") loaded from orbit-grid .jld2 file does not match any reactants in specified fusion reaction ("*reaction*"). Please correct and re-try.")
     end
 else
     verbose && println("Defining orbit grid vectors... ")
@@ -338,56 +350,70 @@ end
 ## ---------------------------------------------------------------------------------------------
 # Printing script info and inputs
 println("")
-println("----------------------------------------calcOrbWeights.jl----------------------------------------")
+println("---------------------------------------------------- calcOrbWeights.jl ----------------------------------------------------")
 if !(tokamak=="")
-    print("Tokamak specified: "*tokamak*"      ")
+    print("Tokamak: "*tokamak*"      ")
 else
-    print("Tokamak not specified.         ")
+    print("Tokamak: N/A"*"      ")
 end
 if !(TRANSP_id=="")
-    println("TRANSP ID specified: "*TRANSP_id)
+    print("TRANSP ID: "*TRANSP_id*"      ")
 else
-    println("TRANSP ID not specified.")
+    print("TRANSP ID: N/A"*"      ")
 end
 if !(diagnostic_name=="")
-    println("Diagnostic name specified: "*diagnostic_name)
-end
-if !(diagnostic_filepath=="")
-    println("Diagnostic filepath specified: "*diagnostic_filepath)
+    println("Diagnostic (name): "*diagnostic_name)
 else
-    println("diagnostic_filepath not specified. Spherical (4*pi) emission will be assumed.")
+    println("Diagnostic (name): N/A")
+end
+println("")
+if !(diagnostic_filepath=="")
+    println("Diagnostic (file): "*diagnostic_filepath)
+else
+    println("Diagnostic (file): N/A")
 end
 if instrumental_response
-    println("instrumental_response_filepath specified. Diagnostic response included.")
+    println("Detector instrumental response included? Yes!")
+    println("---> Instrumental response: $(instrumental_response_filepath)")
 else
-    println("instrumental_response_filepath not specified. Diagnostic response not included.")
+    println("---> Detector instrumental response included? No.")
 end
+println("")
 if !(filepath_thermal_distr=="")
-    println("Thermal distribution file specified: "*filepath_thermal_distr)
+    println("Bulk (thermal) plasma distribution: "*filepath_thermal_distr)
+    println("---> Thermal species specified: "*thermal_reactant)
 elseif (filepath_thermal_distr=="") && !projVel
     println("Thermal distribution file not specified.")
-    println("Thermal ion ($(thermal_species)) temperature on-axis will be set to $(thermal_temp_axis) keV.")
-    println("Thermal ion ($(thermal_species)) density on axis will be set to $(thermal_dens_axis) m^-3.")
+    println("---> Thermal ion ($(thermal_reactant)) temperature on-axis will be set to $(thermal_temp_axis) keV.")
+    println("------> Thermal ion ($(thermal_reactant)) temperature profile: $(thermal_temp_profile_type)")
+    println("---> Thermal ion ($(thermal_reactant)) density on-axis will be set to $(thermal_dens_axis) m^-3.")
+    println("------> Thermal ion ($(thermal_reactant)) density profile: $(thermal_dens_profile_type)")
 else
-    println("Orbit weight functions will be computed using the projected velocity (u) of the fast $(getFastParticleSpecies(reaction)) ions.")
+    println("Bulk (thermal) plasma distribution: N/A (projected velocities of $(getFastParticleSpecies(reaction)) ions will be used as weights)")
 end
-println("Magnetic equilibrium file specified: "*filepath_equil)
+println("")
+println("Magnetic (B-field) equilibrium: "*filepath_equil)
+println("---> |B| on-axis: $(round(norm(Equilibrium.Bfield(M,magnetic_axis(M)...)),digits=2)) T")
 println("")
 if !projVel
     println("Fusion reaction specified: "*reaction)
 else
-    println("Orbit weight functions will be computed using the projected velocity (u) of fast $(getFastParticleSpecies(reaction)) ions for all relevant (drift) orbit points.")
+    println("Fusion reaction specified: N/A (projected velocities computation)")
 end
-println("Fast-ion species specified: "*FI_species)
+println("---> Fast-ion species specified: "*fast_reactant)
 if emittedParticleHasCharge && !projVel
-    println("The emitted "*getEmittedParticle(reaction)*" particle of the "*reaction*" reaction has non-zero charge!")
-    println("The resulting energy distribution for "*getEmittedParticle(reaction)*" from the plasma as a whole will be computed.")
+    println("PLEASE NOTE! The emitted "*getEmittedParticle(reaction)*" particle of the "*reaction*" reaction has non-zero charge!")
+    println("PLEASE NOTE! The resulting energy distribution for "*getEmittedParticle(reaction)*" from the plasma as a whole will be computed.")
 end
 println("")
-print("To compute up-/down-shift of the nominal birth energy of the emitted particle ('c' in a(b,c)d fusion reaction), the gyro-motion of the guiding-centre of the (drift) orbits will be discretized into this many points: $(n_gyro).")
-println("")
+if !analytic
+    println("To compute the up-/down-shift of the nominal birth energy of the $(getEmittedParticle(reaction)) particle, for every guiding-center point")
+    println("along the (drift) orbit trajectory, the number of velocity vector samples will be: $(n_gyro)")
+else
+    println("Analytic equations in OWCF/forward.jl will be used to compute the synthetic diagnostic measurements.")
+end
 print("---> Finite Larmor radius (FLR) (spatial) effects included? ")
-if flr_effects
+if include_FLR_effects
     println("Yes!")
 else
     println("No.")
@@ -399,52 +425,63 @@ else
     println("Single-threaded computing the weights... Good luck!")
 end
 println("")
-println("$(iiimax) weight matrix/matrices will be computed.")
+sWM = iiimax > 1 ? "matrices" : "matrix"
+println("$(iiimax) $(sWM) will be computed.")
 println("")
-println("Orbit weight function(s) will be computed for a $(length(E_array))x$(length(pm_array))x$(length(Rm_array)) orbit-space grid with")
+println("Orbit weight functions will be computed for a $(length(E_array))x$(length(pm_array))x$(length(Rm_array)) orbit-space grid with")
 println("Energy: [$(minimum(E_array)),$(maximum(E_array))] keV")
 println("Pitch maximum: [$(minimum(pm_array)),$(maximum(pm_array))]")
 println("Radius maximum: [$(minimum(Rm_array)),$(maximum(Rm_array))] m")
-println("")
 if include2Dto4D
-    println("Orbit weight matrix will be inflated and saved in its full 4D format upon completion of computations.")
+    println("---> Orbit weight matrix will be inflated and saved in its full 4D format upon completion of computations.")
 end
+println("")
 if !projVel
-    println("There will be $(length(range(Ed_min,stop=Ed_max,step=Ed_diff))-1) diagnostic energy bin(s) with")
+    println("There will be $(length(range(Ed_min,stop=Ed_max,step=Ed_diff))-2) diagnostic energy bin(s) with")
     println("Lower diagnostic energy bound: $(Ed_min) keV")
     println("Upper diagnostic energy bound: $(Ed_max) keV")
 else
-    println("There will be $(length(range(Ed_min,stop=Ed_max,step=Ed_diff))-1) projected velocity (u) bin(s) with")
+    println("There will be $(length(range(Ed_min,stop=Ed_max,step=Ed_diff))-2) projected velocity (u) bin(s) with")
     println("Lower u bound: $(Ed_min) m/s")
     println("Upper u bound: $(Ed_max) m/s")
 end
 println("")
-println("The orbit integration algorithm will used the extra keyword arguments: ")
+println("The equations-of-motion integration algorithm will use the extra keyword arguments: ")
 println(extra_kw_args)
 println("")
 println("Results will be saved to: ")
+sFLR = include_FLR_effects ? "FLR_" : ""
 if iiimax == 1
-    println(folderpath_o*"orbWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*"_$(length(range(Ed_min,stop=Ed_max,step=Ed_diff))-1)x[NUMBER OF VALID ORBITS].jld2")
+    println(folderpath_o*"orbWeights_$(sFLR)"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*"_$(length(range(Ed_min,stop=Ed_max,step=Ed_diff))-2)x[NUMBER OF VALID ORBITS].jld2")
 else
-    println(folderpath_o*"orbWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*"_1.jld2")
+    println(folderpath_o*"orbWeights_$(sFLR)"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*"_1.jld2")
     println("... ")
-    println(folderpath_o*"orbWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*"_$(iiimax).jld2")
+    println(folderpath_o*"orbWeights_$(sFLR)"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*"_$(iiimax).jld2")
+end
+println("")
+if plot_results
+    println("--- Plots included ---> A figure with plots of (a subset of) the results will be saved in .png file format in the output folder.")
 end
 if debug
     println("")
     println("!!!!!! DEBUGGING SPECIFIED. ALGORITHM WILL DEBUG. !!!!!!")
     println("")
 end
+println("")
 println("If you would like to change any settings, please edit the start_calcOW_template.jl file or similar.")
 println("")
-println("Written by Henrik Järleblad. Last maintained 2025-03-19.")
-println("--------------------------------------------------------------------------------------------------")
+println("Written by Henrik Järleblad. Last maintained 2025-07-11.")
+println("--------------------------------------------------------------------------------------------------------------------------")
 println("")
 
 ## ---------------------------------------------------------------------------------------------
-# Python code (essentially calling the DRESS forward model as a black box, when needed)
-# This is how you write Python code in Julia: py""" [Python code] """
-verbose && println("Loading Python modules... ")
+# Loading necessary Python and/or packages, depending on the forward model of choice.
+# Currently, the three available forward models are
+#   - Analytic equations (A. Valentini et al, Nucl. Fusion, 2025)
+#   - Projected velocities
+#   - The DRESS code (J. Eriksson et al, Comp. Phys. Comm., 2016)
+
+verbose && println("Loading Python packages for forward model object... ")
 @everywhere begin
     py"""
     import numpy as np
@@ -452,6 +489,13 @@ verbose && println("Loading Python modules... ")
     import spec
     import vcone
     """
+end
+if analytic
+    verbose && println("Loading OWCF/forward.jl and OWCF/vcone.jl for analytic computations... ")
+    @everywhere begin
+        include("forward.jl") # Load analytic equations in the OWCF/forward.jl file
+        include("vcone.jl") # Load the Julia version of vcone.py, to work with viewing cone data files purely in Julia
+    end
 end
 
 ## ---------------------------------------------------------------------------------------------
@@ -475,8 +519,7 @@ if isfile(og_filepath)
     verbose && println("Orbit grid and pertaining valid orbits were found in "*og_filepath*"... ")
 else
     verbose && println("Calculating the orbit grid... ")
-    og_orbs, og = OrbitTomography.orbit_grid(M, E_array, pm_array, Rm_array; amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species), wall=wall, extra_kw_args...)
-    og = nothing # Memory minimization
+    og_orbs, og = OrbitTomography.orbit_grid(M, E_array, pm_array, Rm_array; amu=getSpeciesAmu(fast_reactant), q=getSpeciesEcu(fast_reactant), wall=wall, extra_kw_args...)
     # og_orbs is a vector of Orbit Julia-structs (found in L. Stagner's GuidingCenterOrbits.jl/orbit.jl package file)
 # og is an OrbitGrid Julia-struct (found in L.Stagner's OrbitTomography.jl/orbits.jl package file)
 end
@@ -493,108 +536,255 @@ end
 F_os = 1.0 .*ones(size(og_orbs)) # Assume one ion for every orbit. This is the default and should not be changed lightly.
 
 ## ---------------------------------------------------------------------------------------------
-# Setting Python variables and structures on all distributed workers/processes...
-verbose && println("Setting all Python variables and structures on all distributed workers/processes... ")
-@everywhere begin
-    if !analytic
-        py"""
-        # The '$' in front of many Python variables means that the variable is defined in Julia, not in Python.
-        reaction = $reaction
-        test_thermal_particle = spec.Particle($thermal_species) # Check so that thermal species is available in DRESS code
-        thermal_species = $thermal_species
-        projVel = $projVel
-        if $verbose:
-            print("From Python: Loading forward model with diagnostic... ") 
-        forwardmodel = forward.Forward($diagnostic_filepath) # Pre-initialize the forward model
-
-        # Load TRANSP simulation data
-        if (not $filepath_FI_cdf=="") and (not projVel): # If there is some TRANSP_id specified and we do not want to simply compute projected velocities...
-            if ($fileext_thermal).lower()=="cdf": # If there is some TRANSP .cdf output file specified...
-                import transp_output
-                import transp_dists
-                if $verbose:
-                    print("From Python: Loading TRANSP output from TRANSP files... ")
-                tr_out = transp_output.TranspOutput($TRANSP_id, step=1, out_file=$filepath_thermal_distr,fbm_files=[$filepath_FI_cdf]) # Load the TRANSP shot file. Assume first step. This is likely to be patched in the future.
-                if $verbose:
-                    print("From Python: Setting thermal distribution... ")
-                thermal_dist = transp_dists.Thermal(tr_out, ion=thermal_species) # Then load the thermal ion distribution from that .cdf file
-            else:
-                raise ValueError('From Python: TRANSP_id was specified, but filepath_thermal_distr was not (this should be impossible). Please correct and re-try.')
-        else:
-            thermal_dist = None # Otherwise, just let the thermal_dist variable be None
-
-        Ed_bin_edges = np.arange($Ed_min,$Ed_max,$Ed_diff) # diagnostic spectrum bin edges (keV or m/s)
-        if len(Ed_bin_edges)==1: # Make sure that there are at least one lower and one upper bin edge
-            dEd = (($Ed_max)-($Ed_min))/10
-            Ed_bin_edges = np.arange($Ed_min,($Ed_max)+dEd,$Ed_diff)
-        Ed_vals = 0.5*(Ed_bin_edges[1:] + Ed_bin_edges[:-1]) # bin centers (keV or m/s)
-        """
-    else
-        py"""
-        forwardmodel = $diagnostic_filepath # If analytic formulas are to be used to compute weight functions, we just need the diagnostic viewing cone to complete the forward model
-        thermal_dist = None # If analytic formulas are to be used to compute weight functions, we assume zero temperature for the thermal ions
-        Ed_bin_edges = np.arange($Ed_min,$Ed_max,$Ed_diff) # diagnostic spectrum bin edges (keV or m/s)
-        if len(Ed_bin_edges)==1: # Make sure that there are at least one lower and one upper bin edge
-            dEd = (($Ed_max)-($Ed_min))/10
-            Ed_bin_edges = np.arange($Ed_min,($Ed_max)+dEd,$Ed_diff)
-        Ed_vals = 0.5*(Ed_bin_edges[1:] + Ed_bin_edges[:-1]) # bin centers (keV or m/s)
-        """
+# Loading TRANSP data (if any) and initializing the forward model of choice
+verbose && println("Loading TRANSP data (if any) and initializing forward model on all distributed workers/processes... ")
+if analytic
+    verbose && println("---> Loading diagnostic viewing cone model data... ")
+    @everywhere begin
+        viewing_cone_model = ViewingCone(diagnostic_filepath)
     end
-    Ed_array = Vector(py"Ed_vals")
+end
+@everywhere begin
+    py"""
+    # Start by assuming that the bulk (thermal) plasma distribution is "", i.e. to be provided by custom non-TRANSP data
+    thermal_dist = ""
+    """
+end
+@everywhere begin
+    py"""
+    # The '$' in front of many Python variables means that the variable is defined in Julia, not in Python.
+    test_thermal_particle = spec.Particle($thermal_reactant) # Check so that thermal species is available in DRESS code
+    projVel = $projVel
+
+    # Load TRANSP simulation data
+    if (($fileext_thermal=="cdf") and ($fileext_FI_cdf=="cdf")) and (not projVel): # If there is a pair of TRANSP-bulk+TRANSP-FI files specified and we do not want to simply compute projected velocities...
+        import transp_output
+        import transp_dists
+        $verbose and print("---> Loading TRANSP output from TRANSP files... ")
+        tr_out = transp_output.TranspOutput($TRANSP_id, step=1, out_file=$filepath_thermal_distr,fbm_files=[$filepath_FI_cdf]) # Load the TRANSP shot file. Assume first step. This is likely to be extended in the future.
+        $verbose and print("---> Setting bulk (thermal) plasma distribution... ")
+        thermal_dist = transp_dists.Thermal(tr_out, ion=$thermal_reactant) # Then change from "" to the thermal ion distribution from that .cdf file
+
+    $verbose and print("---> Initializing Python forward model object with diagnostic viewing cone (if any), fusion reaction (if any) and bulk (thermal) plasma distribution (if any)... ") 
+    forwardmodel = forward.Forward($diagnostic_filepath, $reaction, thermal_dist) # Initialize the forward model
+
+    $verbose and print("---> Initializing diagnostic measurement bins... ")
+    Ed_bin_edges = np.arange($Ed_min,$Ed_max,$Ed_diff) # diagnostic spectrum bin edges (keV or m/s)
+    if len(Ed_bin_edges)==1: # Make sure that there are at least one lower and one upper bin edge
+        dEd = (($Ed_max)-($Ed_min))/10
+        Ed_bin_edges = np.arange($Ed_min,($Ed_max)+dEd,$Ed_diff)
+    Ed_vals = 0.5*(Ed_bin_edges[1:] + Ed_bin_edges[:-1]) # bin centers (keV or m/s)
+    nEd = len(Ed_vals)
+    """
+    nEd = py"nEd"
+    Ed_array = vec(py"Ed_vals")
 end
 
 ## ---------------------------------------------------------------------------------------------
-# If a .jld2 file has been specified for the thermal species distribution, we will need interpolation objects
-if fileext_thermal=="jld2"
-    verbose && println("Creating thermal temperature and density interpolations objects... ")
-    thermal_temp_itp = Interpolations.interpolate((ρ_pol_array,), thermal_temp_array, Gridded(Linear()))
-    thermal_dens_itp = Interpolations.interpolate((ρ_pol_array,), thermal_dens_array, Gridded(Linear()))
-    thermal_temp_etp = Interpolations.extrapolate(thermal_temp_itp,0) # Add what happens in extrapolation scenario. 0 means we assume vacuum scrape-off layer (SOL)
-    thermal_dens_etp = Interpolations.extrapolate(thermal_dens_itp,0) # Add what happens in extrapolation scenario. 0 means we assume vacuum scrape-off layer (SOL)
-    thermal_temp = thermal_temp_etp
-    thermal_dens = thermal_dens_etp
-end
+# Pre-processing bulk (thermal) plasma density and temperature data
 
-# If a thermal species distribution has not been specified, we simply need single values for the thermal species temperature and density
-if !isfile(filepath_thermal_distr)
-    verbose && println("The 'filepath_thermal_distr' was not specified. Checking the 'thermal_profiles_type' input variable... ")
-    if thermal_profiles_type==:FLAT
-        verbose && println("Found :FLAT! Thermal profiles will be constant throughout the plasma.")
-        thermal_temp = thermal_temp_axis
-        thermal_dens = thermal_dens_axis
-    elseif thermal_profiles_type==:DEFAULT
-        verbose && println("Found :DEFAULT! Thermal profiles will be as returned by getAnalyticalTemp() and getAnalyticalDens() functions in OWCF/misc/temp_n_dens.jl.")
-        rho_array = collect(0.0,stop=1.0,length=100)
-        thermal_temp_array = [getAnalyticalTemp(thermal_temp_axis, rho) for rho in rho_array]
-        thermal_dens_array = [getAnalyticalDens(thermal_dens_axis, rho) for rho in rho_array]
-        thermal_temp_itp = Interpolations.interpolate((rho_array,), thermal_temp_array, Gridded(Linear()))
-        thermal_dens_itp = Interpolations.interpolate((rho_array,), thermal_dens_array, Gridded(Linear()))
-        thermal_temp_etp = Interpolations.extrapolate(thermal_temp_itp,0) # Add what happens in extrapolation scenario. 0 means we assume vacuum scrape-off layer (SOL)
-        thermal_dens_etp = Interpolations.extrapolate(thermal_dens_itp,0) # Add what happens in extrapolation scenario. 0 means we assume vacuum scrape-off layer (SOL)
-        thermal_temp = thermal_temp_etp
-        thermal_dens = thermal_dens_etp
-    else
-        error("The 'thermal_profiles_type' input variable was not specified correctly. Currently available options are :FLAT and :DEFAULT. Please correct and re-try.")
+verbose && println("Preparing bulk (thermal) plasma temperature and density data... ")
+if !(py"thermal_dist"=="")
+    # If !(py"thermal_dist"==""), thermal ion density and temperature data will be loaded from TRANSP file
+    (verbose && !(py"thermal_dist"=="")) && println("---> Thermal ion temperature and density data loaded from TRANSP file ($(filepath_thermal_distr))")
+    thermal_dens_etp = nothing
+    thermal_temp_etp = nothing
+else
+    if isfile(filepath_thermal_distr)
+        # If a thermal ion data file was specified
+        if fileext_thermal=="jld2"
+            # And the thermal ion data file was a file with a .jld2 file extension
+            thermal_temp_itp = Interpolations.interpolate((ρ_pol_array,), thermal_temp_array, Gridded(Linear()))
+            thermal_dens_itp = Interpolations.interpolate((ρ_pol_array,), thermal_dens_array, Gridded(Linear()))
+            thermal_temp_etp = Interpolations.extrapolate(thermal_temp_itp,0) # Add what happens in extrapolation scenario. 0 means we assume vacuum scrape-off layer (SOL)
+            thermal_dens_etp = Interpolations.extrapolate(thermal_dens_itp,0) # Add what happens in extrapolation scenario. 0 means we assume vacuum scrape-off layer (SOL)
+            verbose && println("---> Thermal ion temperature and density data loaded from $(filepath_thermal_distr)")
+        elseif fileext_thermal=="cdf"
+            if !(typeof(timepoint)==String && length(split(timepoint,","))==2) && !(typeof(timepoint)==Float64) && !(typeof(timepoint)==Int64)
+                error("$(filepath_thermal_distr) specified as bulk (thermal) plasma distribution, but no valid timepoint (in seconds) could be inferred. Possible solutions: (1) Manually specify timepoint in start file (2) Use an .eqdsk file with timepoint data included in file name")
+            end
+            if typeof(timepoint)==String
+                tp = parse(Float64,replace(timepoint, "," => "."))
+            end
+            thermal_temp_etp = getTempProfileFromTRANSP(tp, filepath_thermal_distr, thermal_reactant) # Get the temperature from TRANSP as an interpolation object
+            thermal_dens_etp = getDensProfileFromTRANSP(tp, filepath_thermal_distr, thermal_reactant) # Get the density from TRANSP as an interpolation object
+        else
+            error("This error should be impossible to reach. Please post an issue at www.github.com/JuliaFusion/OWCF")
+        end
+    else # No bulk (thermal) plasma distribution file specified in start file
+        if thermal_temp_profile_type==:DEFAULT
+            thermal_temp_etp = x-> getAnalyticalTemp(thermal_temp_axis,x)
+            verbose && println("---> Default OWCF temperature profile with T_axis=$(thermal_temp_axis) keV will be used as thermal ion temperature data (more info in OWCF/misc/ folder)")
+        else # Otherwise, just use a flat bulk (thermal) plasma temperature profile
+            thermal_temp_etp = x-> thermal_temp_axis
+            # Don't print if projected velocities are to be computed. Then, bulk (thermal) temp+dens are irrelevant
+            (verbose && !projVel) && println("---> Flat thermal ion temperature ($(thermal_temp_axis) keV) profile assumed")
+        end
+        if thermal_dens_profile_type==:DEFAULT
+            thermal_dens_etp = x-> getAnalyticalDens(thermal_dens_axis,x)
+            verbose && println("---> Default OWCF density profile with n_axis=$(thermal_dens_axis) m^-3 will be used as thermal ion density data (more info in OWCF/misc/ folder)")
+        else # Otherwise, just use a flat bulk (thermal) plasma density profile
+            thermal_dens_etp = x-> thermal_dens_axis
+            # Don't print if projected velocities are to be computed. Then, bulk (thermal) temp+dens are irrelevant
+            (verbose && !projVel) && println("---> Flat thermal ion density ($(thermal_dens_axis) m^-3) profile assumed")
+        end
+    end
+end
+@everywhere thermal_dens_etp = $thermal_dens_etp
+@everywhere thermal_temp_etp = $thermal_temp_etp
+
+verbose && println("Defining bulk (thermal) plasma temperature and density functions... ")
+@everywhere begin
+    if py"thermal_dist"=="" # Custom data
+        function getThermalSpeciesTemperature(R,z)
+            ψ_rz = M.(R,z) # Get the interpolated poloidal flux function at the R,z point
+            ρ_pol_rz = sqrt.(max.(0.0, (ψ_rz .- psi_axis) ./(psi_bdry-psi_axis))) # The formula for the normalized flux coordinate ρ_pol = (ψ-ψ_axis)/(ψ_edge-ψ_axis)
+            return thermal_temp_etp.(ρ_pol_rz) # Interpolate onto ρ_pol_rz using the data from the .jld2 file
+        end
+        function getThermalSpeciesDensity(R,z)
+            ψ_rz = M.(R,z) # Get the interpolated poloidal flux function at the R,z point
+            ρ_pol_rz = sqrt.(max.(0.0, (ψ_rz .- psi_axis) ./(psi_bdry-psi_axis))) # The formula for the normalized flux coordinate ρ_pol = (ψ-ψ_axis)/(ψ_edge-ψ_axis)
+            return thermal_dens_etp.(ρ_pol_rz) # Interpolate onto ρ_pol_rz using the data from the .jld2 file
+        end
+    else # TRANSP data
+        function getThermalSpeciesTemperature(R,z) # This function is not actually used (an equivalent function is used automatically in the forward.Forward object)
+            temp = py"thermal_dist.get_temperature"(R,z)
+            if length(R)==1
+                return temp[1]
+            end
+            return temp
+        end
+        function getThermalSpeciesDensity(R,z) # This function is not actually used (an equivalent function is used automatically in the forward.Forward object)
+            dens = py"thermal_dist.get_density"(R,z)
+            if length(R)==1
+                return dens[1]
+            end
+            return dens
+        end
     end
 end
 
-# If a TRANSP .cdf file and a TRANSP FI .cdf file have been specified for the thermal species distribution, we have everything we need in the Python thermal_dist variable
-if lowercase(fileext_thermal)=="cdf" && isfile(filepath_FI_cdf)
-    thermal_temp = nothing
-    thermal_dens = nothing
+## ---------------------------------------------------------------------------------------------
+# Prepare functions for computing synthetic measurements, based on inputs in start file
+verbose && println("Creating synthetic measurements computation function... ")
+@everywhere begin
+    if analytic # Analytic equations in OWCF/forward.jl as forward model
+        function analytic_comp_helper(E, p, R, z, w)
+            N = length(R) # Assume length(E)==length(p)==length(R)==length(z)==length(w)
+            E = vcat(E); p = vcat(p); R = vcat(R); z = vcat(z); w = vcat(w) # If not Vectors, make into 1-element Vectors. If already Vectors, keep as is
+            B_gc = zeros(3,N)
+            for i in eachindex(R)
+                B_gc[:,i] = collect(reshape(Equilibrium.Bfield(M,R[i],z[i]),3,1))
+            end
+            return E, p, R, z, w, B_gc
+        end
+        if include_FLR_effects
+            function compute_measurements(E, p, R, z, w)
+                E, p, R, z, w_gc, B_gc = analytic_comp_helper(E, p, R, z, w)
+                py"""
+                v, x = forwardmodel.add_gyration($E, $p, $R, $z, $B_gc, n_gyro=$n_gyro) # No need to specify particle species, already specified via Forward.__init__()
+                """
+                E_gyro = repeat(E, inner=n_gyro) # Vector (M,) where M = length(E)*n_gyro
+                p_gyro = repeat(p, inner=n_gyro) # Vector (M,)
+                R_gyro = py"x[0,:]" # Vector (M,)
+                z_gyro = py"x[2,:]" # Vector (M,)
+                w_gyro = inv(n_gyro) .*repeat(w_gc, inner=n_gyro) # Vector (N*n_gyro,), weights rescaled by number of gyro-orbit samples
+                B_gyro = reduce(hcat,map(i-> Equilibrium.Bfield(M,R_gyro[i],z_gyro[i]), eachindex(R_gyro))) # Create a (3,M) array with the magnetic field vector at each (R,z) point
+                bulk_dens = getThermalSpeciesDensity(R_gyro, z_gyro) # Bulk plasma densities in m^-3
+                # Please note! Ed_array are the diagnostic measurement bin centers, NOT the edges as in py"Ed_bin_edges" for the DRESS code
+                return analytic_calc(viewing_cone_model, E_gyro, p_gyro, R_gyro, z_gyro, w_gyro, Ed_array, B_gyro; reaction=reaction, bulk_dens=bulk_dens)
+            end
+        else
+            function compute_measurements(E, p, R, z, w)
+                E, p, R_gc, z_gc, w_gc, B_gc = analytic_comp_helper(E, p, R, z, w)
+                bulk_dens = getThermalSpeciesDensity(R_gc, z_gc) # Bulk plasma density in m^-3
+                # Please note! Ed_array are the diagnostic measurement bin centers, NOT the edges as in py"Ed_bin_edges" for the DRESS code
+                return analytic_calc(viewing_cone_model, E, p, R_gc, z_gc, w_gc, Ed_array, B_gc; reaction=reaction, bulk_dens=bulk_dens)
+            end
+        end
+    else # DRESS code as forward model
+        function DRESS_comp_helper(E, p, R, z, w)
+            N = length(R) # Assume length(E)==length(p)==length(R)==length(z)==length(w)
+            E = vcat(E); p = vcat(p); R = vcat(R); z = vcat(z); w = vcat(w) # If not Vectors, make into 1-element Vectors. If already Vectors, keep as is
+            B_vecs = zeros(3,N)
+            for i in eachindex(R)
+                B_vecs[:,i] = collect(reshape(Equilibrium.Bfield(M,R[i],z[i]),3,1))
+            end
+            py"""
+            v, x = forwardmodel.add_gyration($E, $p, $R, $z, $B_vecs, n_gyro=$n_gyro) # No need to specify particle species, already specified via Forward.__init__()
+            """
+            weights = inv(n_gyro) .*repeat(w, inner=n_gyro) # Vector (N*n_gyro,), weights rescaled by number of gyro-orbit samples
+            return R, z, weights, B_vecs, py"v", py"x" 
+        end
+        if include_FLR_effects
+            if py"thermal_dist"=="" # Custom bulk (thermal) plasma distribution data
+                function compute_measurements(E, p, R, z, w)
+                    R_gc, z_gc, w_gyro, B_gc, v, x_gyro = DRESS_comp_helper(E, p, R, z, w)
+                    # PLEASE NOTE! comp_helper() is only used to avoid repeating code. Note: length(E)=N but length(weights)=N*n_gyro
+                    R_gyro = x_gyro[1,:] # Vector (M,) where M = length(E)*n_gyro
+                    z_gyro = x_gyro[3,:] # Vector (M,)
+                    B_gyro = reduce(hcat,map(i-> Equilibrium.Bfield(M,R_gyro[i],z_gyro[i]), eachindex(R_gyro))) # Create a (3,M) array with the magnetic field vector at each (R,z) point
+                    bulk_temp = getThermalSpeciesTemperature(R_gyro, z_gyro) # Bulk plasma temperature in keV
+                    bulk_dens = getThermalSpeciesDensity(R_gyro, z_gyro) # Bulk plasma density in m^-3
+                    py"""
+                    spec = forwardmodel.compute_spectrum(Ed_bin_edges, $R_gyro, $z_gyro, $v, $w_gyro, $B_gyro, bulk_temp=$bulk_temp, bulk_dens=$bulk_dens)
+                    """
+                    return vec(vcat(py"spec"))
+                end
+            else # TRANSP bulk (thermal) plasma distribution data
+                function compute_measurements(E, p, R, z, w)
+                    R_gc, z_gc, w_gyro, B_gc, v, x_gyro = DRESS_comp_helper(E, p, R, z, w)
+                    # PLEASE NOTE! comp_helper() is only used to avoid repeating code. Note: length(E)=N but length(weights)=N*n_gyro
+                    R_gyro = x_gyro[1,:] # Vector (M,) where M = length(E)*n_gyro
+                    z_gyro = x_gyro[3,:] # Vector (M,)
+                    B_gyro = reduce(hcat,map(i-> Equilibrium.Bfield(M,R_gyro[i],z_gyro[i]), eachindex(R_gyro))) # Create a (3,M) array with the magnetic field vector at each (R,z) point
+                    # bulk_temp <--- Already in forwardmodel via instantiation
+                    # bulk_dens <--- -||-
+                    py"""
+                    spec = forwardmodel.compute_spectrum(Ed_bin_edges, $R_gyro, $z_gyro, $v, $w_gyro, $B_gyro)
+                    """
+                    return vec(vcat(py"spec"))
+                end
+            end
+        else
+            if py"thermal_dist"=="" # Custom bulk (thermal) plasma distribution data
+                function compute_measurements(E, p, R, z, w)
+                    R_gc, z_gc, w_gyro, B_gc, v, x_gyro = DRESS_comp_helper(E, p, R, z, w)
+                    # PLEASE NOTE! comp_helper() is only used to avoid repeating code. Note: length(E)=N but length(weights)=N*n_gyro
+                    R_gc = repeat(R_gc, inner=n_gyro) # Ignore FLR effects. 'inner' keyword argument included to match with Python's default repeat() functionality
+                    z_gc = repeat(z_gc, inner=n_gyro) # Ignore FLR effects
+                    B_gc = repeat(B_gc, inner=(1,n_gyro)) # Array (3,M)
+                    bulk_temp = getThermalSpeciesTemperature(R_gc, z_gc) # Bulk plasma temperature in keV
+                    bulk_dens = getThermalSpeciesDensity(R_gc, z_gc) # Bulk plasma density in m^-3
+                    py"""
+                    spec = forwardmodel.compute_spectrum(Ed_bin_edges, $R_gc, $z_gc, $v, $w_gyro, $B_gc, bulk_temp=$bulk_temp, bulk_dens=$bulk_dens)
+                    """
+                    return vec(vcat(py"spec"))
+                end
+            else # TRANSP bulk (thermal) plasma distribution data
+                function compute_measurements(E, p, R, z, w)
+                    R_gc, z_gc, w_gyro, B_gc, v, x_gyro = DRESS_comp_helper(E, p, R, z, w)
+                    # PLEASE NOTE! comp_helper() is only used to avoid repeating code. Note: length(E)=N but length(weights)=N*n_gyro
+                    R_gc = repeat(R_gc, inner=n_gyro) # Ignore FLR effects. 'inner' keyword argument included to match with Python's default repeat() functionality
+                    z_gc = repeat(z_gc, inner=n_gyro) # Ignore FLR effects
+                    B_gc = repeat(B_gc, inner=(1,n_gyro)) # Array (3,M)
+                    # bulk_temp <--- Already in forwardmodel via instantiation
+                    # bulk_dens <--- -||-
+                    py"""
+                    spec = forwardmodel.compute_spectrum(Ed_bin_edges, $R_gc, $z_gc, $v, $w_gyro, $B_gc)
+                    """
+                    return vec(vcat(py"spec"))
+                end
+            end
+        end
+    end
 end
 
-# If there is a specified valid timepoint,
-# and if a TRANSP .cdf file has been specified, but NOT a TRANSP FI .cdf file, 
-# and we are NOT computing analytic orbit weight functions...
-if typeof(timepoint)==String && length(split(timepoint,","))==2 && lowercase(fileext_thermal)=="cdf" && !isfile(filepath_FI_cdf) && !projVel
-    thermal_temp = getTempProfileFromTRANSP(timepoint, filepath_thermal_distr, thermal_species; verbose=verbose) # Get the temperature from TRANSP as an interpolation object
-    thermal_dens = getDensProfileFromTRANSP(timepoint, filepath_thermal_distr, thermal_species; verbose=verbose) # Get the density from TRANSP as an interpolation object
+## ---------------------------------------------------------------------------------------------
+# Take care of local/global scope issues, if plotting and/or 2D->4D
+if include2Dto4D && plot_results
+    W4D = nothing # Pre-define this variable identifier, so that it has global scope
 end
-
-# Transfer the thermal_temp and thermal_dens variables to external processes
-@everywhere thermal_temp = $thermal_temp
-@everywhere thermal_dens = $thermal_dens
 
 ## ---------------------------------------------------------------------------------------------
 # Calculating the orbit weights
@@ -614,7 +804,7 @@ for iii=1:iiimax
                 end
                 @async begin
                     W = @distributed (+) for i=1:norbs
-                        spec = calcOrbSpec(M, og_orbs[i], F_os[i], py"forwardmodel", py"thermal_dist", py"Ed_bin_edges", reaction; thermal_temp=thermal_temp, thermal_dens=thermal_dens, analytic=analytic, flr=flr_effects, n_gyro=n_gyro) # Calculate the diagnostic energy spectrum for the orbit
+                        spec = calcOrbSpec(og_orbs[i], F_os[i], compute_measurements) # Calculate the expected diagnostic energy spectrum for the orbit, using the function compute_measurements()
                         rows = append!(collect(1:length(spec)),length(spec)) # To be able to tell the sparse framework about the real size of the weight matrix
                         cols = append!(i .*ones(Int64, length(spec)), norbs) # To be able to tell the sparse framework about the real size of the weight matrix
 
@@ -631,7 +821,7 @@ for iii=1:iiimax
             end)
         else
             Wtot = @distributed (+) for i=1:norbs
-                spec = calcOrbSpec(M, og_orbs[i], F_os[i], py"forwardmodel", py"thermal_dist", py"Ed_bin_edges", reaction; thermal_temp=thermal_temp, thermal_dens=thermal_dens, analytic=analytic, flr=flr_effects, n_gyro=n_gyro) # Calculate the diagnostic energy spectrum for the orbit
+                spec = calcOrbSpec(og_orbs[i], F_os[i], compute_measurements) # Calculate the expected diagnostic energy spectrum for the orbit, using the function compute_measurements()
                 rows = append!(collect(1:length(spec)),length(spec)) # Please see similar line earlier in the script
                 cols = append!(i .*ones(Int64, length(spec)), norbs) # Please see similar line earlier in the script
 
@@ -647,7 +837,8 @@ for iii=1:iiimax
             # WRITE CODE TO DEBUG QUANTITIES OF INTEREST
 
         else
-            spec = calcOrbSpec(M, og_orbs[1], F_os[1], py"forwardmodel", py"thermal_dist", py"Ed_bin_edges", reaction; thermal_temp=thermal_temp, thermal_dens=thermal_dens, analytic=analytic, flr=flr_effects, n_gyro=n_gyro) # Calculate the diagnostic energy spectrum for the orbit
+            verbose && println("Calculating spectra for orbit 1 of $(norbs)... ")
+            spec = calcOrbSpec(og_orbs[1], F_os[1], compute_measurements) # Calculate the expected diagnostic energy spectrum for the orbit, using the function compute_measurements()
             rows = append!(collect(1:length(spec)),length(spec)) # # Please see similar line earlier in the script
             cols = append!(1 .*ones(Int64, length(spec)), norbs) # # Please see similar line earlier in the script
 
@@ -663,7 +854,7 @@ for iii=1:iiimax
 
             else
                 verbose && println("Calculating spectra for orbit $(i) of $(norbs)... ")
-                local spec = calcOrbSpec(M, og_orbs[i], F_os[i], py"forwardmodel", py"thermal_dist", py"Ed_bin_edges", reaction; thermal_temp=thermal_temp, thermal_dens=thermal_dens, analytic=analytic, flr=flr_effects, n_gyro=n_gyro) # Calculate the diagnostic energy spectrum for the orbit
+                local spec = calcOrbSpec(og_orbs[i], F_os[i], compute_measurements) # Calculate the expected diagnostic energy spectrum for the orbit, using the function compute_measurements()
                 local rows = append!(collect(1:length(spec)),length(spec)) # Please see similar line earlier in the script
                 local cols = append!(i .*ones(Int64, length(spec)), norbs) # Please see similar line earlier in the script
 
@@ -673,6 +864,8 @@ for iii=1:iiimax
             end
         end
     end
+
+    Wtot[findall(x-> isnan(x), Wtot)] .= 0.0 # If NaNs, set them to 0.0
 
     if instrumental_response
         verbose && println("Applying diagnostic response to weight functions... ")
@@ -705,9 +898,9 @@ for iii=1:iiimax
     if !debug
         verbose && println("Saving orbit weight function matrix in its 2D form... ")
         if iiimax==1 # If you intend to calculate only one weight function
-            global filepath_output_orig = folderpath_o*"orbWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*"_$(length(vec(py"Ed_vals")))x$(norbs)"
+            global filepath_output_orig = folderpath_o*"orbWeights_$(sFLR)"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*"_$(length(vec(py"Ed_vals")))x$(norbs)"
         else # If you intend to calculate several (identical) weight functions
-            global filepath_output_orig = folderpath_o*"orbWeights_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*"_$(iii)"
+            global filepath_output_orig = folderpath_o*"orbWeights_$(sFLR)"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*"_$(iii)"
         end
         global filepath_output = deepcopy(filepath_output_orig)
         global count = 1
@@ -715,8 +908,8 @@ for iii=1:iiimax
             global filepath_output = filepath_output_orig*"_($(Int64(count)))"
             global count += 1 # global scope, to surpress warnings
         end
-        global filepath_output = filepath_output*".jld2"
-        myfile_s = jldopen(filepath_output,true,true,false,IOStream)
+
+        myfile_s = jldopen(filepath_output*".jld2",true,true,false,IOStream)
         write(myfile_s,"W2D",Wtot)
         write(myfile_s,"E_array",vec(E_array))
         write(myfile_s,"pm_array",vec(pm_array))
@@ -740,15 +933,135 @@ for iii=1:iiimax
             write(myfile_s,"og_filepath",og_filepath)
         end
         close(myfile_s)
+        if include2Dto4D || plot_results
+            splt = plot_results ? " (for plotting)" : ""
+            verbose && println("Inflating orbit weight function matrix ($(iii) of $(iiimax)) to 4D form$(splt)... ")
+            global W4D # Get the global scope variable identifier
+            W4D = zeros(length(Ed_array),length(E_array),length(pm_array),length(Rm_array))
+            for iEd in eachindex(Ed_array)
+                W3D = OWCF_map_orbits(og, Vector(Wtot[iEd,:]), true; weights=true) # Assume equidistant orbit-space grid. For now.
+                W4D[iEd,:,:,:] .= W3D
+            end
+        end
         if include2Dto4D
-            (iiimax==1) && verbose && println("Inflating orbit weight functions to 4D form... ")
-            (iiimax>1) && verbose && println("Inflating orbit weight functions $(iii) (of $(iiimax)) to 4D form... ")
-            global filepath_W = filepath_output
-            include("helper/orbWeights_2Dto4D.jl")
+            verbose && println("Saving orbit weight function matrix in its inflated 4D form... ")
+            fpath, fname = split(filepath_output, "/")[1:end-1], split(filepath_output, "/")[end] # Split filepath_output into path and filename
+            fname_calcOW, fname_rest = split(fname, "_")[1], split(fname, "_")[2:end] # Split filename into 'orbWeights' and the rest
+            fname_new = String(reduce(*, map(x-> x*"_", vcat(fname_calcOW*"4D", fname_rest)))[1:end-1]) # Change 'orbWeights' to 'orbWeights4D', then re-create the filename
+            fpath = String(reduce(*,map(x-> x*"/", fpath))) # Re-create the path
+            filepath_4D_output = fpath*fname_new # Create the new 4D full file path
+            myfile = jldopen(filepath_4D_output*".jld2",true,true,false,IOStream)
+            write(myfile,"W", W4D)
+            write(myfile,"E_array", E_array)
+            write(myfile,"pm_array", pm_array)
+            write(myfile,"Rm_array", Rm_array)
+            write(myfile,"Ed_array", Ed_array) # Save only diagnostic energy bins that have been used
+            if (@isdefined Ed_array_units)
+                write(myfile,"Ed_array_units", Ed_array_units)
+            end
+            if (@isdefined reaction)
+                write(myfile,"reaction", reaction)
+            end
+            if (@isdefined reaction_full)
+                write(myfile,"reaction_full",reaction_full)
+            end
+            if projVel
+                write(myfile, "projVel", projVel)
+            end
+            if (@isdefined filepath_thermal_distr)
+                write(myfile,"filepath_thermal_distr",filepath_thermal_distr)
+            end
+            close(myfile)
+        end
+        if plot_results
+
+            plot_font = "Computer Modern"
+            Plots.default(fontfamily=plot_font)
+            verbose && println("Plotting (a subset of) the results of the orbit weight functions computations... ")
+
+            # The indices of the measurement bin centers
+            N_bins = length(Ed_array)
+            if N_bins==1
+                plt_Ed_inds = [1,1,1]
+            elseif N_bins==2
+                plt_Ed_inds = [1,2,2]
+            elseif N_bins==3
+                plt_Ed_inds = [1,2,3]
+            else
+                # Algorithm to find suitable indices of Ed to visualize
+                W_gross = dropdims(sum(W4D, dims=(2,3,4)), dims=(2,3,4))
+                iEd_mid = argmax(W_gross)
+                iEd_half = argmin(abs.(W_gross .- W_gross[iEd_mid]/2))
+                if iEd_mid == N_bins
+                    iEd_hig = iEd_mid
+                    iEd_low = iEd_half
+                    iEd_mid = iEd_mid - 1
+                elseif iEd_mid == 1
+                    iEd_hig = iEd_half
+                    iEd_low = iEd_mid
+                    iEd_mid = iEd_mid + 1
+                else
+                    iEd_diff = iEd_mid - iEd_half
+                    iEd_low = iEd_mid - abs(iEd_diff)
+                    iEd_hig = iEd_mid + abs(iEd_diff)
+                end
+                plt_Ed_inds = [iEd_low, iEd_mid, iEd_hig]
+            end
+            iEd_low, iEd_mid, iEd_hig = plt_Ed_inds
+
+            # The indices of the energy slices to be visualized
+            global nE
+            nE = length(E_array)
+            if nE>=5
+                plt_E_inds = Int64.(round.(collect(range(1, stop=nE, length=5))[2:4]))
+            elseif nE==4
+                plt_E_inds = [2,3,4]
+            elseif nE==3
+                plt_E_inds = [1,2,3]
+            elseif nE==2
+                plt_E_inds = [1,1,2]
+            else # nE==1
+                plt_E_inds = [1,1,1]
+            end
+            iE_low, iE_mid, iE_hig = plt_E_inds
+
+            # The values of the measurement bin centers to be visualized, as Strings
+            Ed_low = @sprintf "%.3E" Ed_array[iEd_low]
+            Ed_mid = @sprintf "%.3E" Ed_array[iEd_mid]
+            Ed_hig = @sprintf "%.3E" Ed_array[iEd_hig]
+            units_plt = projVel ? "m/s" : "keV"
+        
+            # The values of the energy slices to be visualized
+            E_low = @sprintf "%.2E" E_array[iE_low]
+            E_mid = @sprintf "%.2E" E_array[iE_mid]
+            E_hig = @sprintf "%.2E" E_array[iE_hig]
+
+            my_color_map = cgrad([:white, :darkblue, :green, :yellow, :orange, :red])
+            plt_lowlow = Plots.heatmap(Rm_array, pm_array, W4D[iEd_low,iE_low,:,:], xlabel = L"R_{m} \, [m]"*"\n"*L"\textbf{Ed:} \, \,"*"$(Ed_low) [$(units_plt)]", ylabel=L"p_{m} \, [-]", fillcolor=my_color_map, colorbar=false, title="E: $(E_low) keV")
+            plt_lowmid = Plots.heatmap(Rm_array, pm_array, W4D[iEd_low,iE_mid,:,:], xlabel = L"R_{m} \, [m]",   ylabel=L"p_{m} \, [-]", fillcolor=my_color_map, colorbar=false, title="E: $(E_mid) keV")
+            plt_lowhig = Plots.heatmap(Rm_array, pm_array, W4D[iEd_low,iE_hig,:,:], xlabel = L"R_{m} \, [m]",   ylabel=L"p_{m} \, [-]", fillcolor=my_color_map, colorbar=false, title="E: $(E_hig) keV")
+
+            plt_midlow = Plots.heatmap(Rm_array, pm_array, W4D[iEd_mid,iE_low,:,:], xlabel = L"R_{m} \, [m]"*"\n"*L"\textbf{Ed:} \, \,"*"$(Ed_mid) [$(units_plt)]", ylabel=L"p_{m} \, [-]", fillcolor=my_color_map, colorbar=false, title="E: $(E_low) keV")
+            plt_midmid = Plots.heatmap(Rm_array, pm_array, W4D[iEd_mid,iE_mid,:,:], xlabel = L"R_{m} \, [m]",   ylabel=L"p_{m} \, [-]"  , fillcolor=my_color_map, colorbar=false, title="E: $(E_mid) keV")
+            plt_midhig = Plots.heatmap(Rm_array, pm_array, W4D[iEd_mid,iE_hig,:,:], xlabel = L"R_{m} \, [m]",   ylabel=L"p_{m} \, [-]"  , fillcolor=my_color_map, colorbar=false, title="E: $(E_hig) keV")
+
+            plt_higlow = Plots.heatmap(Rm_array, pm_array, W4D[iEd_hig,iE_low,:,:], xlabel = L"R_{m} \, [m]"*"\n"*L"\textbf{Ed:} \, \,"*"$(Ed_hig) [$(units_plt)]", ylabel=L"p_{m} \, [-]", fillcolor=my_color_map, colorbar=false, title="E: $(E_low) keV")
+            plt_higmid = Plots.heatmap(Rm_array, pm_array, W4D[iEd_hig,iE_mid,:,:], xlabel = L"R_{m} \, [m]",   ylabel=L"p_{m} \, [-]"  , fillcolor=my_color_map, colorbar=false, title="E: $(E_mid) keV")
+            plt_highig = Plots.heatmap(Rm_array, pm_array, W4D[iEd_hig,iE_hig,:,:], xlabel = L"R_{m} \, [m]",   ylabel=L"p_{m} \, [-]"  , fillcolor=my_color_map, colorbar=false, title="E: $(E_hig) keV")
+
+            plt_tot = Plots.plot(plt_lowhig, plt_midhig, plt_highig,
+                                    plt_lowmid, plt_midmid, plt_higmid,
+                                    plt_lowlow, plt_midlow, plt_higlow,
+                                    layout=(3,3), size=(1200,1200), 
+                                    top_margin=4Plots.mm, dpi=200)
+            display(plt_tot)
+
+            verbose && println("---> Saving figure at $(filepath_output).png... ")
+            png(plt_tot, filepath_output)
         end
     else
         verbose && println("Saving debugged quantities... ")
         # WRITE WHATEVER CODE TO SAVE THE DEBUGGED QUANTITIES
     end
 end # The end of the iii=1:iiimax for-loop. (to enable computation of several identical orbit weight functions, to post-analyze MC noise influence for example)
-println("------ Done! ------")
+println("------ calcOrbWeights.jl completed successfully! ------")

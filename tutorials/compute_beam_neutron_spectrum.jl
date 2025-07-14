@@ -13,7 +13,7 @@
 # Finally, the default variable input values are set so as to model the expected neutron emission spectrum 
 # of neutrons born on-axis from NBI injection in JET.
 #
-# Written by Henrik Järleblad. Last maintained 2025-04-03.
+# Written by Henrik Järleblad. Last maintained 2025-07-09.
 ##############################################################################################################
 
 folderpath_OWCF = "/path/to/the/OWCF/" # First, you have to specify the path to where the OWCF folder is on your computer, as a string. 
@@ -38,7 +38,7 @@ pushfirst!(PyVector(pyimport("sys")."path"), "") # Add all DRESS code scripts, t
 # below. If you instead want to specify the magnetic field yourself, as a simple 3-element Vector, 
 # simply leave the 'filepath_equil' variable unspecified (""), and change the '0.0' elements in the B_vec 
 # variable to your liking below.
-filepath_equil = ""
+filepath_equil = "/path/to/the/magnetic/equilibrium/file.eqdsk"
 B_vec = [0.0, -2.7, 0.0] # Teslas
 
 ##############################################################################################################
@@ -91,7 +91,7 @@ end
 # specify the path to a LINE21 code (S. Connory et al, private correspondance w. J. Eriksson) output file.
 # OR, the path to an output file of the OWCF/extra/createCustomLOS.jl script. This is done with the 
 # 'diagnostic_filepath' variable below.
-diagnostic_filepath = ""
+diagnostic_filepath = "/path/to/the/diagnostic/file.vc"
 # Valid diagnostic LOS files can be found in the OWCF/vc_data/ folder
 
 ##############################################################################################################
@@ -127,7 +127,7 @@ reaction = $reaction
 test_thermal_particle = spec.Particle($thermal_species) # Check so that thermal species is available in DRESS code
 thermal_species = $thermal_species
 
-forwardmodel = forward.Forward($diagnostic_filepath) # Pre-initialize the forward model
+forwardmodel = forward.Forward($diagnostic_filepath, $reaction, "") # Pre-initialize the forward model. "" indicates no TRANSP data is to be used
 """
 
 ##############################################################################################################
@@ -169,7 +169,7 @@ spectrum_bin_width = 50.0 # keV
 #        computing the neutron spectrum. 
 #   - The plasma rotation vector 'plasma_rotation_vector', if plasma rotation should be included. If not, 
 #     leave as [0.0,0.0,0.0]
-n_gyro = 1000000
+n_gyro = 100_000
 include_FLR_effects = false
 plasma_rotation_vector = [0.0,0.0,0.0] # m/s
 
