@@ -1,5 +1,5 @@
+![The logo of the orbit weight computational framework](misc/logo.gif)
 ***
-# OWCF
 ## This is the Orbit Weight Computational Framework (OWCF).
 
 It enables effective and efficient computation of weight functions using the Julia programming language (coupled to other programming languages, e.g. Python). As of the current version (v1.5.0), the OWCF can compute the following types of weight functions:
