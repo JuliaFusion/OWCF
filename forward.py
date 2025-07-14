@@ -103,7 +103,7 @@ class Forward(object):
             self.projVel = False
         else:
             self._reaction = r
-            self.product_of_interest_energy_state = "" # Ground state
+            self.product_of_interest_energy_state = "gs" # Ground state
             self.thermal_ion = ""
             self.fast_ion = r
             self.product_of_interest = ""
@@ -113,10 +113,7 @@ class Forward(object):
             self.projVel = True
         self.reaction_short = a+"-"+b # Only the reactants, on the form [fast ion]-[thermal ion]. If projected velocities: [fast ion]-proj
 
-        if self.projVel:
-            self.spectrum_calculator = ""
-        else:
-            self.spectrum_calculator = spec.SpectrumCalculator(self.reaction_short, self.product_of_interest_energy_state)
+        self.spectrum_calculator = spec.SpectrumCalculator(self.reaction_short, self.product_of_interest_energy_state)
 
     @property
     def bulk_dist(self):
