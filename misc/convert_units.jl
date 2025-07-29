@@ -87,6 +87,67 @@ MAGNETICFIELD_UNITS_LONG = Dict("milligauss"=>1.0e-7,"gauss"=>1.0e-4,"millitesla
 OWCF_UNITS = merge(OWCF_BASE_UNITS, ACCELERATION_UNITS, FORCE_UNITS, PRESSURE_UNITS, CHARGE_UNITS, ENERGY_UNITS, POWER_UNITS, VOLTAGE_UNITS,MAGNETICFIELD_UNITS)
 OWCF_UNITS_LONG = merge(OWCF_BASE_UNITS_LONG, ACCELERATION_UNITS_LONG, FORCE_UNITS_LONG, PRESSURE_UNITS_LONG, CHARGE_UNITS_LONG, ENERGY_UNITS_LONG, POWER_UNITS_LONG, VOLTAGE_UNITS_LONG,MAGNETICFIELD_UNITS_LONG)
 
+
+"""
+    units_to_dict(units_in)
+
+Return a dictionary with all the components of units_in as keys,
+and the powers as values. E.g. "m_s^-1" will result in an output of 
+Dict("m"=>1, "s"=>-1).
+"""
+function units_to_dict(units_in::String)
+    unit_in_components =  split(units_in,"_")
+    
+    my_unit_dict = Dict()
+
+    for unit_in_component in unit_in_components
+        if occursin("^",unit_in_component) # If unit has an exponent...
+            unit, power = split(unit_in_component,"^") # e.g. "s^-1" into "s","-1"
+            if haskey(my_unit_dict,unit)
+                my_unit_dict[unit] += parse(Float64, power)
+            else
+                my_unit_dict[unit] = parse(Float64, power)
+            end
+        else
+            if haskey(my_unit_dict,unit_in_component)
+                my_unit_dict[unit_in_component] += 1.0 # Otherwise, assume exponent of 1.0
+            else
+                my_unit_dict[unit_in_component] = 1.0 # Otherwise, assume exponent of 1.0
+            end
+        end
+    end
+
+    for key in keys(my_unit_dict)
+        if my_unit_dict[key]==0
+            delete!(my_unit_dict,key) # Remove 0 artefacts that might appear
+        end
+    end
+
+    return my_unit_dict
+end
+
+
+"""
+    units_from_dict(my_dict)
+
+Given a dictionary produced by the units_to_dict() function (or similar), return 
+the resulting units of measurement as a string. For example, if we have that 
+my_dict = Dict("kg"=>1.0, "s"=>-2.0, "m"=>-3.0) then the function output will be
+"kg_s^-2_m^-3"
+"""
+function units_from_dict(my_dict::Dict)
+    units_out = ""
+    for key in keys(my_dict)
+        if my_dict[key]!=1.0
+            units_out *= "$(key)^$(Int64(my_dict[key]))_" 
+        else
+            units_out *= "$(key)_"
+        end
+    end
+    return units_out[1:end-1] # Remove the last "_"
+end
+
+
 """
     units_multiply(units_1, units_2)
     units_multiply(-||-; verbose=false)
@@ -517,66 +578,6 @@ function units_conversion_factor(units_in::String,units_out::String; rounding=tr
 
     # RETURN CONVERSION FACTOR
     return rounding ? round(cf,sigdigits=12) : cf
-end
-
-
-"""
-    units_to_dict(units_in)
-
-Return a dictionary with all the components of units_in as keys,
-and the powers as values. E.g. "m_s^-1" will result in an output of 
-Dict("m"=>1, "s"=>-1).
-"""
-function units_to_dict(units_in::String)
-    unit_in_components =  split(units_in,"_")
-    
-    my_unit_dict = Dict()
-
-    for unit_in_component in unit_in_components
-        if occursin("^",unit_in_component) # If unit has an exponent...
-            unit, power = split(unit_in_component,"^") # e.g. "s^-1" into "s","-1"
-            if haskey(my_unit_dict,unit)
-                my_unit_dict[unit] += parse(Float64, power)
-            else
-                my_unit_dict[unit] = parse(Float64, power)
-            end
-        else
-            if haskey(my_unit_dict,unit_in_component)
-                my_unit_dict[unit_in_component] += 1.0 # Otherwise, assume exponent of 1.0
-            else
-                my_unit_dict[unit_in_component] = 1.0 # Otherwise, assume exponent of 1.0
-            end
-        end
-    end
-
-    for key in keys(my_unit_dict)
-        if my_unit_dict[key]==0
-            delete!(my_unit_dict,key) # Remove 0 artefacts that might appear
-        end
-    end
-
-    return my_unit_dict
-end
-
-
-"""
-    units_from_dict(my_dict)
-
-Given a dictionary produced by the units_to_dict() function (or similar), return 
-the resulting units of measurement as a string. For example, if we have that 
-my_dict = Dict("kg"=>1.0, "s"=>-2.0, "m"=>-3.0) then the function output will be
-"kg_s^-2_m^-3"
-"""
-function units_from_dict(my_dict::Dict)
-    units_out = ""
-    for key in keys(my_dict)
-        if my_dict[key]!=1.0
-            units_out *= "$(key)^$(Int64(my_dict[key]))_" 
-        else
-            units_out *= "$(key)_"
-        end
-    end
-    return units_out[1:end-1] # Remove the last "_"
 end
 
 
