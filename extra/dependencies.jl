@@ -23,7 +23,7 @@
 #
 # Finally, please note that some functions in dependencies.jl might be under construction. Hence, the bad code.
 #
-# Written by H. Järleblad. Last maintained 2025-07-11.
+# Written by H. Järleblad. Last maintained 2025-07-17.
 ###################################################################################################
 
 println("Loading the Julia packages for the OWCF dependencies... ")
@@ -74,6 +74,28 @@ end
 ###### Mathematics
 
 """
+    gaussian_2D(x_grid, y_grid, x_mean, y_mean, x_std, y_std)
+    gaussian_2D(-||-; floor_level=0.0, verbose=false)
+"""
+function gaussian_2D(x_grid::AbstractVector, y_grid::AbstractVector, x_mean::T, y_mean::T, x_std::T, y_std::T; floor_level=0.0, verbose=false) where T<:Real
+    nx = length(x_grid)
+    ny = length(y_grid)
+
+    g = zeros(nx,ny)
+    g_max = inv(2*pi*x_std*y_std)
+    for i=1:nx, j=1:ny
+        a = ((x_grid[i] - x_mean)/x_std)^2 + ((y_grid[j] - y_mean)/y_std)^2
+        g[i,j] = g_max *exp(-0.5*a)
+    end
+
+    if floor_level>0.0
+        g = map(gg-> gg<floor_level*g_max ? 0.0 : gg, g)
+    end
+
+    return g
+end
+
+"""
     gaussian(μ, σ)
     gaussian(-||-; mx=μ .+6 .*σ, mn=μ .-6 .*σ, n=50)
 
@@ -113,13 +135,19 @@ function gaussian(μ::AbstractVector, σ::AbstractVector; mn::AbstractVector=μ 
     verbose && println("Lower bound(s) for $(DIM)-dimensional grid: $(mn)")
     verbose && println("Number of grid points (in each dimension): $(n)")
 
+    if DIM==2
+        D1_vector = collect(range(mn[1], stop=mx[1], length=n[1]))
+        D2_vector = collect(range(mn[2], stop=mx[2], length=n[2]))
+        return gaussian_2D(D1_vector, D2_vector, μ[1], μ[2], σ[1], σ[2]; floor_level=floor_level, verbose=verbose)
+    end
+
     v = σ.^2 # Compute the variance from the standard deviation
     verbose && println("Creating $(DIM)-dimensional grid for Gaussian distribution... ")
     query_vecs_n_inds = () # A tuple to hold all query points and their indices. Structure: ((vector,indices),(vector,indices),...)
     for i in 1:DIM # For all grid dimensions... 
         query_vecs_n_inds = tuple(query_vecs_n_inds[:]...,collect(zip(collect(range(mn[i],stop=mx[i],length=n[i])),1:n[i]))) # Add the (vector,indices) pairs one by one  into a big tuple (tuples are immutable, hence the cumbersome code)
     end
-    query_points_n_coords = Iterators.product(query_vecs_n_inds...) # Create a long list of all reconstruction space grid points and their coordinates by computing a product between all query point-index vectors. Example structure (if 3 dimensions): [((x1_1,1),(x2_1,1),(x3_1,1)),((x1_2,2),(x2_1,1),(x3_1,1)),...]
+    query_points_n_coords = Iterators.product(query_vecs_n_inds...) # Create a long list of all coordinate space grid points and their coordinates by computing a product between all query point-index vectors. Example structure (if 3 dimensions): [((x1_1,1),(x2_1,1),(x3_1,1)),((x1_2,2),(x2_1,1),(x3_1,1)),...]
     verbose && print("Computing Gaussian distribution with mean $(μ) and standard deviation $(σ)...")
     gauss_distr = zeros(tuple(n...)) # Pre-allocate Gaussian distribution
     for query_point_n_coord in query_points_n_coords
@@ -382,6 +410,46 @@ function spitzer_slowdown_time(n_e::Real, T_e::Real, species_f::String, species_
         return τ_s, coulomb_log, λ_D 
     end
     return τ_s
+end
+
+"""
+    gaussianBasisMatrix()
+"""
+function gaussianBasisMatrix(abscissas, corr_lengths)
+    DIM = length(abscissas) # The dimensionality of the space, e.g. 3
+    SIZE = length.(abscissas) # The size of the space, e.g. [30, 31, 32]
+    MAXIMA = maximum.(abscissas) # The upper boundary in each dimension
+    MINIMA = minimum.(abscissas) # The lower boundary in each dimension
+
+    means_in_each_dimension = () # A tuple to hold the gaussian means, in each dimension
+    for i in 1:DIM # For all grid dimensions... 
+        means_in_each_dimension = tuple(means_in_each_dimension[:]...,collect(range(MINIMA[i], stop=MAXIMA[i], step=corr_lengths[i])))
+    end
+    means = Iterators.product(means_in_each_dimension...)
+
+    basis_matrix = zeros(reduce(*, SIZE), length(means))
+    for (i_col, mean) in enumerate(means)
+        basis_matrix[:,i_col] = gaussian([m for m in mean], corr_lengths; mx=MAXIMA, mn=MINIMA, n=SIZE)[:]
+    end
+
+    return basis_matrix
+end
+
+"""
+    basis_prior()
+"""
+function basis_prior(abscissas; corr_lengths=ones(length(abscissas)), w_min=0.0, type=:gaussian, verbose=false)
+
+    if type==:gaussian
+        basis_matrix = gaussianBasisMatrix(abscissas, corr_lengths)
+    else
+        error("Currently supported options for 'type' keyword argument: (1) :gaussian. Please correct and re-try")
+    end
+
+    w = rand(size(basis_matrix,2)) # Initialize random weight in (0,1) for every basis function
+    w[findall(x-> x<w_min, w)] .= 0.0 # Set all weights below w_min to 0.0
+
+    return reshape(basis_matrix*w, Tuple(length.(abscissas)))
 end
 
 """
@@ -3248,10 +3316,11 @@ function getCOMTopoMap(M::AbstractEquilibrium, E::Real, Λ_array::AbstractVector
                 po = clamp.(po,-1.0,1.0) # Clamp the pitch between -1.0 and 1.0, to adress numerical inaccuracies
                 o_class = GuidingCenterOrbits.classify(Ro,zo,po,magnetic_axis(M)) # Deduce the orbit class from the (R,z), pitch and magnetic axis points
                 if vverbose 
-                    plt_crs = Plots.plot(Ro,zo,title="$(o_class)",aspect_ratio=:equal,label="")
-                    plt_crs = Plots.plot!(plt_crs,LCFS.r,LCFS.z,label="LCFS")
-                    plt_p = Plots.plot(po,title="Pitch evolution (v_||/v)")
-                    Plots.display(Plots.plot(plt_crs,plt_p,layout=(1,2)))
+                    # To use this, include 'using Plots' at the top of dependencies.jl, and un-comment the lines below
+                    #plt_crs = Plots.plot(Ro,zo,title="$(o_class)",aspect_ratio=:equal,label="")
+                    #plt_crs = Plots.plot!(plt_crs,LCFS.r,LCFS.z,label="LCFS")
+                    #plt_p = Plots.plot(po,title="Pitch evolution (v_||/v)")
+                    #Plots.display(Plots.plot(plt_crs,plt_p,layout=(1,2)))
                 end
                 o_path = OrbitPath(false,true,E*ones(length(Ro)),po,Ro,zo,zero(zo),zero(zo)) # Create an OrbitPath object (struct). Don't assume vacuum (false), include drift effects (true), and we don't know anything about phi and dt (zero(zo))
                 o = Orbit(HamiltonianCoordinate(E, mu, Pphi; amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species)), o_class, zero(E), zero(E), o_path, false) # Create an Orbit struct. We don't know tau_p and tau_t (zero(E)) and we don't know if guiding-center equation of motion are valid (false)
@@ -3556,10 +3625,7 @@ function pmRm_2_μPϕ(M::AbstractEquilibrium, good_coords_pmRm::Vector{Cartesian
         a = Point2D[Point(mm_tess, pp_tess) for (mm_tess,pp_tess) in μPϕ_iterator_tess] # Put them all in a Point() object within a Point2D array
         push!(tess, a) # Feed all points to the Delaunay tessellation
         if debug
-            # Write your own debug code here. For example:
-            x, y = getplotxy(delaunayedges(tess))
-            test_plt_1 = Plots.plot(Pϕ_tess_inv.(y),μ_tess_inv.(x); label="Delaunay tessellation",ylims=extrema(μ_tess_inv.(x)), xlims=extrema(Pϕ_tess_inv.(y)))
-            display(test_plt_1)
+            # Write your own debug code here
         end
         vertices_hash = getDelaunayTessVerticesHash(tess, μPϕ_iterator_tess)
         data_COM_lost_ctgo = interpDelaunayTess(tess, data_values_lost_ctgo, μ_tess.(μ_array), Pϕ_tess.(Pϕ_array), vertices_hash; outside_value=outside_value, nearest=isTopoMap, verbose=verbose, vverbose=vverbose)
