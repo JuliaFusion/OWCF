@@ -183,7 +183,7 @@ function read_nubeam(filepath::String, mygrid::grid; e_range::Union{Nothing,Tupl
     TRANSP_z_vector = TRANSP_data["Z2D"] # 1D array. z values in cm
     TRANSP_R_mesh = TRANSP_data["RSURF"] # 2D array. R values in cm
     TRANSP_z_mesh = TRANSP_data["ZSURF"] # 2D array. z values in cm
-    bmvol = TRANSP_data["BMVOL"] # Volume of elements at (spiral) grid points. In cm^-3
+    bmvol = TRANSP_data["BMVOL"] # Volume of elements at (spiral) grid points. In cm^3
     p_vector = TRANSP_data["A_"*sstr] # 1D array
     E_vector = TRANSP_data["E_"*sstr]*(1.0e-3) # 1D_array. Energy values in keV (after multiplication with (1.0e-3) factor)
     F_Epbm = (TRANSP_data["F_"*sstr])*(1.0e3) # 3D array. size(F_Epbm)=(length(E_vector), length(p_vector), length(bmvol)). Distribution values in (keV)^-1 cm^-3
