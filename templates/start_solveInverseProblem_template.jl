@@ -16,6 +16,10 @@
 #
 # folderpath_OWCF - The path to where the OWCF folder is saved on your computer. End with '/' (or '\' if Windows) - String
 # 
+# allow_measurements_with_zero_uncertainty - If set to true, the algorithm will allow uncertainties to be equal to zero.
+#                                            That is, for err[i]==0 is allowed for a given measurement bin 'i'. If such 
+#                                            values of err are found, they will be set to the smallest possible non-zero value
+#                                            of err. If err[i]==0 for all 'i', err[i]=1 is instead done - Bool
 # constraints - A Vector of Symbols, to specify what types of constraints that should be put on the fast-ion distribution
 #               when solving the inverse problem. Currently, the following option(s) is available:
 #                   - :NONNEG - If included, a non-negativity constraint is enforced on the fast-ion distribution at all 
@@ -42,6 +46,7 @@
 #                              That is, the units of the Vector elements (tuples) in excluded_measurement_intervals[i] are assumed to be 
 #                              excluded_measurement_units[i] - Vector{String}
 # exclude_zero_measurements - If true, measurements equal to 0 will be excluded from the reconstruction - Bool
+# filename_out - If specified, the solveInverseProblem.jl output file will be named "filename_out.jld2" or "filename_out.h5" - String
 # filepath_start - The path to the start file. This is set automatically, and saved in the calc2DWeights.jl output file. LEAVE UNCHANGED. - String
 # filepaths_S - A Vector of Strings with filepath(s) to the signal file(s) to be used as measurements when solving the 
 #               inverse problem. Has to be of equal length to the 'filepaths_W' input variable (see below). The files can be in either 
@@ -216,7 +221,7 @@
 # Some lines below are commented out. This is because the inverse problem solving algorithm is currently single-CPU.
 # In future version, multi-core processing might be supported, and those lines will then be uncommented.
 
-# Script written by Henrik Järleblad. Last maintained 2025-04-11.
+# Script written by Henrik Järleblad. Last maintained 2025-07-30.
 #############################################################################################################################################################
 
 ## First you have to set the system specifications
@@ -257,11 +262,13 @@ Pkg.activate(".")
 
 ## -----------------------------------------------------------------------------
 @everywhere begin
+    allow_measurements_with_zero_uncertainty = false # false by default, because uncertainties should always be >0
     constraints = [:NONNEG]
     coordinate_system = "" # Specify as e.g. "(E,p)", "(vpara,vperp)", "(E,pm,Rm)" or "(E,Lambda,Pphi_n)"
     excluded_measurement_intervals = [[(,),...],[(,),...]]
     excluded_measurement_units = ["",""]
-    exclude_zero_measurements = true
+    exclude_zero_measurements = true # true by default, since a zero measurement implies no background noise
+    filename_out = "" # The output file name, without the file extension (i.e. .jld2/.h5). If default OWCF output file naming should be used, leave as ""
     filepath_start = Base.source_path() # For saving in output file, for posterity and reproducibility
     filepaths_S = ["",""]
     filepaths_W = ["",""]
@@ -315,7 +322,7 @@ Pkg.activate(".")
     ### Extra input arguments
     btipsign = 1 # The sign of the dot product between the magnetic field and the plasma current. Most likely not needed. But please specify, if known.
     FI_species = "" # If reconstruction is in (vpara,vperp) or the 'regularization' input variable contains :COLLISIONS or :ICRF, the fast-ion species might need to be specified. Please see OWCF/misc/species_func.jl for more info on species options.
-    h5_is_rowmajor = false # Set to true, if 'filepath_EpRz' is an .h5/.hdf5 and it was saved using a row-major programming language
+    h5_is_rowmajor = false # Set to true, if 'rescale_W_F_file_path' is an .h5/.hdf5 and it was saved using a row-major programming language
 end
 
 ## -----------------------------------------------------------------------------

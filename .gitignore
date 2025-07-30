@@ -1,21 +1,13 @@
-#Ignore the following files
-
-KM9_2021_trimmed.out
-
-MPRu_orig_vs_trim_RZ.png
-
-MPRu_orig_vs_trim_TOP.png
-
-trim_MPRu_LINE21.jl
-
-trim_MPRu_LINE21.sh
-
-trim_MPRu_LINE21_v2.jl
-
-__pycache__/
+# Ignore the following files when updating the OWCF
 
 *.cdf
 
 *.CDF
 
 scratch.jl
+
+# Ignore the following folders when updating the OWCF
+
+__pycache__/
+
+tests/
