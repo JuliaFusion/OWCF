@@ -122,7 +122,7 @@
 # WARNING! Please note that the output files of calc4DWeights.jl will be LARGE. This is due to the relatively high dimensionality
 # of the weight functions.
 
-# Script written by Henrik Järleblad. Last maintained 2025-07-11.
+# Script written by Henrik Järleblad. Last maintained 2025-07-30.
 ################################################################################################
 
 ## ---------------------------------------------------------------------------------------------
@@ -512,7 +512,7 @@ end
 println("")
 println("If you would like to change any settings, please edit the start_calc4DW_template.jl file or similar.")
 println("")
-println("Written by Henrik Järleblad. Last maintained 2025-07-11.")
+println("Written by Henrik Järleblad. Last maintained 2025-07-30.")
 println("--------------------------------------------------------------------------------------------------")
 println("")
 
@@ -1151,8 +1151,8 @@ for iii=1:iiimax
                     iEd_mid = iEd_mid + 1
                 else
                     iEd_diff = iEd_mid - iEd_half
-                    iEd_low = iEd_mid - abs(iEd_diff)
-                    iEd_hig = iEd_mid + abs(iEd_diff)
+                    iEd_low = max(1, iEd_mid - abs(iEd_diff))
+                    iEd_hig = min(N_bins, iEd_mid + abs(iEd_diff))
                 end
                 plt_raw_inds = [iEd_low, iEd_mid, iEd_hig]
             end
@@ -1293,8 +1293,8 @@ for iii=1:iiimax
                         iEd_mid = iEd_mid + 1
                     else
                         iEd_diff = iEd_mid - iEd_half
-                        iEd_low = iEd_mid - abs(iEd_diff)
-                        iEd_hig = iEd_mid + abs(iEd_diff)
+                        iEd_low = max(1, iEd_mid - abs(iEd_diff))
+                        iEd_hig = min(N_bins, iEd_mid + abs(iEd_diff))
                     end
                     plt_inds = [iEd_low, iEd_mid, iEd_hig]
                 end
