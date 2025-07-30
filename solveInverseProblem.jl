@@ -92,7 +92,7 @@
 ### Other
 # 
 
-# Script written by Henrik Järleblad. Last maintained 2025-07-11.
+# Script written by Henrik Järleblad. Last maintained 2025-07-30.
 ###########################################################################################################
 
 # A dictionary to keep a record of the names of all sections and their respective execution times
@@ -1385,8 +1385,27 @@ verbose && println("Normalizing all weight matrices and measurements by the meas
 W_hat = Vector{Matrix{Float64}}(undef,length(filepaths_W))
 S_hat = Vector{Vector{Float64}}(undef,length(filepaths_S))
 for (i,w) in enumerate(W)
-    W_hat[i] = w ./ S_errs[i]
-    S_hat[i] = S[i] ./ S_errs[i]
+    errs_i = S_errs[i]
+    numOZeroErrs = findall(x-> x<=0.0, errs_i)
+    if !isempty(numOZeroErrs)
+        if !allow_measurements_with_zero_uncertainty
+            error("Found $(length(numOZeroErrs)) measurements with zero uncertainty for diagnostic $(i). This is not allowed (input variable 'allow_measurements_with_zero_uncertainty' was set to false). Set input variable 'allow_measurements_with_zero_uncertainty' to true, or correct and re-try")
+        end
+        verbose && println("---> Found $(length(numOZeroErrs)) measurements with 0 uncertainty for diagnostic $(i). Giving maximum importance... ")
+        minNonZeroErr = Inf
+        for err in errs_i
+            if 0<elem<minNonZeroErr
+                minNonZeroErr = err
+            end
+        end
+        if !isfinite(minNonZeroErr)
+            verbose && println("------> No non-zero uncertainty found for diagnostic $(i). All measurements will be given equal importance... ")
+            minNonZeroErr = 1.0 # Use 1.0 to leave measurements unaffected
+        end 
+        errs_i[findall(x-> x<=0.0, errs_i)] .= minNonZeroErr
+    end
+    W_hat[i] = w ./ errs_i
+    S_hat[i] = S[i] ./ errs_i
 end
 
 append!(timestamps,time()) # The timestamp when the weight matrices and measurements have been normalized
@@ -1491,8 +1510,8 @@ for (i,hp) in enumerate(hyper_points)
     sol_i = dropdims(x.value,dims=2) # One redundant dimension is returned by the solve!() method
 
     sols[:,i] = (Shm/Whm) .*sol_i
-    sols_rawnorm[i] = norm(sol_i)
-    sols_datafit[i] = norm(W_hh*sol_i - S_hh)
+    sols_rawnorm[i] = norm(L_i*sol_i) # ||Lx||
+    sols_datafit[i] = norm(W_hh*sol_i - S_hh) # ||WF* - S||
 end
 
 # Collect hyper_points iterators, for element indexing purposes in plot and save sections
@@ -1757,9 +1776,23 @@ if collision_physics_reg
     end
 end
 verbose && println("---> Creating unique output data file name... ")
+# Create default output file name
 recSpaceGridSize = reduce(*,map(x-> "x$(x)",rec_space_size))[2:end]
 hyperParamGridSize = reduce(*,map(x-> "x$(x)",hyper_space_size))[2:end]
-filepath_output_orig = folderpath_out*"solInvProb_$(date_and_time)_$(tokamak)_S_$(length(S))_$(length(S_hat_long))_W_$(length(W))_$(recSpaceGridSize)_$(hyperParamGridSize)"
+filename_out_default = "solInvProb_$(date_and_time)_$(tokamak)_S_$(length(S))_$(length(S_hat_long))_W_$(length(W))_$(recSpaceGridSize)_$(hyperParamGridSize)"
+
+# Check if user (correctly) specified a specific output file name
+if !(typeof(filename_out)==String)
+    @warn "The 'filename_out' input variable was not specified correctly (typeof(filename_out)==String evaluates to false). Default OWCF output file naming convention will be used"
+    filename_out = filename_out_default
+else
+    if filename_out==""
+        filename_out = filename_out_default
+    end
+end
+
+# Adding _(1), _(2) etc if necessary
+filepath_output_orig = folderpath_out*filename_out
 filepath_output = deepcopy(filepath_output_orig)
 C = 1
 while isfile(filepath_output*".jld2") || isfile(filepath_output*".hdf5") # To take care of not overwriting files. Add _(1), _(2) etc
@@ -1767,6 +1800,8 @@ while isfile(filepath_output*".jld2") || isfile(filepath_output*".hdf5") # To ta
     filepath_output = filepath_output_orig*"_($(Int64(C)))"
     C += 1
 end
+
+# Opening .jld2 or .h5 file
 verbose && println("---> Opening save file... ")
 if saveInHDF5format
     verbose && println("------> Output data will be saved to file $(filepath_output*".hdf5")... ")
@@ -1775,6 +1810,8 @@ else
     verbose && println("------> Output data will be saved to file $(filepath_output*".jld2")... ")
     myfile = jldopen(filepath_output*".jld2",true,true,false,IOStream)
 end
+
+# Saving data
 verbose && println("---> Saving output data... ")
 write(myfile,"sols",sols_inflated)
 for (i,ab) in enumerate(W_abscissas[1][2:end])
@@ -1784,6 +1821,7 @@ for (i,ab) in enumerate(W_abscissas[1][2:end])
     write(myfile,"sols_abscissa_$(i)",ab)
     write(myfile,"sols_abscissa_units_$(i)",W_abscissas_units[1][i+1])
 end
+write(myfile, "sols_hyper_points", hyper_points)
 for (i,hp_ab) in enumerate(hyper_arrays)
     write(myfile,"sols_hyper_abscissa_$(i)",hp_ab)
 end
