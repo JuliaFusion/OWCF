@@ -23,7 +23,7 @@
 #
 # Finally, please note that some functions in dependencies.jl might be under construction. Hence, the bad code.
 #
-# Written by H. Järleblad. Last maintained 2025-07-17.
+# Written by H. Järleblad. Last maintained 2025-07-31.
 ###################################################################################################
 
 println("Loading the Julia packages for the OWCF dependencies... ")
@@ -4153,6 +4153,7 @@ function _slowing_down_function_core(v_0::Real, p_0::Real, v_array::Vector{T} wh
                                      species_f::String, species_th_vec::Vector{String}, n_th_vec::Vector{T} where {T<:Real}, T_th_vec::Vector{T} where {T<:Real}; 
                                      S0::Float64=1.0, g=(v-> v), dampen::Bool=false, damp_type::Symbol=:erfc, sigma::Union{Nothing,Real}=nothing, 
                                      v_damp::Union{Nothing,Real}=nothing, returnExtra::Bool=false)
+    p_0 = clamp(p_0, -0.999, 0.999) # Clamp the injection pitch, to avoid singularities at (-1.0, 1.0)
     m_e = (GuidingCenterOrbits.e_amu)*(GuidingCenterOrbits.mass_u) # Electron mass, kg
     τ_s = spitzer_slowdown_time(n_e, T_e, species_f, species_th_vec, n_th_vec, T_th_vec) # Spitzer slowing-down time, s
     Z_th_vec = getSpeciesEcu.(species_th_vec) # Atomic charge number for all thermal plasma ion species
