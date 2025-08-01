@@ -991,7 +991,7 @@ if "collisions" in lowercase.(String.(regularization))
         F_SD_coords = CartesianIndices((length(E_inj_array),length(p_inj_array)))
         for (ic,c) in enumerate(F_SD_coords)
             iE = c[1]; ip = c[2]; E_inj = E_inj_array[iE]; p_inj = p_inj_array[ip]
-            f_SD = slowing_down_function(E_inj, p_inj, w_E_abscissa, w_p_abscissa, n_e, T_e, FI_species, regularization_thermal_ion_species, thermal_ion_densities_at_rho, thermal_ion_temperatures_at_rho; dampen=true, damp_type=:erfc, sigma=2.0)
+            f_SD = slowing_down_function(E_inj, p_inj, w_E_abscissa, w_p_abscissa, n_e, T_e, FI_species, regularization_thermal_ion_species, thermal_ion_densities_at_rho, thermal_ion_temperatures_at_rho; dampen=true, damp_type=:erfc, sigma=5.0)
             f_SD = f_SD ./sum((dE*dp) .*f_SD) # Normalize the basis function so they integrate to 1.0
             F_SD[:,ic] .= reshape(f_SD,(length(w_E_abscissa)*length(w_p_abscissa),1))
         end
@@ -1045,7 +1045,7 @@ if "collisions" in lowercase.(String.(regularization))
         F_SD_coords = CartesianIndices((length(E_inj_array),length(p_inj_array)))
         for (ic,c) in enumerate(F_SD_coords)
             iE = c[1]; ip = c[2]; E_inj = E_inj_array[iE]; p_inj = p_inj_array[ip]
-            f_SD_Ep = slowing_down_function(E_inj, p_inj, E_SD_array, p_SD_array, n_e, T_e, FI_species, regularization_thermal_ion_species, thermal_ion_densities_at_rho, thermal_ion_temperatures_at_rho; dampen=true, damp_type=:erfc, sigma=2.0)
+            f_SD_Ep = slowing_down_function(E_inj, p_inj, E_SD_array, p_SD_array, n_e, T_e, FI_species, regularization_thermal_ion_species, thermal_ion_densities_at_rho, thermal_ion_temperatures_at_rho; dampen=true, damp_type=:erfc, sigma=5.0)
             f_SD_VEL, vpara_SD_array, vperp_SD_array = Ep2VparaVperp(E_SD_array, p_SD_array, f_SD_Ep; my_gcp=getGCP(FI_species)(0.0,0.0,0.0,0.0), needJac=true, returnAbscissas=true)
             local nodes; nodes = (vpara_SD_array, vperp_SD_array)
             local itp; itp = Interpolations.interpolate(nodes,f_SD_VEL,Gridded(Linear()))
@@ -1442,25 +1442,47 @@ if !(length(nr_array)==length(regularization))
     @warn "length(nr_array) ($(length(nr_array))) was not equal to length(regularization) ($(length(regularization))). Elements in 'nr_array' can therefore not be related to the elements in 'regularization'. A default number of 20 grid points will therefore be used for all regularization types ($(regularization))"
     nr_array = Int64.(20 .*ones(length(regularization)))
 end
+if !(length(regularization_loglambda_mins)==length(regularization))
+    @warn "length(regularization_loglambda_mins) ($(length(regularization_loglambda_mins))) was not equal to length(regularization) ($(length(regularization))). Elements in 'regularization_loglambda_mins' can therefore not be related to the elements in 'regularization'. A default lower bound of log10(λ)=-3 will therefore be used for all regularization types ($(regularization))"
+    regularization_loglambda_mins = (-3) .*ones(length(regularization))
+end
+if !(length(regularization_loglambda_maxs)==length(regularization))
+    @warn "length(regularization_loglambda_maxs) ($(length(regularization_loglambda_maxs))) was not equal to length(regularization) ($(length(regularization))). Elements in 'regularization_loglambda_maxs' can therefore not be related to the elements in 'regularization'. A default upper bound of log10(λ)=3 will therefore be used for all regularization types ($(regularization))"
+    regularization_loglambda_maxs = 3 .*ones(length(regularization))
+end
 
 # nr_array[i] should specify the number of λ grid points for regularization[i]
+# regularization_loglambda_mins[i] should specify the lower bound of log10(λ) for regularization[i]
+# regularization_loglambda_maxs[i] should specify the upper bound of log10(λ) for regularization[i]
+# The spacing between λ grid points is logarithmic
 nop = length(priors)
 s = nop>1 ? "s" : ""
-verbose && println("Preparing $(nop) regularization strength (hyper-parameter) logarithmic range$(s) from 10^-3 to 10^3... ")
+verbose && println("Preparing $(nop) regularization strength (hyper-parameter) logarithmic range$(s)... ")
 hyper_arrays = []
 for ir in eachindex(priors) # For all regularizations/priors that require a hyper-parameter...
     nr = 0
+    loglambda_min = 0
+    loglambda_max = 0
     if priors_name[ir]=="1st order Tikhonov"
-        nr = nr_array[findfirst(x-> x=="firsttikhonov", lowercase.(String.(regularization)))]
+        iir = findfirst(x-> x=="firsttikhonov", lowercase.(String.(regularization)))
+        nr = nr_array[iir]
+        loglambda_min = regularization_loglambda_mins[iir]
+        loglambda_max = regularization_loglambda_maxs[iir]
     end
     if priors_name[ir]=="0th order Tikhonov"
-        nr = nr_array[findfirst(x-> x=="zerotikhonov", lowercase.(String.(regularization)))]
+        iir = findfirst(x-> x=="zerotikhonov", lowercase.(String.(regularization)))
+        nr = nr_array[iir]
+        loglambda_min = regularization_loglambda_mins[iir]
+        loglambda_max = regularization_loglambda_maxs[iir]
     end
     if priors_name[ir]=="ICRF"
-        nr = nr_array[findfirst(x-> x=="icrf", lowercase.(String.(regularization)))]
+        iir = findfirst(x-> x=="icrf", lowercase.(String.(regularization)))
+        nr = nr_array[iir]
+        loglambda_min = regularization_loglambda_mins[iir]
+        loglambda_max = regularization_loglambda_maxs[iir]
     end
-    append!(hyper_arrays,[10 .^(range(-3.0,stop=3.0,length=nr))])
-    verbose && println("---> $(priors_name[ir]) with $(nr) λ grid points... ")
+    append!(hyper_arrays,[10 .^(range(loglambda_min,stop=loglambda_max,length=nr))])
+    verbose && println("---> $(priors_name[ir]) with $(nr) λ grid points between 10^$(loglambda_min) and 10^$(loglambda_max)... ")
 end
 hyper_points = Iterators.product(hyper_arrays...)
 
@@ -1510,7 +1532,7 @@ for (i,hp) in enumerate(hyper_points)
     sol_i = dropdims(x.value,dims=2) # One redundant dimension is returned by the solve!() method
 
     sols[:,i] = (Shm/Whm) .*sol_i
-    sols_rawnorm[i] = norm(L_i*sol_i) # ||Lx||
+    sols_rawnorm[i] = norm(Matrix(vcat(L...))*sol_i) # ||Lx||
     sols_datafit[i] = norm(W_hh*sol_i - S_hh) # ||WF* - S||
 end
 
@@ -1520,10 +1542,11 @@ hyper_points = collect(hyper_points)
 append!(timestamps,time()) # The timestamp when the inverse problem has been solved
 dictionary_of_sections[prnt-1] = ("Solving the inverse problem",diff(timestamps)[end])
 ###########################################################################################################
-# SECTION: COMPUTE OPTIMAL L-CURVE VALUE
+# SECTION: DETERMINE INDEX OF BALANCED SOLUTION
 println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
 
-verbose && println("Computing optimal L-curve value... ")
+verbose && println("Determining index of balanced solution... ")
+verbose && println("---> by computing the point of maximum curvature on the L-curve (default)... ")
 sols_datafit_itp = Interpolations.interpolate(sols_datafit, BSpline(Cubic())) # Create a Cubic spline interpolation, so that you can...
 sols_rawnorm_itp = Interpolations.interpolate(sols_rawnorm, BSpline(Cubic())) # -||-
 sols_datafit_prim = map(x-> Vector(Interpolations.gradient(sols_datafit_itp,x))[1],eachindex(sols_datafit)) # ...easily compute the derivative
@@ -1535,24 +1558,33 @@ sols_rawnorm_primprim = map(x-> Vector(Interpolations.gradient(sols_rawnorm_prim
 
 sdf = sols_datafit; sdfp = sols_datafit_prim; sdfpp = sols_datafit_primprim # Create abbreviations for easy overview of for-loop below
 srn = sols_rawnorm; srnp = sols_rawnorm_prim; srnpp = sols_rawnorm_primprim # -||-
+
 gamma = zeros(size(sols,2)) # The curvature of the L-curve, pre-allocated
-for i=1:size(sols,2)
-    gamma[i] = (srnpp[i]*sdfp[i] - srnp[i]*sdfpp[i])/((srnp[i]*srnp[i] + sdfp[i]*sdfp[i])^(3/2)) # Curvature formula
+for i in eachindex(gamma)
+    gamma[i] = abs(srnpp[i]*sdfp[i] - srnp[i]*sdfpp[i])/((srnp[i]*srnp[i] + sdfp[i]*sdfp[i])^(3/2)) # Curvature formula
 end
-ilm = argmax(gamma) # Index of L-curve maximum curvature
-if ilm in eachindex(gamma)[end-3:end] # If the point of maximum curvature is found to be at any of the 4 last points...
-    verbose && println("---> Signs of non-robustness found when computing L-curve curvature. Using minimum of sqrt(||S-WF||^2 + ||F||^2) instead... ")
-    # The curvature curve is likely unstable and the maximum curvature computation is not robust enough to identify 'ilm'
-    # Therefore, use the index of the point of minium P = sqrt(sols_datafit^2 + sols_rawnorm^2) instead
-    sdf_n = sols_datafit ./maximum(sols_datafit) # Normalize quantities to be able to accurately identify P
-    srn_n = sols_rawnorm ./maximum(sols_rawnorm) # Normalize quantities to be able to accurately identify P
+ilm = argmax(gamma) # Index of L-curve maximum curvature, i.e. the default index of the balanced solution
+ilm_default = true # Start by assuming that the computed ilm value is ok
 
-    P = map(i-> sqrt(sdf_n[i]^2 + srn_n[i]^2), eachindex(sdf_n))
-    ilm = argmin(P) # Point of minimum distance to origin
+# Check for non-robustness in gamma
+diff_gamma = diff(gamma[1:ilm]) # The differences of all curvatures up to the maximum curvature index
+diff_gamma_neg_inds = findall(x-> x<0, diff_gamma) # Find all negative differences
+if !isempty(diff_gamma_neg_inds) || (ilm in collect(1:Int64(round(0.1*length(gamma))))) || (ilm in collect(Int64(round(0.9*length(gamma))):length(gamma))) # If there are any negative differences, or if ilm is in the first (last) 10% of gamma indices
+    gamma_i_mean = sum(eachindex(gamma) .*(inv(sum(gamma)) .*gamma)) # Compute the mean index of gamma
+    if !((ilm-1) < gamma_i_mean < (ilm+1)) # If the mean index is NOT within ilm +/- 1
+        verbose && println("---> Signs of non-robustness found when computing L-curve curvature! Using minimum of abs(||S-WF|| - ||L*F||) instead... ")
+        # The curvature curve is likely unstable and the maximum curvature computation is not robust enough to identify 'ilm'
+        # Therefore, use the index of the point of minium P = abs(sols_datafit - sols_rawnorm) instead
+        sdf_n = sdf ./maximum(sdf) # Normalize quantities to be able to identify usable intersection
+        srn_n = srn ./maximum(srn) # Normalize quantities to be able to identify usable intersection
+        ilm = argmin(abs.(sdf_n - srn_n))
+        gamma = inv.(abs.(sdf_n - srn_n)) # Curvature proxy
+        ilm_default = false # The ilm value was not computed in the default way (the point of L-curve maximum curvature), but via the minimum of abs(||S-WF|| - ||L*F||)
+    end
 end
 
-append!(timestamps,time()) # The timestamp when the optimal L-curve value has been computed
-dictionary_of_sections[prnt-1] = ("Computing optimal L-curve regularization strength",diff(timestamps)[end])
+append!(timestamps,time()) # The timestamp when the index of the balanced solution has been determined
+dictionary_of_sections[prnt-1] = ("Determining index of balanced solution",diff(timestamps)[end])
 ###########################################################################################################
 # SECTION: PLOT SOLUTIONS AND RELATED QUANTITIES, IF SPECIFIED
 println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
@@ -1564,7 +1596,7 @@ if plot_solutions || gif_solutions
 
     # Pre-compute these quantities, needed for plots
     sdf0, sdfN = extrema(sdf); sdf_diff = abs(sdfN-sdf0) # sdf = sols_datafit ||S-WF|| (please see above)
-    srn0, srnN = extrema(srn); srn_diff = abs(srnN-srn0) # srn = sols_rawnorm ||F|| (please see above)
+    srn0, srnN = extrema(srn); srn_diff = abs(srnN-srn0) # srn = sols_rawnorm ||L*F|| (please see above)
 
     rec_space_dims = tuple(eachindex(rec_space_size)...) # The dimensions of the reconstruction space numbered, e.g. (1,2,3)
     rec_space_diff = map(x-> x[1],diff.(W_abscissas[1][2:end])) # The grid spacings of the reconstruction space, e.g. [5.0,0.01,0.04,0.05]. Assume equidistant grid
@@ -1609,6 +1641,7 @@ if plot_solutions || gif_solutions
     end
 
     verbose && println("---> Plotting solutions... ")
+    lcurveproxystring = ilm_default ? "" : " (proxy)" # To show if the L-curve curvature plot is a proxy or not
     plot_inds = 1:length(hyper_points)
     anim = @animate for i=plot_inds
         sol_i = sols[:,i]
@@ -1616,17 +1649,19 @@ if plot_solutions || gif_solutions
 
         # CREATE THE L-CURVE SUBFIGURE, which will be at the top of the plot stack
         l_mag = sqrt(((sdf[i]-sdf0)^2)/(sdf_diff^2)+((srn[i]-srn0)^2)/(srn_diff^2))
-        plt_L_curvature = Plots.plot(axis=([],false))
-        #plt_L_curvature = Plots.plot(gamma, label="Curvature") # Dummy plot, for white space
-        #plt_L_curvature = Plots.scatter!([ilm],[gamma[ilm]], label="Max. curvature")
-        #plt_L_curvature = Plots.scatter!([i], [gamma[i]], label="")
+        plt_L_curvature = Plots.plot(axis=([],false)) # Dummy plot, for white space
+        plt_L_curvature = Plots.plot(gamma, label="", title="L-curve curvature$(lcurveproxystring)")
+        plt_L_curvature = Plots.scatter!([ilm],[gamma[ilm]], label="Max. curvature")
+        plt_L_curvature = Plots.scatter!([i], [gamma[i]], label="")
+
         plt_L_curve = Plots.plot([0,sdf[i]],[0,srn[i]],color=:black,label="")
-        plt_L_curve = Plots.plot!(plt_L_curve, sdf,srn,xlims=(minimum(sdf)-0.05*sdf_diff, maximum(sdf)+0.05*sdf_diff),ylims=(minimum(srn)-0.05*srn_diff, maximum(srn)+0.05*srn_diff),label="")
+        plt_L_curve = Plots.plot!(plt_L_curve, sdf, srn,xlims=(minimum(sdf)-0.05*sdf_diff, maximum(sdf)+0.05*sdf_diff),ylims=(minimum(srn)-0.05*srn_diff, maximum(srn)+0.05*srn_diff),label="")
         plt_L_curve = Plots.scatter!(plt_L_curve, [sdf[1]],[srn[1]],label="Start")
         plt_L_curve = Plots.scatter!(plt_L_curve, [sdf[end]],[srn[end]],label="End")
         plt_L_curve = Plots.scatter!(plt_L_curve, [sdf[ilm]],[srn[ilm]],label="Balanced F*")
         plt_L_curve = Plots.scatter!(plt_L_curve, [sdf[i]],[srn[i]],label="", title="$(i): log10(λ)=$(round.(log10.(vcat(hp...)),sigdigits=4))")
-        plt_L_curve = Plots.plot!(xlabel="||WF-S||", ylabel="||F||")
+        plt_L_curve = Plots.plot!(xlabel="||WF-S||", ylabel="||L*F||")
+
         subfig_L_curve = Plots.plot(plt_L_curve, plt_L_curvature, layout=(1,2))
 
         # CREATE THE S vs WF SUBFIGURE, which will be in the middle of the plot stack
@@ -1705,13 +1740,37 @@ if plot_solutions || gif_solutions
         display(fig_tot)
 
         if plot_solutions
+            filename_out_fig_default = "solInvProb_$(date_and_time)_resultsPlot_$(i)_of_$(length(hyper_points))"
+            # Check if user (correctly) specified a specific output file name
+            if !(typeof(filename_out)==String)
+                @warn "The 'filename_out' input variable was not specified correctly (typeof(filename_out)==String evaluates to false). Default OWCF output .png file naming convention will be used"
+                filename_out_fig = filename_out_fig_default
+            else
+                if filename_out==""
+                    filename_out_fig = filename_out_fig_default
+                else
+                    filename_out_fig = filename_out*"_$(i)_of_$(length(hyper_points))"
+                end
+            end
             verbose && println("------> Saving .png file for plot $(i) of $(length(hyper_points))... ")
-            png(fig_tot,folderpath_out*"solInvProb_$(date_and_time)_resultsPlot_$(i)_of_$(length(hyper_points))")
+            png(fig_tot,folderpath_out*filename_out_fig)
         end
     end
     if gif_solutions
+        filename_out_gif_default = "solInvProb_$(date_and_time)"
+        # Check if user (correctly) specified a specific output file name
+        if !(typeof(filename_out)==String)
+            @warn "The 'filename_out' input variable was not specified correctly (typeof(filename_out)==String evaluates to false). Default OWCF output .gif file naming convention will be used"
+            filename_out_gif = filename_out_gif_default
+        else
+            if filename_out==""
+                filename_out_gif = filename_out_gif_default
+            else
+                filename_out_gif = filename_out
+            end
+        end
         verbose && println("---> Saving .gif file... ")
-        gif(anim,folderpath_out*"solInvProb_$(date_and_time).gif",fps=2)
+        gif(anim,folderpath_out*filename_out_gif*".gif",fps=2)
     end
 else
     verbose && println("Plots (.png or .gif output files) of the solutions have NOT been requested.")

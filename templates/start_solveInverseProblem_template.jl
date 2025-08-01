@@ -106,9 +106,8 @@
 #           filepaths_W will be used - Vector{Float64}
 # nr_array - A Vector of integer values to specify the number of grid points for the regularization strength (λ) for the regularization types included in the 
 #           'regularization' input Vector (please see below). length(nr_array)==length(regularization) must hold. Each Integer in nr_array is assumed to specify
-#           the number of λ grid points for the corresponding element in the 'regularization' input Vector. The lower and upper bounds of each λ are set 
-#           automatically. Some regularization types do not need a λ (e.g. :COLLISIONS). The corresponding element in nr_array will then be treated as a 
-#           dummy value. - Vector{Int64}
+#           the number of λ grid points for the corresponding element in the 'regularization' input Vector. Some regularization types do not need a λ 
+#           (e.g. :COLLISIONS). The corresponding element in nr_array will then be treated as a dummy value. - Vector{Int64}
 # noise_floor_factor - If the error (err) of the diagnostic measurements (S) has smaller values than noise_floor_factor*maximum(S), all such 
 #                      values will be lifted up (changed) to noise_floor_factor*maximum(S). - Float64
 # plot_solutions - If set to true, plots of the solutions to the inverse problems will be saved in .png format. As well as the 
@@ -124,6 +123,16 @@
 #                                as prior information when solving the inverse problem. Currently, this is only available for velocity-space (2D) reconstructions 
 #                                in (E,p) and (vpara,vperp), orbit-space reconstructions in (3D) (E,mu,Pphi), (E,Lambda,Pphi_n) and (3+1 D) (E,mu,Pphi,sigma), (E,Lambda,Pphi_n,sigma).
 #                  One or several of the above options should be specified as elements in a Vector. Otherwise, empty Vector - Vector{Symbol}
+# regularization_loglambda_mins - The lower bounds for the logarithm of the regularization strength (λ) for the regularization types included in the 'regularization' 
+#                              input Vector (please see above). length(regularization_loglambda_mins)==length(regularization) must hold. Each element in 
+#                              regularization_loglambda_mins is assumed to specify the lower bound for the log10(λ) grid points for the corresponding element in 
+#                              the 'regularization' input Vector. Some regularization types do not need a λ (e.g. :COLLISIONS). The corresponding element in 
+#                              regularization_loglambda_mins will then be treated as a dummy value - Vector{Float64}
+# regularization_loglambda_maxs - The upper bounds for the logarithm of the regularization strength (λ) for the regularization types included in the 'regularization' 
+#                              input Vector (please see above). length(regularization_loglambda_maxs)==length(regularization) must hold. Each element in 
+#                              regularization_loglambda_maxs is assumed to specify the upper bound for the log10(λ) grid points for the corresponding element in 
+#                              the 'regularization' input Vector. Some regularization types do not need a λ (e.g. :COLLISIONS). The corresponding element in 
+#                              regularization_loglambda_maxs will then be treated as a dummy value - Vector{Float64}
 # regularization_equil_filepath - If :COLLISIONS and/or :ICRF is included in the 'regularization' Vector, the filepath to a magnetic equilibrium file 
 #                                 (either in .eqdsk file format or an OWCF/extra/createCustomMagneticEquilibrium.jl output file) must be specified. For :COLLISIONS, this is to 
 #                                 compute necessary quantities for the creation of the slowing-down basis functions, e.g. the Spitzer slowing-down time.
@@ -283,6 +292,8 @@ Pkg.activate(".")
     plot_solutions = false
     nr_array = [20] # Should be equal in length to 'regularization'
     regularization = [:ZEROTIKHONOV] # Should be equal in length to 'nr_array'
+    regularization_loglambda_mins = [-3] # The minimum of log10(λ) in ||S-WF||+λ||LF|| for each regularization type in the 'regularization' input variable Vector
+    regularization_loglambda_maxs = [3] # The maximum of log10(λ) in ||S-WF||+λ||LF|| for each regularization type in the 'regularization' input variable Vector
     if (:COLLISIONS in regularization) || (:ICRF in regularization) # :COLLISIONS and/or :ICRF included in regularization...
         regularization_equil_filepath = "" # Please specify the file path to a magnetic equilibrium file (see template description above)
     end
