@@ -119,7 +119,7 @@ try
     global M; global wall
     M, wall = read_geqdsk(filepath_equil,clockwise_phi=false) # Assume counter-clockwise phi-direction
 catch # Otherwise, assume magnetic equilibrium is a saved .jld2 file
-    global M; global wall
+    global M; global wall; local myfile
     myfile = jldopen(filepath_equil,false,false,false,IOStream)
     M, wall = myfile["S"], myfile["wall"]
     close(myfile)

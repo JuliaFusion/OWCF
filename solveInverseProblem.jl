@@ -742,7 +742,7 @@ if "collisions" in lowercase.(String.(regularization))
         global M; global wall # Declare global scope
         M, wall = read_geqdsk(regularization_equil_filepath,clockwise_phi=false) # Assume the phi-direction is pointing counter-clockwise when tokamak is viewed from above. This is true for almost all coordinate systems used in the field of plasma physics
     catch # Otherwise, assume magnetic equilibrium is a saved .jld2 file
-        global M; global wall
+        global M; global wall; local myfile
         myfile = jldopen(regularization_equil_filepath,false,false,false,IOStream)
         M = myfile["S"]
         wall = myfile["wall"]
@@ -1231,7 +1231,7 @@ if "icrf" in lowercase.(String.(regularization))
         global M; global wall # Declare global scope
         M, wall = read_geqdsk(regularization_equil_filepath,clockwise_phi=false) # Assume the phi-direction is pointing counter-clockwise when tokamak is viewed from above. This is true for almost all coordinate systems used in the field of plasma physics
     catch # Otherwise, assume magnetic equilibrium is a saved .jld2 file
-        global M; global wall
+        global M; global wall; local myfile
         myfile = jldopen(regularization_equil_filepath,false,false,false,IOStream)
         M = myfile["S"]
         wall = myfile["wall"]

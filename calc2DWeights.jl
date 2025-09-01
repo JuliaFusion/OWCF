@@ -86,7 +86,7 @@
 # Please note that the diagnostic energy grid will be created as bin centers.
 # That is, the first diagnostic energy grid value will be (Ed_min+Ed_diff/2) and so on.
 
-# Script written by Henrik Järleblad. Last maintained 2025-07-11.
+# Script written by Henrik Järleblad. Last maintained 2025-09-01.
 ################################################################################################
 
 ## ---------------------------------------------------------------------------------------------
@@ -260,7 +260,7 @@ try
         timepoint_source, timepoint = "UNKNOWN", "00,0000" # (SOURCE, VALUE). Unknown timepoint for magnetic equilibrium
     end
 catch # Otherwise, assume magnetic equilibrium is a saved .jld2 file
-    global M; global wall; global jdotb; global timepoint_source; global timepoint
+    global M; global wall; global jdotb; global timepoint_source; global timepoint; local myfile
     myfile = jldopen(filepath_equil,false,false,false,IOStream)
     M = myfile["S"]
     wall = myfile["wall"]

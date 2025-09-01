@@ -124,7 +124,7 @@
 
 # Furthermore, the filepath_W_COM input variable can be either an output of this weightsWebApp.jl script, or the os2com.jl script.
 
-# Script written by Henrik Järleblad and Andrea Valentini. Last maintained 2025-08-01.
+# Script written by Henrik Järleblad and Andrea Valentini. Last maintained 2025-09-01.
 ###############################################################################################
 
 ## --------------------------------------------------------------------------
@@ -293,7 +293,7 @@ try
     M, wall = read_geqdsk(filepath_equil,clockwise_phi=false) # Assume counter-clockwise phi-direction
     jdotb = M.sigma # The sign of the dot product between the plasma current and the magnetic field
 catch # Otherwise, assume magnetic equilibrium is a saved .jld2 file
-    global M; global wall; global jdotb # Declare global scope
+    global M; global wall; global jdotb; local myfile # Declare global scope
     myfile = jldopen(filepath_equil,false,false,false,IOStream)
     M = myfile["S"]
     wall = myfile["wall"]

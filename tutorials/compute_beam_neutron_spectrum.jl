@@ -58,6 +58,7 @@ if !(filepath_equil=="")
         YYYY = eqdsk_array[end-1] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
         timepoint = XX*","*YYYY # Format XX,YYYY to avoid "." when including in filename of saved output
     catch # Otherwise, assume magnetic equilibrium is a saved .jld2 file
+        global M; global wall; global jdotb; global timepoint; local myfile
         myfile = jldopen(filepath_equil,false,false,false,IOStream)
         M = myfile["S"]
         wall = myfile["wall"]
