@@ -25,7 +25,7 @@
 #### Saved files
 # -
 
-# Script written by Henrik Järleblad and Andrea Valentini. Last maintained 2022-08-25.
+# Script written by Henrik Järleblad and Andrea Valentini. Last maintained 2025-09-01.
 #########################################################################################
 
 ## --------------------------------------------------------------------------
@@ -63,6 +63,22 @@ else
     # The orbit integration algorithm will try progressively smaller timesteps these number of times
 end
 close(myfile)
+
+###############################################################################################
+###############################################################################################
+###############################################################################################
+###############################################################################################
+###############################################################################################
+###############################################################################################
+######################################### START OF APP ######################################## 
+######################################### DO NOT CHANGE #######################################
+######################################### ANYTHING BELOW ######################################
+###############################################################################################
+###############################################################################################
+###############################################################################################
+###############################################################################################
+###############################################################################################
+###############################################################################################
 
 ## ------
 # Loading packages
@@ -160,11 +176,14 @@ function extractTopoBounds(topoMap::Array{Float64,2}) # The (E,p) part of the fu
 end
 
 ## ------
-verbose && println("Loading tokamak equilibrium... ")
-if ((split(filepath_equil,"."))[end] == "eqdsk") || ((split(filepath_equil,"."))[end] == "geqdsk") 
+verbose && println("Loading magnetic equilibrium... ")
+M, wall, jdotb = nothing, nothing, nothing # Initialize global magnetic equilibrium variables
+try
+    global M; global wall; global jdotb # Declare global scope
     M, wall = read_geqdsk(filepath_equil,clockwise_phi=false) # Assume counter-clockwise phi-direction
     jdotb = M.sigma # The sign of the dot product between the plasma current and the magnetic field
-else # Otherwise, assume magnetic equilibrium is a saved .jld2 file
+catch # Otherwise, assume magnetic equilibrium is a saved .jld2 file
+    global M; global wall; global jdotb # Declare global scope
     myfile = jldopen(filepath_equil,false,false,false,IOStream)
     M = myfile["S"]
     wall = myfile["wall"]

@@ -101,7 +101,7 @@
 # script will then resume at the last checkpoint, and continue until the script is finished.
 # The progress file is then deleted once ps2WF.jl completes successfully.
 
-# Script written by Henrik Järleblad. Last maintained 2025-07-11.
+# Script written by Henrik Järleblad. Last maintained 2025-09-01.
 ################################################################################################
 
 
@@ -242,20 +242,28 @@ end
 
 ## ---------------------------------------------------------------------------------------------
 # Loading tokamak equilibrium
-verbose && println("Loading tokamak equilibrium... ")
+verbose && println("Loading magnetic equilibrium... ")
+M, wall, jdotb = nothing, nothing, nothing # Initialize global magnetic equilibrium variables
 try
-    global M; global wall; global jdotb; global timepoint; global timepoint_source
+    global M; global wall; global jdotb # Declare global scope
     M, wall = read_geqdsk(filepath_equil,clockwise_phi=false) # Assume counter-clockwise phi-direction
     jdotb = M.sigma # The sign of the dot product between the plasma current and the magnetic field
 
     # Extract timepoint information from .eqdsk/.geqdsk file
     eqdsk_array = split(filepath_equil,".")
-    XX = (split(eqdsk_array[end-2],"-"))[end] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
-    YYYY = eqdsk_array[end-1] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
-    timepoint_source = "EQDSK"
-    timepoint = XX*","*YYYY # (SOURCE, VALUE). Format XX,YYYY to avoid "." when including in filename of saved output
+    try
+        global timepoint; global timepoint_source # Declare global scope
+        XX = (split(eqdsk_array[end-2],"-"))[end] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
+        YYYY = eqdsk_array[end-1] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
+        timepoint = "$(XX*","*YYYY)" # Format XX,YYYY to avoid "." when including in filename of saved output
+        timepoint_source = "EQDSK"
+        verbose && println("---> Found timepoint data in magnetic equilibrium file! Loading... ")
+    catch
+        global timepoint; global timepoint_source # Declare global scope
+        timepoint_source, timepoint = "UNKNOWN", "00,0000" # (SOURCE, VALUE). Unknown timepoint for magnetic equilibrium
+    end
 catch # Otherwise, assume magnetic equilibrium is a saved .jld2 file
-    global M; global wall; global jdotb; global timepoint; local myfile; global timepoint_source
+    global M; global wall; global jdotb; global timepoint_source; global timepoint
     myfile = jldopen(filepath_equil,false,false,false,IOStream)
     M = myfile["S"]
     wall = myfile["wall"]

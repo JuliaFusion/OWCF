@@ -51,7 +51,7 @@
 # iE = argmin(abs.(E_array - E)) # Find the closest value to E in E_array
 # Plots.heatmap(Rm_array,pm_array,topoMap[iE,:,:],color=:Set1_9,legend=false,xlabel="Rm [m]", ylabel="pm", title="E: $(round(E,digits=3)) keV")
 
-# Script written by Henrik Järleblad. Last maintained 2025-01-22.
+# Script written by Henrik Järleblad. Last maintained 2025-08-01.
 #########################################################################################
 
 ## --------------------------------------------------------------------------
@@ -96,6 +96,22 @@ if haskey(extra_kw_args, :max_tries)
     delete!(extra_kw_args, :max_tries)
 end
 
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+######################################### START OF APP ####################### 
+######################################### DO NOT CHANGE ######################
+######################################### ANYTHING BELOW #####################
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+
 ## --------------------------------------------------------------------------
 # Loading packages
 verbose && println("Loading packages... ")
@@ -116,11 +132,14 @@ include(folderpath_OWCF*"extra/dependencies.jl")
 
 ## --------------------------------------------------------------------------
 # Loading tokamak equilibrium
-verbose && println("Loading tokamak equilibrium... ")
-if ((split(filepath_equil,"."))[end] == "eqdsk") || ((split(filepath_equil,"."))[end] == "geqdsk") 
+verbose && println("Loading magnetic equilibrium... ")
+M, wall, jdotb = nothing, nothing, nothing # Initialize global magnetic equilibrium variables
+try
+    global M; global wall; global jdotb # Declare global scope
     M, wall = read_geqdsk(filepath_equil,clockwise_phi=false) # Assume counter-clockwise phi-direction
     jdotb = M.sigma # The sign of the dot product between the plasma current and the magnetic field
-else # Otherwise, assume magnetic equilibrium is a saved .jld2 file
+catch # Otherwise, assume magnetic equilibrium is a saved .jld2 file
+    global M; global wall; global jdotb # Declare global scope 
     myfile = jldopen(filepath_equil,false,false,false,IOStream)
     M = myfile["S"]
     wall = myfile["wall"]
