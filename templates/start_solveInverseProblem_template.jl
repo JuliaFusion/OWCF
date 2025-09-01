@@ -231,7 +231,7 @@
 # Some lines below are commented out. This is because the inverse problem solving algorithm is currently single-CPU.
 # In future version, multi-core processing might be supported, and those lines will then be uncommented.
 
-# Script written by Henrik Järleblad. Last maintained 2025-08-01.
+# Script written by Henrik Järleblad. Last maintained 2025-09-01.
 #############################################################################################################################################################
 
 ## First you have to set the system specifications

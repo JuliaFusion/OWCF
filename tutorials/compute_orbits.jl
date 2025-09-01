@@ -26,7 +26,7 @@ try
     # have the phi-coordinate in the (R,phi,z) coordinate system point in the clockwise or counter-clockwise direction, viewed from above.
     # Almost all tokamak coordinate systems have phi pointing counter-clockwise, viewed from above
 catch
-    global M; global wall
+    global M; global wall; local myfile
     myfile = jldopen(folderpath_equil,false,false,false,IOStream)
     M = myfile["S"]
     wall = myfile["wall"]

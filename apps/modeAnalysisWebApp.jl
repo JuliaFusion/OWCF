@@ -164,7 +164,7 @@ try
     M, wall = read_geqdsk(filepath_equil,clockwise_phi=false) # Assume counter-clockwise phi-direction
     jdotb = M.sigma # The sign of the dot product between the plasma current and the magnetic field
 catch # Otherwise, assume magnetic equilibrium is a saved .jld2 file
-    global M; global wall; global jdotb # Declare global scope
+    global M; global wall; global jdotb; local myfile # Declare global scope and local scope for variables
     myfile = jldopen(filepath_equil,false,false,false,IOStream)
     M = myfile["S"]
     wall = myfile["wall"]

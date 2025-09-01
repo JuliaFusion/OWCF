@@ -101,7 +101,7 @@ try
         #timepoint_source = "UNKNOWN"
     end
 catch # Otherwise, assume magnetic equilibrium is a saved .jld2 file
-    global M; global wall; global jdotb; global timepoint#; global timepoint_source
+    global M; global wall; global jdotb; global timepoint; local myfile #; global timepoint_source
     myfile = jldopen(filepath_equil,false,false,false,IOStream)
     M = myfile["S"]
     wall = myfile["wall"]

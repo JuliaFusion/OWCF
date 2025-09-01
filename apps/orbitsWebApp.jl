@@ -51,7 +51,7 @@
 # iE = argmin(abs.(E_array - E)) # Find the closest value to E in E_array
 # Plots.heatmap(Rm_array,pm_array,topoMap[iE,:,:],color=:Set1_9,legend=false,xlabel="Rm [m]", ylabel="pm", title="E: $(round(E,digits=3)) keV")
 
-# Script written by Henrik Järleblad. Last maintained 2025-08-01.
+# Script written by Henrik Järleblad. Last maintained 2025-09-01.
 #########################################################################################
 
 ## --------------------------------------------------------------------------
@@ -139,7 +139,7 @@ try
     M, wall = read_geqdsk(filepath_equil,clockwise_phi=false) # Assume counter-clockwise phi-direction
     jdotb = M.sigma # The sign of the dot product between the plasma current and the magnetic field
 catch # Otherwise, assume magnetic equilibrium is a saved .jld2 file
-    global M; global wall; global jdotb # Declare global scope 
+    global M; global wall; global jdotb; local myfile # Declare global scope 
     myfile = jldopen(filepath_equil,false,false,false,IOStream)
     M = myfile["S"]
     wall = myfile["wall"]
