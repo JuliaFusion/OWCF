@@ -11,16 +11,27 @@ using Pkg # Then, you load the Pkg.jl package which is Julia's package manager
 Pkg.activate(".") # Then, you activate the virtual environment of the OWCF
 ##############################################################################################################
 using Equilibrium # Then, we load the Equilibrium.jl package, which we use to handle magnetic equilibria
+using JLD2 # To be able to load .jld2 files
 using GuidingCenterOrbits # Then, we load the GuidingCenterOrbits.jl package, which we use to compute fast-ion drift orbits
 using Plots # Then, we load the Plots.jl package, to be able to plot things
 include(folderpath_OWCF*"misc/species_func.jl") # Then, we load OWCF species functions to be able to easily work with different particle species
 ##############################################################################################################
 folderpath_equil = folderpath_OWCF*"equilibrium/JET/g96100/g96100_0-53.0012.eqdsk" # Specify the filepath to a magnetic equilibrium file.
 # The magnetic equilibrium file can be either an .eqdsk file or a .jld2 file obtained from the extra/createCustomMagneticEquilibrium.jl script
-M, wall = read_geqdsk(folderpath_equil, clockwise_phi=false) # Then, we load the magnetic equilibrium into the M variable and the 
-# tokamak wall into the wall variable, via the read_geqdsk() function. We have to specify whether the coordinate system is arranged so as to 
-# have the phi-coordinate in the (R,phi,z) coordinate system point in the clockwise or counter-clockwise direction, viewed from above.
-# Almost all tokamak coordinate systems have phi pointing counter-clockwise, viewed from above
+M, wall = nothing, nothing # Initialize the equilibrium data variables
+try
+    global M; global wall # Declare global scope
+    M, wall = read_geqdsk(folderpath_equil, clockwise_phi=false) # Then, we load the magnetic equilibrium into the M variable and the
+    # tokamak wall into the wall variable, via the read_geqdsk() function. We have to specify whether the coordinate system is arranged so as to 
+    # have the phi-coordinate in the (R,phi,z) coordinate system point in the clockwise or counter-clockwise direction, viewed from above.
+    # Almost all tokamak coordinate systems have phi pointing counter-clockwise, viewed from above
+catch
+    global M; global wall
+    myfile = jldopen(folderpath_equil,false,false,false,IOStream)
+    M = myfile["S"]
+    wall = myfile["wall"]
+    close(myfile)
+end
 ##############################################################################################################
 E = 100.0 # Then, we specify the energy of the fast ion, in keV
 pm = 0.29 # Then, we specify the pitch maximum orbit label of the fast ion

@@ -71,7 +71,7 @@
 # Please note that the diagnostic energy grid will be created as bin centers.
 # That is, the first diagnostic energy grid value will be (Ed_min+Ed_diff/2) and so on.
 
-# Script written by Henrik Järleblad. Last maintained 2025-07-11.
+# Script written by Henrik Järleblad. Last maintained 2025-09-01.
 ################################################################################################
 
 ## ---------------------------------------------------------------------------------------------
@@ -219,17 +219,29 @@ end
 
 ## ---------------------------------------------------------------------------------------------
 # Loading magnetic equilibrium and deduce timepoint, if possible
-verbose && println("Loading tokamak equilibrium... ")
-if ((split(filepath_equil,"."))[end] == "eqdsk") || ((split(filepath_equil,"."))[end] == "geqdsk")
+verbose && println("Loading magnetic equilibrium... ")
+M, wall, jdotb = nothing, nothing, nothing # Initialize global magnetic equilibrium variables
+try
+    global M; global wall; global jdotb # Declare global scope
     M, wall = read_geqdsk(filepath_equil,clockwise_phi=false) # Assume counter-clockwise phi-direction
     jdotb = M.sigma # The sign of the dot product between the plasma current and the magnetic field
 
     # Extract timepoint information from .eqdsk/.geqdsk file
     eqdsk_array = split(filepath_equil,".")
-    XX = (split(eqdsk_array[end-2],"-"))[end] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
-    YYYY = eqdsk_array[end-1] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
-    timepoint = XX*","*YYYY # Format XX,YYYY to avoid "." when including in filename of saved output
-else # Otherwise, assume magnetic equilibrium is a saved .jld2 file
+    try
+        global timepoint#; global timepoint_source # Declare global scope
+        XX = (split(eqdsk_array[end-2],"-"))[end] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
+        YYYY = eqdsk_array[end-1] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
+        timepoint = "$(XX*","*YYYY)" # Format XX,YYYY to avoid "." when including in filename of saved output
+        #timepoint_source = "EQDSK"
+        verbose && println("---> Found timepoint data in magnetic equilibrium file! Loading... ")
+    catch
+        global timepoint#; global timepoint_source # Declare global scope
+        timepoint = "00,0000" # (SOURCE, VALUE). Unknown timepoint for magnetic equilibrium
+        #timepoint_source = "UNKNOWN"
+    end
+catch # Otherwise, assume magnetic equilibrium is a saved .jld2 file
+    global M; global wall; global jdotb; global timepoint#; global timepoint_source
     myfile = jldopen(filepath_equil,false,false,false,IOStream)
     M = myfile["S"]
     wall = myfile["wall"]
@@ -237,9 +249,11 @@ else # Otherwise, assume magnetic equilibrium is a saved .jld2 file
     jdotb = (M.sigma_B0)*(M.sigma_Ip)
 
     if typeof(timepoint)==String && length(split(timepoint,","))==2
-        timepoint = timepoint
+        timepoint = timepoint # (SOURCE, VALUE)
+        #timepoint_source = "STARTFILE"
     else
-        timepoint = "TIMELESS" # Unknown timepoint for magnetic equilibrium
+        timepoint = "00,0000" # (SOURCE, VALUE). Unknown timepoint for magnetic equilibrium
+        #timepoint_source = "UNKNOWN"
     end
 end
 psi_axis, psi_bdry = psi_limits(M) # The limits of the flux function

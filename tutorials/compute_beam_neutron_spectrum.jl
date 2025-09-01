@@ -45,8 +45,10 @@ B_vec = [0.0, -2.7, 0.0] # Teslas
 # In this section, if you have specified the 'filepath_equil' variable, the magnetic equilibrium 
 # is loaded and plotted.
 if !(filepath_equil=="")
-    verbose && println("Loading tokamak equilibrium... ")
-    if ((split(filepath_equil,"."))[end] == "eqdsk") || ((split(filepath_equil,"."))[end] == "geqdsk")
+    verbose && println("Loading magnetic equilibrium... ")
+    M, wall, jdotb, timepoint = nothing, nothing, nothing, nothing # Initialize equilibrium variables
+    try
+        global M; global wall; global jdotb; global timepoint
         M, wall = read_geqdsk(filepath_equil,clockwise_phi=false) # Assume counter-clockwise phi-direction
         jdotb = M.sigma # The sign of the dot product between the plasma current and the magnetic field
 
@@ -55,7 +57,7 @@ if !(filepath_equil=="")
         XX = (split(eqdsk_array[end-2],"-"))[end] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
         YYYY = eqdsk_array[end-1] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
         timepoint = XX*","*YYYY # Format XX,YYYY to avoid "." when including in filename of saved output
-    else # Otherwise, assume magnetic equilibrium is a saved .jld2 file
+    catch # Otherwise, assume magnetic equilibrium is a saved .jld2 file
         myfile = jldopen(filepath_equil,false,false,false,IOStream)
         M = myfile["S"]
         wall = myfile["wall"]

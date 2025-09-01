@@ -25,7 +25,7 @@
 
 # Original script written by Henrik Järleblad. 
 # Animation and GIF-saving tools added by Andrea Valentini.
-# Last maintained 2022-11-12.
+# Last maintained 2025-08-01.
 #########################################################################################
 
 ## --------------------------------------------------------------------------
@@ -50,6 +50,22 @@ extra_kw_args = Dict(:toa => true, :limit_phi => true)
 # toa is 'try only adaptive'
 # limits the number of toroidal turns for orbits
 
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+######################################### START OF APP ####################### 
+######################################### DO NOT CHANGE ######################
+######################################### ANYTHING BELOW #####################
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+##############################################################################
+
 ## ------
 # Loading packages
 verbose && println("Loading packages... ")
@@ -65,11 +81,14 @@ using WebIO
 include(folderpath_OWCF*"misc/species_func.jl")
 
 ## ------
-verbose && println("Loading tokamak equilibrium... ")
-if ((split(filepath_equil,"."))[end] == "eqdsk") || ((split(filepath_equil,"."))[end] == "geqdsk") 
+verbose && println("Loading magnetic equilibrium... ")
+M, wall, jdotb = nothing, nothing, nothing # Initialize global magnetic equilibrium variables
+try
+    global M; global wall; global jdotb # Declare global scope
     M, wall = read_geqdsk(filepath_equil,clockwise_phi=false) # Assume counter-clockwise phi-direction
     jdotb = M.sigma # The sign of the dot product between the plasma current and the magnetic field
-else # Otherwise, assume magnetic equilibrium is a saved .jld2 file
+catch # Otherwise, assume magnetic equilibrium is a saved .jld2 file
+    global M; global wall; global jdotb # Declare global scope
     myfile = jldopen(filepath_equil,false,false,false,IOStream)
     M = myfile["S"]
     wall = myfile["wall"]

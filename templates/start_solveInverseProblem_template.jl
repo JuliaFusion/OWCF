@@ -214,7 +214,8 @@
 #                   calcOrbWeights.jl. This is to enable easy I/O between OWCF scripts. If a file in filepaths_W was NOT 
 #                   computed with the OWCF, just put 'none' for the corresponding element in scriptSources_W.
 # tokamak - The tokamak for which the inverse problem is solved. E.g. JET, ITER etc. Will be used purelely for esthetic purposes. - String
-# verbose - If set to true, the script will talk a lot! - Bool
+# verbose - If set to true, the script will talk a lot when running all parts of solveInverseProblem.jl! - Bool
+# verbose_onlyForSolve - If set to true, the script will talk a lot, but only when actually solving the minimization problem - Bool
 # z_of_interest - If the reconstruction is in velocity-space (2D), an (R,z) point of interest might need to be specified, to 
 #                 e.g. include collision physics or ICRF as prior information, or to rescale the weight functions using a reference fast-ion distribution.
 #                 Otherwise, please leave unspecified - Float64
@@ -230,7 +231,7 @@
 # Some lines below are commented out. This is because the inverse problem solving algorithm is currently single-CPU.
 # In future version, multi-core processing might be supported, and those lines will then be uncommented.
 
-# Script written by Henrik Järleblad. Last maintained 2025-07-30.
+# Script written by Henrik Järleblad. Last maintained 2025-08-01.
 #############################################################################################################################################################
 
 ## First you have to set the system specifications
@@ -327,6 +328,7 @@ Pkg.activate(".")
     scriptSources_W = ["",""]
     tokamak = ""
     verbose = false
+    verbose_onlyForSolve = false
     z_of_interest = nothing
     z_of_interest_units = "m"
 
