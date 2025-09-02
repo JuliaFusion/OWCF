@@ -52,7 +52,7 @@
 # - The tenth column corresponds to toroidal phi angle points
 # - The eleventh column corresponds to solid angles OMEGA
 
-# Script written by Henrik Järleblad. Last maintained 2025-06-03.
+# Script written by Henrik Järleblad. Last maintained 2025-09-01.
 ###############################################################################################################
 
 ## ---------------------------------------------------------------------------------------------
@@ -63,9 +63,8 @@ println("Loading Julia packages... ")
     using JLD2
     using LinearAlgebra
     using Equilibrium
-    plot_LOS && (using Plots)
+    using Plots
     debug = debug # This is always set to false, except when OWCF developers are debugging
-    debug && (using Plots)
 end
 
 ## ---------------------------------------------------------------------------------------------
@@ -114,10 +113,13 @@ end
 verbose && println("It's $(case)!")
 ## ---------------------------------------------------------------------------------------------
 # Loading tokamak equilibrium
-verbose && println("Loading tokamak equilibrium... ")
-if ((split(filepath_equil,"."))[end] == "eqdsk") || ((split(filepath_equil,"."))[end] == "geqdsk")
+verbose && println("Loading magnetic equilibrium... ")
+M, wall = nothing, nothing # Initialize equilibrium variables
+try
+    global M; global wall
     M, wall = read_geqdsk(filepath_equil,clockwise_phi=false) # Assume counter-clockwise phi-direction
-else # Otherwise, assume magnetic equilibrium is a saved .jld2 file
+catch # Otherwise, assume magnetic equilibrium is a saved .jld2 file
+    global M; global wall; local myfile
     myfile = jldopen(filepath_equil,false,false,false,IOStream)
     M, wall = myfile["S"], myfile["wall"]
     close(myfile)

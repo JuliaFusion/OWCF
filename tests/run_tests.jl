@@ -53,7 +53,7 @@
 # files, if plot_test_results==true). These will be saved in the OWCF/tests/outputs/ folder. The 
 # total size of all data files and .png figure files will be in the range of tens of megabytes.
 
-# Script written by Henrik Järleblad. Last mainted 2025-06-11.
+# Script written by Henrik Järleblad. Last mainted 2025-09-01.
 ###################################################################################################
 
 # Inputs. To be switched freely between 'true' and 'false'
@@ -350,6 +350,8 @@ end
 t_end = time() # Test script runtime end
 println("-------------------------------------------------------------------------------- End of the OWCF tests")
 println("-------------------------------------------------------------------------------- Total runtime: $(Int64(divrem(t_end-t_start,60)[1])) minutes $(Int64(round(divrem(t_end-t_start,60)[2]))) seconds")
+date_and_time = split("$(Dates.now())","T")[1]*" at "*split("$(Dates.now())","T")[2][1:5]
+println("-------------------------------------------------------------------------------- Current date and time: $(date_and_time)")
 println("-------------------------------------------------------------------------------- OWCF folder path: $(folderpath_OWCF)")
 println("-------------------------------------------------------------------------------- The OWCF tests --------------------------------------------------------------------------------")
 ###------------------------------------------------------------------------------------------------###

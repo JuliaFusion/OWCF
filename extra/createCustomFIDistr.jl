@@ -133,9 +133,12 @@ if constant_Rz
         if filepath_thermal_profiles==""
             filepath_thermal_profiles="nothing" # Change to "nothing" for code convenience reasons
         end
-        if ((split(filepath_equil,"."))[end] == "eqdsk") || ((split(filepath_equil,"."))[end] == "geqdsk")
+        M, wall = nothing, nothing # Initialize equilibrium variables
+        try
+            global M; global wall
             M, wall = read_geqdsk(filepath_equil,clockwise_phi=false) # Assume counter-clockwise phi-direction
-        else # Otherwise, assume magnetic equilibrium is a saved .jld2 file
+        catch # Otherwise, assume magnetic equilibrium is a saved .jld2 file
+            global M; global wall; local myfile
             myfile = jldopen(filepath_equil,false,false,false,IOStream)
             M, wall = myfile["S"], myfile["wall"]
             close(myfile)

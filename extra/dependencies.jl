@@ -2443,10 +2443,10 @@ function ps2os_streamlined(F_EpRz::Array{Float64,4}, energy::AbstractVector, pit
                            numOsamples::Int64, verbose::Bool=false, distr_dim = [], sign_o_pitch_wrt_B::Bool=false, clockwise_phi::Bool=false, kwargs...)
 
     verbose && println("Loading the magnetic equilibrium... ")
-    if ((split(filepath_equil,"."))[end] == "eqdsk") || ((split(filepath_equil,"."))[end] == "geqdsk")
+    try
         M, wall = read_geqdsk(filepath_equil,clockwise_phi=clockwise_phi) # Assume counter-clockwise phi-direction
         jdotb = M.sigma # The sign of the dot product between the plasma current and the magnetic field
-    else # Otherwise, assume magnetic equilibrium is a saved .jld2 file
+    catch # Otherwise, assume magnetic equilibrium is a saved .jld2 file
         myfile = jldopen(filepath_equil,false,false,false,IOStream)
         M = myfile["S"]
         wall = myfile["wall"]
