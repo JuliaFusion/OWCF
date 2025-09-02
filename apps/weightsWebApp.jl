@@ -124,7 +124,7 @@
 
 # Furthermore, the filepath_W_COM input variable can be either an output of this weightsWebApp.jl script, or the os2com.jl script.
 
-# Script written by Henrik Järleblad and Andrea Valentini. Last maintained 2025-03-25.
+# Script written by Henrik Järleblad and Andrea Valentini. Last maintained 2025-09-01.
 ###############################################################################################
 
 ## --------------------------------------------------------------------------
@@ -164,8 +164,19 @@ ylabel = "" # Example neutron count: "Neutron count [(keV*s)^-1]". Example proje
 verbose = true
 
 ########################################################################################################
-# WEB APPLICATION BEGINS BELOW. DO NOT ALTER ANY CODE BELOW THIS LINE!
 ########################################################################################################
+########################################################################################################
+########################################################################################################
+########################################################################################################
+########################################################################################################
+############### WEB APPLICATION BEGINS BELOW. DO NOT ALTER ANY CODE BELOW THIS LINE! ###################
+########################################################################################################
+########################################################################################################
+########################################################################################################
+########################################################################################################
+########################################################################################################
+########################################################################################################
+
 # Must load JLD2 package first, to be able to check filepath_tm and filepath_W for 'extra_kw_args'
 using JLD2
 # EXTRA KEYWORD ARGUMENTS BELOW (these will go into the orbit_grid() and get_orbit() functions from GuidingCenterOrbits.jl)
@@ -275,11 +286,14 @@ end
 
 ## ------
 # Loading tokamak equilibrium
-verbose && println("Loading tokamak equilibrium... ")
-if ((split(filepath_equil,"."))[end] == "eqdsk") || ((split(filepath_equil,"."))[end] == "geqdsk") 
+verbose && println("Loading magnetic equilibrium... ")
+M, wall, jdotb = nothing, nothing, nothing # Initialize global magnetic equilibrium variables
+try
+    global M; global wall; global jdotb # Declare global scope
     M, wall = read_geqdsk(filepath_equil,clockwise_phi=false) # Assume counter-clockwise phi-direction
     jdotb = M.sigma # The sign of the dot product between the plasma current and the magnetic field
-else # Otherwise, assume magnetic equilibrium is a saved .jld2 file
+catch # Otherwise, assume magnetic equilibrium is a saved .jld2 file
+    global M; global wall; global jdotb; local myfile # Declare global scope
     myfile = jldopen(filepath_equil,false,false,false,IOStream)
     M = myfile["S"]
     wall = myfile["wall"]

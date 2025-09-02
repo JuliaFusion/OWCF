@@ -86,7 +86,7 @@
 # Please note that the diagnostic energy grid will be created as bin centers.
 # That is, the first diagnostic energy grid value will be (Ed_min+Ed_diff/2) and so on.
 
-# Script written by Henrik Järleblad. Last maintained 2025-07-11.
+# Script written by Henrik Järleblad. Last maintained 2025-09-01.
 ################################################################################################
 
 ## ---------------------------------------------------------------------------------------------
@@ -239,8 +239,10 @@ end
 # Loading tokamak equilibrium and timepoint
 timepoint_start = deepcopy(timepoint) # Keep timepoint value set in start file
 
-verbose && println("Loading tokamak equilibrium... ")
-if ((split(filepath_equil,"."))[end] == "eqdsk") || ((split(filepath_equil,"."))[end] == "geqdsk")
+verbose && println("Loading magnetic equilibrium... ")
+M, wall, jdotb = nothing, nothing, nothing # Initialize global magnetic equilibrium variables
+try
+    global M; global wall; global jdotb # Declare global scope
     M, wall = read_geqdsk(filepath_equil,clockwise_phi=false) # Assume counter-clockwise phi-direction
     jdotb = M.sigma # The sign of the dot product between the plasma current and the magnetic field
 
@@ -252,12 +254,13 @@ if ((split(filepath_equil,"."))[end] == "eqdsk") || ((split(filepath_equil,"."))
         YYYY = eqdsk_array[end-1] # Assume format ...-XX.YYYY.eqdsk where XX are the seconds and YYYY are the decimals
         timepoint = "$(XX*","*YYYY)" # Format XX,YYYY to avoid "." when including in filename of saved output
         timepoint_source = "EQDSK"
-        verbose && println("---> Found timepoint data in .eqdsk file! Loading... ")
+        verbose && println("---> Found timepoint data in magnetic equilibrium file! Loading... ")
     catch
         global timepoint; global timepoint_source # Declare global scope
         timepoint_source, timepoint = "UNKNOWN", "00,0000" # (SOURCE, VALUE). Unknown timepoint for magnetic equilibrium
     end
-else # Otherwise, assume magnetic equilibrium is a saved .jld2 file
+catch # Otherwise, assume magnetic equilibrium is a saved .jld2 file
+    global M; global wall; global jdotb; global timepoint_source; global timepoint; local myfile
     myfile = jldopen(filepath_equil,false,false,false,IOStream)
     M = myfile["S"]
     wall = myfile["wall"]

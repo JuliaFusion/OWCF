@@ -92,7 +92,7 @@
 ### Other
 # 
 
-# Script written by Henrik Järleblad. Last maintained 2025-07-30.
+# Script written by Henrik Järleblad. Last maintained 2025-09-01.
 ###########################################################################################################
 
 # A dictionary to keep a record of the names of all sections and their respective execution times
@@ -737,7 +737,17 @@ if "collisions" in lowercase.(String.(regularization))
     end
     verbose && println("ok!")
     verbose && print("---> Loading magnetic equilibrium from $(regularization_equil_filepath)... ")
-    M, wall = read_geqdsk(regularization_equil_filepath,clockwise_phi=false) # Assume the phi-direction is pointing counter-clockwise when tokamak is viewed from above. This is true for almost all coordinate systems used in the field of plasma physics
+    M, wall = nothing, nothing # Initialize global magnetic equilibrium variables
+    try
+        global M; global wall # Declare global scope
+        M, wall = read_geqdsk(regularization_equil_filepath,clockwise_phi=false) # Assume the phi-direction is pointing counter-clockwise when tokamak is viewed from above. This is true for almost all coordinate systems used in the field of plasma physics
+    catch # Otherwise, assume magnetic equilibrium is a saved .jld2 file
+        global M; global wall; local myfile
+        myfile = jldopen(regularization_equil_filepath,false,false,false,IOStream)
+        M = myfile["S"]
+        wall = myfile["wall"]
+        close(myfile)
+    end
     psi_axis, psi_bdry = psi_limits(M)
     verbose && println("ok!")
 
@@ -1215,7 +1225,18 @@ if "icrf" in lowercase.(String.(regularization))
     verbose && println("ok!")
 
     verbose && print("---> Loading magnetic equilibrium from $(regularization_equil_filepath)... ")
-    M, wall = read_geqdsk(regularization_equil_filepath,clockwise_phi=false) # Assume the phi-direction is pointing counter-clockwise when tokamak is viewed from above. This is true for almost all coordinate systems used in the field of plasma physics
+    verbose && println("Loading magnetic equilibrium... ")
+    M, wall = nothing, nothing # Initialize global magnetic equilibrium variables
+    try
+        global M; global wall # Declare global scope
+        M, wall = read_geqdsk(regularization_equil_filepath,clockwise_phi=false) # Assume the phi-direction is pointing counter-clockwise when tokamak is viewed from above. This is true for almost all coordinate systems used in the field of plasma physics
+    catch # Otherwise, assume magnetic equilibrium is a saved .jld2 file
+        global M; global wall; local myfile
+        myfile = jldopen(regularization_equil_filepath,false,false,false,IOStream)
+        M = myfile["S"]
+        wall = myfile["wall"]
+        close(myfile)
+    end
     psi_axis, psi_bdry = psi_limits(M)
     verbose && println("ok!")
 
@@ -1481,7 +1502,7 @@ for ir in eachindex(priors) # For all regularizations/priors that require a hype
         loglambda_min = regularization_loglambda_mins[iir]
         loglambda_max = regularization_loglambda_maxs[iir]
     end
-    append!(hyper_arrays,[10 .^(range(loglambda_min,stop=loglambda_max,length=nr))])
+    append!(hyper_arrays,[10 .^(range(Float64(loglambda_min),stop=Float64(loglambda_max),length=Int64(nr)))])
     verbose && println("---> $(priors_name[ir]) with $(nr) λ grid points between 10^$(loglambda_min) and 10^$(loglambda_max)... ")
 end
 hyper_points = Iterators.product(hyper_arrays...)
@@ -1504,12 +1525,16 @@ collision_physics_reg = false
 if "collisions" in lowercase.(String.(regularization))
     collision_physics_reg = true # Just a bool to speed up computations
 end
-
 verbose && println("")
+
+if verbose
+    verbose_onlyForSolve = true # If verbose is true, so is verbose_onlyForSolve
+end
+
 nip = length(hyper_points); s = nip>1 ? "s" : ""
-verbose && println("Solving $(nip) inverse problem$(s) (each with $(size(W_hh,2)) unknowns and $(size(W_hh,1)) measurements)... ")
+verbose_onlyForSolve && println("Solving $(nip) inverse problem$(s) (each with $(size(W_hh,2)) unknowns and $(size(W_hh,1)) measurements)... ")
 for (i,hp) in enumerate(hyper_points)
-    verbose && println("---> ($(i)/$(nip)) for regularization hyper-parameter point $(round.(vcat(hp...),sigdigits=4)) ($([pn for pn in priors_name]))... ")
+    verbose_onlyForSolve && println("---> ($(i)/$(nip)) for regularization hyper-parameter point $(round.(vcat(hp...),sigdigits=4)) ($([pn for pn in priors_name]))... ")
     L_i = Matrix(vcat((vcat(hp...) .*L)...)) # Multiply hyper-parameter values with the corresponding regularization matrices. Then, concatenate into one big regularization matrix
     x = Convex.Variable(size(W_hh,2))
 

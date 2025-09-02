@@ -89,7 +89,7 @@
 # Plots.heatmap(Rm_array, pm_array, (F_os_3D[iE,:,:])./maximum(F_os_3D[iE,:,:]), colorbar=true, title="Fast-ion distribution slice  ($(round(maximum(F_os_3D[iE,:,:]), sigdigits=4)) = 1.0)",fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]))
 # Plots.scatter!(Rm_scatvals_tb,pm_scatvals_tb,markersize=ms,leg=false,markercolor=:black, xlabel="Rm [m]", ylabel="pm")
 
-# Script written by Henrik Järleblad. Last maintained 2022-08-25.
+# Script written by Henrik Järleblad. Last maintained 2025-08-01.
 ###############################################################################################
 
 ## --------------------------------------------------------------------------
@@ -134,6 +134,22 @@ else
     # The orbit integration algorithm will try progressively smaller timesteps these number of times
 end
 close(myfile)
+
+###############################################################################################
+###############################################################################################
+###############################################################################################
+###############################################################################################
+###############################################################################################
+###############################################################################################
+######################################### START OF APP ######################################## 
+######################################### DO NOT CHANGE #######################################
+######################################### ANYTHING BELOW ######################################
+###############################################################################################
+###############################################################################################
+###############################################################################################
+###############################################################################################
+###############################################################################################
+###############################################################################################
 
 ## ------
 # Loading packages
@@ -276,11 +292,14 @@ end
 
 ## ----------
 # Loading tokamak equilibrium
-verbose && println("Loading tokamak equilibrium... ")
-if ((split(filepath_equil,"."))[end] == "eqdsk") || ((split(filepath_equil,"."))[end] == "geqdsk") 
+verbose && println("Loading magnetic equilibrium... ")
+M, wall, jdotb = nothing, nothing, nothing # Initialize global magnetic equilibrium variables
+try
+    global M; global wall; global jdotb; global timepoint#; global timepoint_source # Declare global scope
     M, wall = read_geqdsk(filepath_equil,clockwise_phi=false) # Assume counter-clockwise phi-direction
     jdotb = M.sigma # The sign of the dot product between the plasma current and the magnetic field
-else # Otherwise, assume magnetic equilibrium is a saved .jld2 file
+catch # Otherwise, assume magnetic equilibrium is a saved .jld2 file
+    global M; global wall; global jdotb; global timepoint; local myfile #; global timepoint_source
     myfile = jldopen(filepath_equil,false,false,false,IOStream)
     M = myfile["S"]
     wall = myfile["wall"]
