@@ -18,7 +18,7 @@
 #
 # folderpath_OWCF = "/path/to/the/OWCF/folder/"
 # using Pkg
-# cd(folderpath_OWCF)#
+# cd(folderpath_OWCF)
 # Pkg.activate(".")
 #
 # Finally, please note that some functions in dependencies.jl might be under construction. Hence, the bad code.
@@ -4216,25 +4216,26 @@ The keyword arguments are:
     - returnExtra: If true, extra outputs will be returned (please see below)
     - E_tail_length: If specified (Float or Int), the slowing-down function will be dampened below (E0-E_tail_length) [keV]
     - sigma: If specified, (Float or Int), the slowing-down function will be dampened this quickly [keV]
+    - dampen - If true, the slowing-down function will be damped. If E_tail_length is specified, it will be used. Otherwise, below v_L (please see final eq. in W.G.F. Core, Nucl. Fusion 33, 829 (1993))
 """
 function slowing_down_function(E_0::Real, p_0::Real, E_array::Vector{T} where {T<:Real}, p_array::Vector{T} where {T<:Real}, n_e::Real, T_e::Real, 
                                species_f::String, species_th_vec::Vector{String}, n_th_vec::Vector{T} where {T<:Real}, T_th_vec::Vector{T} where {T<:Real}; 
-                               type::Symbol=:core, returnExtra::Bool=false, E_tail_length::Union{Nothing,Real}=nothing, sigma::Union{Nothing,Real}=nothing, 
-                               kwargs...)
+                               type::Symbol=:core, returnExtra::Bool=false, E_tail_length::Union{Nothing,Real}=nothing, sigma::Union{Nothing,Real}=nothing,
+                               dampen::Bool=false, kwargs...)
     m_f = getSpeciesMass(species_f) # Beam (fast) particle mass, kg
     E2v_rel = (E-> (GuidingCenterOrbits.c0)*sqrt(1-(1/(((E*1000*GuidingCenterOrbits.e0)/(m_f*(GuidingCenterOrbits.c0)^2))+1)^2))) # A one-line function to transform from energy (keV) to relativistic speed (m/s)
     v2E_rel = (v-> inv(1000*GuidingCenterOrbits.e0)*m_f*((GuidingCenterOrbits.c0)^2)*(sqrt(1/(1-(v/(GuidingCenterOrbits.c0))^(2)))-1)) # A one-line function to transform from relativistic speed (m/s) to energy (keV)
 
-    v_damp = nothing
-    dampen = false
     if !isnothing(E_tail_length)
-        v_damp = E2v_rel(clamp(E_0 - E_tail_length,0,Inf))
         dampen = true
+        v_damp = E2v_rel(E_0 - E_tail_length)
+        v_damp = (v_damp > 0 && v_damp < Inf) ? v_damp : nothing
     end
-
-    v_sigma = nothing
+    
     if !isnothing(sigma)
-        v_sigma = E2v_rel(clamp(sigma,0,Inf))
+        dampen = true
+        v_sigma = E2v_rel(sigma)
+        v_sigma = (v_sigma > 0 && v_sigma < Inf) ? v_sigma : nothing
     end
 
     # Use the specified type of slowing-down function
