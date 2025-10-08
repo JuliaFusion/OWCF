@@ -7,7 +7,8 @@
 
 # The inputs are as follows:
 #
-# batch_job - If true, the script assumes that it will be executed via an HPC batch job. The script will act accordingly. - Bool
+# batch_job_SLURM - If true, the script assumes that it will be executed as part of an high-performance computational 
+#                   cluster batch job within the SLURM cluster environment. The script will act accordingly. - Bool
 # distributed - If true, parallel computing with multiple CPU cores will be used. - Bool
 # folderpath_OWCF - The path to the OWCF folder - String
 # numOcores - The number of CPU cores that will be used if distributed is set to true. - Int64
@@ -85,38 +86,31 @@
 #
 # PLEASE NOTE! The 'analytic' input variable cannot be set to true, if the 'reaction' input variable is specified on form (3).
 
-# Script written by Henrik Järleblad. Last maintained 2025-07-11.
+# Script written by Henrik Järleblad. Last maintained 2025-10-07.
 #################################################################################################################################################################
 
 ## First you have to set the system specifications
 using Distributed # Needed, even though distributed might be set to false. This is to export all inputs to all workers right away, if needed.
-batch_job = false
+batch_job_SLURM = false
 distributed = true
 folderpath_OWCF = "" # OWCF folder path. Finish with '/'
-numOcores = 4 # When executing script via HPC cluster job, make sure you know how many cores you have requested for your batch job
+numOcores = 4 # When executing the script as part of an HPC cluster batch job, the number of CPU cores will be detected and set automatically (i.e. the value of the numOcores variable does not matter)
 
 ## Navigate to the OWCF folder and activate the OWCF environment
 cd(folderpath_OWCF)
 using Pkg
 Pkg.activate(".")
 
-## If running as a batch job on a SLURM CPU cluster
-if batch_job && distributed
-    # Load the SLURM CPU cores
-    using ClusterManagers
-    addprocs(SlurmManager(numOcores))
-    hosts = []
-    pids = []
-    for i in workers()
-        host, pid = fetch(@spawnat i (gethostname(), getpid()))
-        push!(hosts, host)
-        push!(pids, pid)
-    end
-    @show hosts
+## If running as a batch job on a SLURM HPC cluster with CPUs
+if batch_job_SLURM
+    # Load the SLURM package and add the CPU cores
+    using SlurmClusterManager
+    addprocs(SlurmManager()) # The number of CPU cores are detected automatically
+    @everywhere println("X-wing $(rand(["Red","Green","Blue"])) $(myid()) reporting for duty at $(gethostname())")
 end
 
 ## If running locally and multi-threaded
-if !batch_job && distributed # Assume you are executing the script on a local laptop (/computer)
+if !batch_job_SLURM && distributed # Assume you are executing the script on a local laptop (/computer)
     println("Adding processes... ")
     addprocs(numOcores-(nprocs()-1)) # If you didn't execute this script as an HPC cluster job, then you need to add processors like this. Add all remaining available cores.
     # The '-(nprocs()-1)' part is simply to ensure to extra processes are added, in case script needs to be restarted on a local computer
@@ -180,9 +174,10 @@ end
     visualizeProgress = false # If false, progress bar will not be displayed for computations
 
     # EXTRA KEYWORD ARGUMENTS BELOW (these will go into the orbit_grid() and get_orbit() functions from GuidingCenterOrbits.jl)
-    extra_kw_args = Dict(:limit_phi => true, :max_tries => 0)
+    extra_kw_args = Dict(:limit_phi => true, :maxiter => 0, :toa => true)
     # limits the number of toroidal turns for orbits
     # The orbit integration algorithm will try progressively smaller timesteps these number of times
+    # toa stands for "try only adaptive" orbit ingration algorithm
 
     # You could specify the tokamak as well, if you know it. Please note, it's only for esthetic purposes
     tokamak = "JET"
@@ -204,7 +199,7 @@ include("calcOrbWeights.jl")
 
 ## -----------------------------------------------------------------------------
 # Then you clean up after yourself
-if batch_job && distributed
+if batch_job_SLURM || distributed
     for i in workers()
         rmprocs(i)
     end

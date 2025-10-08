@@ -13,7 +13,8 @@
 # 'nr_array' input variables (please see below). 
 #
 ### The inputs are as follows:
-#
+# batch_job_SLURM - If true, the script assumes that it will be executed as part of an high-performance computational 
+#                   cluster batch job within the SLURM cluster environment. The script will act accordingly. - Bool
 # folderpath_OWCF - The path to where the OWCF folder is saved on your computer. End with '/' (or '\' if Windows) - String
 # 
 # allow_measurements_with_zero_uncertainty - If set to true, the algorithm will allow uncertainties to be equal to zero.
@@ -231,44 +232,36 @@
 # Some lines below are commented out. This is because the inverse problem solving algorithm is currently single-CPU.
 # In future version, multi-core processing might be supported, and those lines will then be uncommented.
 
-# Script written by Henrik Järleblad. Last maintained 2025-09-01.
+# Script written by Henrik Järleblad. Last maintained 2025-10-07.
 #############################################################################################################################################################
 
 ## First you have to set the system specifications
-using Distributed # Needed, even though distributed might be set to false. This is to export all inputs to all workers right away, if needed.
-#batch_job = false #CURRENTLY NOT AVAILABLE FOR solveInverseProblem.jl
-#distributed = true #CURRENTLY NOT AVAILABLE FOR solveInverseProblem.jl
+using Distributed # Needed for running the script on a SLURM HPC cluster
+#distributed = false # CURRENTLY NOT SUPPORTED FOR solveInverseProblem.jl
+batch_job_SLURM = false
 folderpath_OWCF = "" # OWCF folder path. Finish with '/'
-#numOcores = 4 #CURRENTLY NOT AVAILABLE FOR solveInverseProblem.jl # When executing script via HPC cluster job, make sure you know how many cores you have requested for your batch job
+#numOCPUcores = 1 # CURRENTLY ALWAYS 1 FOR solveInverseProblem.jl
 
 ## Navigate to the OWCF folder and activate the OWCF environment
 cd(folderpath_OWCF)
 using Pkg
 Pkg.activate(".")
 
-#CURRENTLY NOT AVAILABLE FOR solveInverseProblem.jl
-## If running as a batch job on a SLURM CPU cluster
-#if batch_job && distributed
-#    # Load the SLURM CPU cores
-#    using ClusterManagers
-#    addprocs(SlurmManager(numOcores))
-#    hosts = []
-#    pids = []
-#    for i in workers()
-#        host, pid = fetch(@spawnat i (gethostname(), getpid()))
-#        push!(hosts, host)
-#        push!(pids, pid)
-#    end
-#    @show hosts
-#end
+## If running as a batch job on a SLURM HPC cluster with CPUs
+if batch_job_SLURM
+    # Load the SLURM package and add the CPU cores
+    using SlurmClusterManager
+    addprocs(SlurmManager()) # The number of CPU cores are detected automatically
+    @everywhere println("X-wing $(rand(["Red","Green","Blue"])) $(myid()) reporting for duty at $(gethostname())")
+end
 
-#CURRENTLY NOT AVAILABLE FOR solveInverseProblem.jl
 ## If running locally and multi-threaded
-#if !batch_job && distributed # Assume you are executing the script on a local laptop (/computer)
-#    println("Adding processes... ")
-#    addprocs(numOcores-(nprocs()-1)) # If you didn't execute this script as an HPC cluster job, then you need to add processors like this. Add all remaining available cores.
-#    # The '-(nprocs()-1)' part is simply to ensure to extra processes are added, in case script needs to be restarted on a local computer
-#end
+## CURRENTLY NOT SUPPORTED FOR solveInverseProblem.jl
+#=if !batch_job_SLURM && distributed # Assume you are executing the script on a local laptop (/computer)
+    println("Adding processes... ")
+    addprocs(numOcores-(nprocs()-1)) # If you didn't execute this script as an HPC cluster job, then you need to add processors like this. Add all remaining available cores.
+    # The '-(nprocs()-1)' part is simply to ensure to extra processes are added, in case script needs to be restarted on a local computer
+end=#
 
 ## -----------------------------------------------------------------------------
 @everywhere begin

@@ -669,25 +669,32 @@ if plot_LOS
         clims = (psi_bdry-dpsi*0.01, psi_mag+dpsi*0.01)
     end
 
-    x_min_plt_crs = min(minimum(wall.r)-0.1*wall_dR, detector_location_R-0.1*wall_dR)
-    x_max_plt_crs = max(maximum(wall.r)+wall_dR, detector_location_R+0.1*wall_dR)
-    y_min_plt_crs = min(minimum(wall.z), detector_location[3] - 0.1*wall_dz)
-    y_max_plt_crs = max(maximum(wall.z), detector_location[3] + 0.1*wall_dz)
+    R_min_plt_crs = min(minimum(wall.r)-0.1*wall_dR, detector_location_R-0.1*wall_dR)
+    R_max_plt_crs = max(maximum(wall.r)+wall_dR, detector_location_R+0.1*wall_dR)
+    z_min_plt_crs = min(minimum(wall.z), detector_location[3] - 0.1*wall_dz)
+    z_max_plt_crs = max(maximum(wall.z), detector_location[3] + 0.1*wall_dz)
     plt_crs = Plots.heatmap(flux_R, flux_z, transpose(LOS_Rz_proj), title="Poloidal proj. $(LOS_name) LOS", fillcolor=cgrad(color_array, categorical=true), colorbar=false)
     plt_crs = Plots.contour!(flux_R, flux_z, transpose(psi_rz), levels=collect(range(psi_mag, stop=psi_bdry,length=7)), color=:gray, clims=clims, linewidth=2.5, label="", colorbar=false, α=0.5)
     plt_crs = Plots.plot!(wall.r,wall.z,label="Tokamak first wall",linewidth=2.5,color=:black)
     plt_crs = Plots.scatter!([detector_location_R],[detector_location[3]], label="Detector location", markershape=:star, markercolor=:purple, markerstrokewidth=2)
     plt_crs = Plots.scatter!([magnetic_axis(M)[1]],[magnetic_axis(M)[2]],label="Mag. axis",markershape=:xcross,markercolor=:red,markerstrokewidth=4)
-    plt_crs = Plots.plot!(aspect_ratio=:equal,xlabel="R [m]",ylabel="z [m]", xlims=(x_min_plt_crs, x_max_plt_crs), ylims=(y_min_plt_crs, y_max_plt_crs))
+    plt_crs = Plots.plot!(aspect_ratio=:equal,xlabel="R [m]",ylabel="z [m]", xlims=(R_min_plt_crs, R_max_plt_crs), ylims=(z_min_plt_crs, z_max_plt_crs))
     plt_crs = Plots.plot!(xtickfontsize=14,ytickfontsize=14,xguidefontsize=16,yguidefontsize=16)
     plt_crs = Plots.plot!(legend=:bottomright,legendfontsize=13)
 
+    wall_dx = abs(diff([elem for elem in topview_R_lfs_x])[1])
+    wall_dy = abs(diff([elem for elem in topview_R_lfs_y])[1])
+    x_min_plt_top = min(minimum(topview_R_lfs_x), detector_location[1])-0.1*wall_dx
+    x_max_plt_top = max(maximum(topview_R_lfs_x), detector_location[1])+0.4*wall_dx
+    y_min_plt_top = min(minimum(topview_R_lfs_y), detector_location[2])-0.3*wall_dy
+    y_max_plt_top = max(maximum(topview_R_lfs_y), detector_location[2])+0.1*wall_dx
     plt_top = Plots.heatmap(flux_x, flux_y, transpose(LOS_xy_proj), title="Top view $(date_and_time)", fillcolor=cgrad(color_array, categorical=true), colorbar=false)
     plt_top = Plots.scatter!([detector_location[1]],[detector_location[2]], label="Detector location", markershape=:star, markercolor=:purple, markerstrokewidth=2)
     plt_top = Plots.plot!(topview_R_hfs_x,topview_R_hfs_y,linewidth=2.5,color=:black,label="")
     plt_top = Plots.plot!(topview_R_lfs_x,topview_R_lfs_y,linewidth=2.5,color=:black,label="")
-    plt_top = Plots.plot!(aspect_ratio=:equal,xlabel="x [m]",ylabel="y [m]")
+    plt_top = Plots.plot!(aspect_ratio=:equal,xlabel="x [m]",ylabel="y [m]", xlims=(x_min_plt_top, x_max_plt_top), ylims=(y_min_plt_top, y_max_plt_top))
     plt_top = Plots.plot!(xtickfontsize=14,ytickfontsize=14,xguidefontsize=16,yguidefontsize=16)
+    plt_top = Plots.plot!(legend=:bottomright,legendfontsize=13)
 
     myplt = Plots.plot(plt_top,plt_crs,layout=(1,2),left_margin=5Plots.mm,bottom_margin=5Plots.mm, size=(1000,500))
     myplt = Plots.plot!(dpi=100)
