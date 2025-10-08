@@ -438,7 +438,9 @@ end
 """
     basis_prior()
 """
-function basis_prior(abscissas; corr_lengths=ones(length(abscissas)), w_min=0.0, type=:gaussian, verbose=false)
+function basis_prior(abscissas; corr_lengths=ones(length(abscissas)), type=:gaussian, nonneg=false, zero_percentage=0.0, verbose=false)
+
+    zero_fraction = zero_percentage / 100 # Convert from percentage to fraction
 
     if type==:gaussian
         basis_matrix = gaussianBasisMatrix(abscissas, corr_lengths)
@@ -446,10 +448,20 @@ function basis_prior(abscissas; corr_lengths=ones(length(abscissas)), w_min=0.0,
         error("Currently supported options for 'type' keyword argument: (1) :gaussian. Please correct and re-try")
     end
 
-    w = rand(size(basis_matrix,2)) # Initialize random weight in (0,1) for every basis function
-    w[findall(x-> x<w_min, w)] .= 0.0 # Set all weights below w_min to 0.0
+    w = -1 .+ 2 .*rand(size(basis_matrix,2)) # Initialize a random weight in (-1,1) for every basis function
+    nw = length(w) # Number of weights
+    indices_to_set_to_zero = Int64.(round.(nw .*rand(Int64(round(nw*zero_fraction)))))
+    if verbose
+        println("length(indices_to_set_to_zero): $(length(indices_to_set_to_zero))")
+        println("---> indices_to_set_to_zero: $(indices_to_set_to_zero)")
+    end
+    w[indices_to_set_to_zero] .= 0.0 # Set zero_percentage % of all weights to 0.0. Randomly
 
-    return reshape(basis_matrix*w, Tuple(length.(abscissas)))
+    myprior = basis_matrix*w
+    if nonneg
+        myprior[findall(x-> x<0, myprior)] .= 0.0 # Respect non-negativity constraint
+    end
+    return reshape(myprior, Tuple(length.(abscissas)))
 end
 
 """
@@ -3748,7 +3760,7 @@ end
 """
     os2COM(M, data, E_array, pm_array, Rm_array, FI_species)
     os2COM(M, data, E_array, pm_array, Rm_array, FI_species; nl=length(pm_array), npp=length(Rm_array), isTopoMap=false, needJac=false, verbose=false, 
-                                                             vverbose=false, good_coords=nothing, wall=nothing, extra_kw_args=Dict(:toa => true, :limit_phi => true, :max_tries => 0), 
+                                                             vverbose=false, good_coords=nothing, wall=nothing, extra_kw_args=Dict(:toa => true, :limit_phi => true, :maxiter => 0), 
                                                              kwargs...)
 
 This function maps an orbit-space (E,pm,Rm) quantity into COM-space (E,Λ,Pϕ_n;σ). E is the energy (keV), pm is the pitch (v_||/v) at the 
@@ -3786,7 +3798,7 @@ specify it to true.
 """
 function os2COM(M::AbstractEquilibrium, data::Union{Array{Float64, 3},Array{Float64, 4}}, E_array::AbstractVector, pm_array::AbstractVector, Rm_array::AbstractVector, 
                 FI_species::AbstractString; nl::Int64=length(pm_array), npp::Int64=length(Rm_array), isTopoMap::Bool=false, verbose::Bool=false, vverbose::Bool=false, 
-                good_coords=nothing, wall::Union{Nothing,Boundary{Float64}}=nothing, extra_kw_args=Dict(:toa => true, :limit_phi => true, :max_tries => 0), kwargs...)
+                good_coords=nothing, wall::Union{Nothing,Boundary{Float64}}=nothing, extra_kw_args=Dict(:toa => true, :limit_phi => true, :maxiter => 0), kwargs...)
     if !isTopoMap && !(typeof(good_coords)==Vector{CartesianIndex{3}})
         verbose && println("Input data is not a topological map, and keyword argument 'good_coords' has not been (correctly?) provided... ")
         verbose && println("--------> Computing orbit grid for (E,pm,Rm)-values to be able to deduce valid orbits for (E,pm,Rm)-grid... ")
@@ -4226,12 +4238,14 @@ function slowing_down_function(E_0::Real, p_0::Real, E_array::Vector{T} where {T
     E2v_rel = (E-> (GuidingCenterOrbits.c0)*sqrt(1-(1/(((E*1000*GuidingCenterOrbits.e0)/(m_f*(GuidingCenterOrbits.c0)^2))+1)^2))) # A one-line function to transform from energy (keV) to relativistic speed (m/s)
     v2E_rel = (v-> inv(1000*GuidingCenterOrbits.e0)*m_f*((GuidingCenterOrbits.c0)^2)*(sqrt(1/(1-(v/(GuidingCenterOrbits.c0))^(2)))-1)) # A one-line function to transform from relativistic speed (m/s) to energy (keV)
 
+    v_damp = nothing
     if !isnothing(E_tail_length)
         dampen = true
         v_damp = E2v_rel(E_0 - E_tail_length)
         v_damp = (v_damp > 0 && v_damp < Inf) ? v_damp : nothing
     end
     
+    v_sigma = nothing
     if !isnothing(sigma)
         dampen = true
         v_sigma = E2v_rel(sigma)
