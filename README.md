@@ -51,9 +51,9 @@ or whatever other Python package manager you use together with your Python execu
 ## Prior to first use
 Before using the OWCF for the first time after downloading and installing, make sure to run the `OWCF/tests/run_tests.jl` script. This script will run tests to check that the OWCF was installed correctly and can be expected to function correctly. Prior to running, please edit the `run_tests.jl` script and modify the input arguments at the top as you see fit. Then do the following:
 
-> *navigate to the OWCF folder using a command-line terminal* 
-> `cd tests`
-> `julia run_tests.jl`
+> *navigate to the OWCF folder using a command-line terminal*  
+> `cd tests`  
+> `julia run_tests.jl`  
 
 If the `run_tests.jl` script prints `0` errors upon completion, you are good to go!
 
