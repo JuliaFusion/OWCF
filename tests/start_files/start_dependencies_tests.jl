@@ -1,6 +1,6 @@
 ############---------------------------------------------------------------------------------------###
 # A script to test a lot of the tools in the OWCF/extra/dependencies.jl script
-# Written by Henrik Järleblad. Last maintained 2025-06-11
+# Written by Henrik Järleblad. Last maintained 2025-10-08
 ###------------------------------------------------------------------------------------------------###
 
 # Load the Distributed package, for multi-CPU computing. Might be used in future multi-CPU testing
@@ -28,33 +28,43 @@ elseif @isdefined plot_test_results # If not, check if the 'plot_test_results' v
 else # If nothing else, assume that the 'plot_test_results' input variable should be set to false
     plot_test_results = false
 end
+@everywhere plot_test_results = $plot_test_results
 ###------------------------------------------------------------------------------------------------###
 
 ############---------------------------------------------------------------------------------------###
 # Define the folderpath_OWCF variable, if not already defined in a super script
+folder_delimiter = "/" # Assume Unix-type operating system by default -> folders are separated by /
+first_path_index = 2 # Assume root directory is "/"
+if Sys.iswindows()
+    folder_delimiter = "\\" # If Windows, we need to use \\ instead
+    first_path_index = 1 # If Windows, root directory is e.g. C:
+end
 if !(@isdefined folderpath_OWCF)
-    folderpath_OWCF = reduce(*,map(x-> "/"*x,split(@__DIR__,"/")[2:end-2]))*"/" # We know that the test start file is located in the OWCF/tests/start_files/ folder. Deduce the full OWCF folder path from that information
+    folderpath_OWCF = reduce(*,map(x-> "$(folder_delimiter)"*x,split(@__DIR__,"$(folder_delimiter)")[first_path_index:end-2]))*"$(folder_delimiter)" # We know that the test start file is located in the OWCF/tests/start_files/ folder. Deduce the full OWCF folder path from that information
+    if Sys.iswindows()
+        folderpath_OWCF = folderpath_OWCF[2:end] # Windows file paths don't start with "\\", but e.g. C:
+    end
 end
 # Create the OWCF/tests/outputs/ folder, if it does not already exist
-if !isdir(folderpath_OWCF*"tests/outputs/")
-    print("The folder $(folderpath_OWCF)tests/outputs/ does not exist. Creating... ")
-    mkdir(folderpath_OWCF*"tests/outputs")
+if !isdir(folderpath_OWCF*"tests$(folder_delimiter)outputs$(folder_delimiter)")
+    print("The folder $(folderpath_OWCF)tests$(folder_delimiter)outputs$(folder_delimiter) does not exist. Creating... ")
+    mkdir(folderpath_OWCF*"tests$(folder_delimiter)outputs")
     println("ok!")
 end
 # Change the working directory to the OWCF/ folder, and activate the OWCF Julia environment
 @everywhere begin
-    plot_test_results = $plot_test_results
-    
+    folderpath_OWCF = $folderpath_OWCF 
+    folder_delimiter = $folder_delimiter
     using Pkg
     cd(folderpath_OWCF)
     Pkg.activate(".")
 
-    plot_test_results && (using Plots) # If plots of the test results are requested, load the Plots.jl package
+    plot_test_results && (using Plots) # If plotting, load Plots package
 end
 ###------------------------------------------------------------------------------------------------###
 
 ############---------------------------------------------------------------------------------------###
-include(folderpath_OWCF*"extra/dependencies.jl")
+include(folderpath_OWCF*"extra$(folder_delimiter)dependencies.jl")
 ###------------------------------------------------------------------------------------------------###
 
 ############---------------------------------------------------------------------------------------###
@@ -73,7 +83,7 @@ if plot_test_results
     myplt2 = Plots.heatmap(abscissa1,abscissa3,transpose(test_gaussian2),dpi=100)
     myplt3 = Plots.heatmap(abscissa1,abscissa2,transpose(test_gaussian3),dpi=100)
     myplt = Plots.plot(myplt1,myplt2,myplt3,layout=(3,1),size=(400,1200))
-    png(myplt,folderpath_OWCF*"tests/outputs/dependencies_test_gaussian")
+    png(myplt,folderpath_OWCF*"tests$(folder_delimiter)outputs$(folder_delimiter)dependencies_test_gaussian")
 end
 ###------------------------------------------------------------------------------------------------###
 
@@ -92,7 +102,7 @@ test_Rz_grid = rz_grid(2.8,4.0,33,-2.0,2.0,34; nphi=720)
 ###------------------------------------------------------------------------------------------------###
 
 ############---------------------------------------------------------------------------------------###
-M, wall = read_geqdsk(folderpath_OWCF*"equilibrium/JET/g96100/g96100_0-53.0012.eqdsk",clockwise_phi=false)
+M, wall = read_geqdsk(folderpath_OWCF*"equilibrium$(folder_delimiter)JET$(folder_delimiter)g96100$(folder_delimiter)g96100_0-53.0012.eqdsk",clockwise_phi=false)
 test_FI_species = "D"; test_n_e = 1.0e20; test_T_e = 5.0; test_species_th_vec = ["D","T"]
 test_n_th_vec = [0.2e20,0.8e20]; test_T_th_vec = [4.0,3.0]
 
@@ -215,7 +225,7 @@ if plot_test_results
                     test_icrf_streamlines_plt_4,
                     layout=(2,2),size=(1800,1800))
     display(myplt)
-    png(myplt,folderpath_OWCF*"tests/outputs/dependencies_test_icrf_streamlines")
+    png(myplt,folderpath_OWCF*"tests$(folder_delimiter)outputs$(folder_delimiter)dependencies_test_icrf_streamlines")
 end
 ###------------------------------------------------------------------------------------------------###
 
@@ -241,12 +251,12 @@ if plot_test_results
                        test_noise_plt_2, test_noise_plt_4,
                        layout=(2,2),size=(1600,1600))
     display(myplt)
-    png(myplt,folderpath_OWCF*"tests/outputs/dependencies_test_S_noise")
+    png(myplt,folderpath_OWCF*"tests$(folder_delimiter)outputs$(folder_delimiter)dependencies_test_S_noise")
 end
 ###------------------------------------------------------------------------------------------------###
 
 ############---------------------------------------------------------------------------------------###
-myfile = jldopen(folderpath_OWCF*"vc_data/TOFOR/TOFOR_instrumental_response.jld2",false,false,false,IOStream)
+myfile = jldopen(folderpath_OWCF*"vc_data$(folder_delimiter)TOFOR$(folder_delimiter)TOFOR_instrumental_response.jld2",false,false,false,IOStream)
 input_abscissa = myfile["input"]
 output_abscissa = myfile["output"]
 response_matrix = myfile["response_matrix"]
@@ -260,7 +270,7 @@ if plot_test_results
     test_instrum_resp_plt_2 = Plots.plot(output_abscissa,S,label="",title="Signal (w. instrum. resp.)")
     myplt = Plots.plot(test_instrum_resp_plt_1,test_instrum_resp_plt_2,layout=(1,2),size=(1600,800))
     display(myplt)
-    png(myplt,folderpath_OWCF*"tests/outputs/dependencies_test_instrum_resp")
+    png(myplt,folderpath_OWCF*"tests$(folder_delimiter)outputs$(folder_delimiter)dependencies_test_instrum_resp")
 end
 ###------------------------------------------------------------------------------------------------###
 
@@ -297,8 +307,8 @@ L1_ICRF = icrf_regularization_matrix(M, [test_E_array, test_Pphi_n_array, test_L
 ###------------------------------------------------------------------------------------------------###
 
 ############---------------------------------------------------------------------------------------###
-filepath_hdf5 = jld2tohdf5(folderpath_OWCF*"tests/outputs/createCustomFIDistr_test1.jld2")
-if !(h5to4D(filepath_hdf5; )==JLD2to4D(folderpath_OWCF*"tests/outputs/createCustomFIDistr_test1.jld2"))
+filepath_hdf5 = jld2tohdf5(folderpath_OWCF*"tests$(folder_delimiter)outputs$(folder_delimiter)createCustomFIDistr_test1.jld2")
+if !(h5to4D(filepath_hdf5; )==JLD2to4D(folderpath_OWCF*"tests$(folder_delimiter)outputs$(folder_delimiter)createCustomFIDistr_test1.jld2"))
     error("I/O discrepancy between h5to4D() and JLD2to4D functions.")
 end
 test_F_EpRz, test_E_array, test_p_array, test_R_array, test_z_array = h5to4D(filepath_hdf5)
@@ -321,7 +331,7 @@ dE = diff(test_E_array)[1]
 dpm = diff(test_pm_array)[1]
 dRm = diff(test_Rm_array)[1]
 
-extra_kw_args=Dict(:toa => true, :limit_phi => true, :max_tries => 0)
+extra_kw_args=Dict(:toa => true, :limit_phi => true, :maxiter => 0)
 orbs, og = OrbitTomography.orbit_grid(M, test_E_array, test_pm_array, test_Rm_array; q=getSpeciesEcu(test_FI_species), amu=getSpeciesAmu(test_FI_species), wall=wall, extra_kw_args...)
 
 test_F_os_3D = gaussian([test_E_array[3],test_pm_array[15],test_Rm_array[15]],[100.0,0.3,0.08]; mx=maximum.([test_E_array,test_pm_array,test_Rm_array]), mn=minimum.([test_E_array,test_pm_array,test_Rm_array]), n=length.([test_E_array,test_pm_array,test_Rm_array]), floor_level=0.001)
@@ -360,7 +370,7 @@ if plot_test_results
                     myplt7, myplt8, myplt9,
                     layout=(3,3),size=(1200,1200),dpi=200)
     display(myplt)
-    png(myplt, folderpath_OWCF*"tests/outputs/dependencies_test_F_os_And_F_COM")
+    png(myplt, folderpath_OWCF*"tests$(folder_delimiter)outputs$(folder_delimiter)dependencies_test_F_os_And_F_COM")
 end
 ###------------------------------------------------------------------------------------------------###
 
@@ -372,7 +382,7 @@ if plot_test_results
     myplt = Plots.plot!(test_E_array_os2com, test_F_COM_E, label="(E,Λ,Pϕ_n;σ)",linewidth=1.5)
     myplt = Plots.plot!(xlabel="E [keV]",title="f(E)",ylabel="f [keV^-1]",dpi=100)
     display(myplt)
-    png(myplt, folderpath_OWCF*"tests/outputs/dependencies_test_F_os_vs_F_COM_energy_comp")
+    png(myplt, folderpath_OWCF*"tests$(folder_delimiter)outputs$(folder_delimiter)dependencies_test_F_os_vs_F_COM_energy_comp")
 end
 ###------------------------------------------------------------------------------------------------###
 
@@ -409,7 +419,7 @@ if plot_test_results
 
     myplt = Plots.plot(myplt1,Plots.plot(myplt2,myplt3,layout=(1,2)),Plots.plot(myplt4,myplt5,layout=(1,2)),layout=(3,1),size=(800,1200),dpi=200)
     display(myplt)
-    png(myplt,folderpath_OWCF*"tests/outputs/dependencies_test_topoMap_os_1of3")
+    png(myplt,folderpath_OWCF*"tests$(folder_delimiter)outputs$(folder_delimiter)dependencies_test_topoMap_os_1of3")
 end
 ###------------------------------------------------------------------------------------------------###
 
@@ -432,7 +442,7 @@ if plot_test_results
 
     myplt = Plots.plot(myplt1,Plots.plot(myplt2,myplt3,layout=(1,2)),Plots.plot(myplt4,myplt5,layout=(1,2)),layout=(3,1),size=(800,1200),dpi=200)
     display(myplt)
-    png(myplt,folderpath_OWCF*"tests/outputs/dependencies_test_topoMap_os_2of3")
+    png(myplt,folderpath_OWCF*"tests$(folder_delimiter)outputs$(folder_delimiter)dependencies_test_topoMap_os_2of3")
 end
 ###------------------------------------------------------------------------------------------------###
 
@@ -455,12 +465,12 @@ if plot_test_results
 
     myplt = Plots.plot(myplt1,Plots.plot(myplt2,myplt3,layout=(1,2)),Plots.plot(myplt4,myplt5,layout=(1,2)),layout=(3,1),size=(800,1200),dpi=200)
     display(myplt)
-    png(myplt,folderpath_OWCF*"tests/outputs/dependencies_test_topoMap_os_3of3")
+    png(myplt,folderpath_OWCF*"tests$(folder_delimiter)outputs$(folder_delimiter)dependencies_test_topoMap_os_3of3")
 end
 ###------------------------------------------------------------------------------------------------###
 
 ############---------------------------------------------------------------------------------------###
-filepath_jld2 = folderpath_OWCF*"tests/outputs/createCustomFIDistr_test2.jld2"
+filepath_jld2 = folderpath_OWCF*"tests$(folder_delimiter)outputs$(folder_delimiter)createCustomFIDistr_test2.jld2"
 test_F_EpRz, test_E_array, test_p_array, test_R_array, test_z_array = JLD2to4D(filepath_jld2)
 test_dR = diff(test_R_array)[1]; test_dz = diff(test_z_array)[1]
 test_F_Ep = inv(length(test_R_array)*length(test_z_array)) .*dropdims(sum(test_dR*test_dz*2*pi .*reshape(test_R_array,(1,1,length(test_R_array),1)) .*test_F_EpRz,dims=(3,4)),dims=(3,4))
@@ -473,7 +483,7 @@ if plot_test_results
 
     myplt = Plots.plot(myplt1, myplt2, layout=(1,2),size=(1600,800),dpi=200)
     display(myplt)
-    png(myplt,folderpath_OWCF*"tests/outputs/dependencies_test_Ep2VparaVperp")
+    png(myplt,folderpath_OWCF*"tests$(folder_delimiter)outputs$(folder_delimiter)dependencies_test_Ep2VparaVperp")
 end
 ###------------------------------------------------------------------------------------------------###
 
@@ -495,6 +505,6 @@ if plot_test_results
 
     myplt = Plots.plot(myplt1,size=(800,800),dpi=200)
     display(myplt)
-    png(myplt,folderpath_OWCF*"tests/outputs/dependencies_test_slowing_down_function_core")
+    png(myplt,folderpath_OWCF*"tests$(folder_delimiter)outputs$(folder_delimiter)dependencies_test_slowing_down_function_core")
 end
 ###------------------------------------------------------------------------------------------------###

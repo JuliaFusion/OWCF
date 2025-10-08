@@ -53,7 +53,7 @@
 # files, if plot_test_results==true). These will be saved in the OWCF/tests/outputs/ folder. The 
 # total size of all data files and .png figure files will be in the range of tens of megabytes.
 
-# Script written by Henrik Järleblad. Last mainted 2025-09-01.
+# Script written by Henrik Järleblad. Last maintained 2025-10-08.
 ###################################################################################################
 
 # Inputs. To be switched freely between 'true' and 'false'
@@ -186,7 +186,17 @@ VERY_VERBOSE = false # Should be set to false, unless developer debugging
 ############---------------------------------------------------------------------------------------###
 t_start = time() # Test script runtime start
 
-folderpath_OWCF = reduce(*,map(x-> "/"*x,split(@__DIR__,"/")[2:end-1]))*"/" # We know that the run_tests.jl file is located in the OWCF/tests/ folder. Deduce the full OWCF folder path from that information
+folder_delimiter = "/" # Assume Unix-type operating system by default -> folders are separated by /
+first_path_index = 2 # Assume root directory is "/"
+if Sys.iswindows()
+    println("---> Found Windows operating system. Performing the OWCF tests accordingly... ")
+    folder_delimiter = "\\" # If Windows, we need to use \\ instead
+    first_path_index = 1 # If Windows, root directory is e.g. C:
+end
+folderpath_OWCF = reduce(*,map(x-> folder_delimiter*x,split(@__DIR__,folder_delimiter)[first_path_index:end-1]))*folder_delimiter # We know that the run_tests.jl file is located in the OWCF/tests/ folder. Deduce the full OWCF folder path from that information
+if Sys.iswindows()
+    folderpath_OWCF = folderpath_OWCF[2:end] # Skip the first "\\", Windows paths start with e.g. C:
+end
 cd(folderpath_OWCF); using Pkg; Pkg.activate(".") # Navigate to the OWCF folder, activate the OWCF environment
 using Distributed # To enable test files of accessing the 'folderpath_OWCF' variable value correctly
 using Dates # To enable date and time functions use
@@ -199,57 +209,57 @@ SUPPRESS_SUBTEST_PRINT = !VERY_VERBOSE
 
 ############---------------------------------------------------------------------------------------###
 # Checking that the OWCF/tests/outputs/ folder is empty
-if !isdir(folderpath_OWCF*"tests/outputs/")
-    print("The folder $(folderpath_OWCF)tests/outputs/ does not exist. Creating... ")
-    mkdir(folderpath_OWCF*"tests/outputs")
+if !isdir(folderpath_OWCF*"tests$(folder_delimiter)outputs$(folder_delimiter)")
+    print("The folder $(folderpath_OWCF)tests$(folder_delimiter)outputs$(folder_delimiter) does not exist. Creating... ")
+    mkdir(folderpath_OWCF*"tests$(folder_delimiter)outputs")
     println("ok!")
 end
-if !isempty(readdir(folderpath_OWCF*"tests/outputs/"))
-    num_o_files = length(readdir(folderpath_OWCF*"tests/outputs/")); ff = num_o_files==1 ? "file" : "files"
-    println("The $(folderpath_OWCF)tests/outputs/ folder was not empty ($(num_o_files) $(ff)).")
+if !isempty(readdir(folderpath_OWCF*"tests$(folder_delimiter)outputs$(folder_delimiter)"))
+    num_o_files = length(readdir(folderpath_OWCF*"tests$(folder_delimiter)outputs$(folder_delimiter)")); ff = num_o_files==1 ? "file" : "files"
+    println("The $(folderpath_OWCF)tests$(folder_delimiter)outputs$(folder_delimiter) folder was not empty ($(num_o_files) $(ff)).")
     s = "q"
     while !(lowercase(s)=="y" || lowercase(s)=="n")
         global s
-        print("Remove all files in the $(folderpath_OWCF)tests/outputs/ folder (y/n)? ")
+        print("Remove all files in the $(folderpath_OWCF)tests$(folder_delimiter)outputs$(folder_delimiter) folder (y/n)? ")
         s = readline()
     end
     if lowercase(s)=="y"
-        print("Removing all files in the $(folderpath_OWCF)tests/outputs/ folder... ")
-        output_files = readdir(folderpath_OWCF*"tests/outputs/")
+        print("Removing all files in the $(folderpath_OWCF)tests$(folder_delimiter)outputs$(folder_delimiter) folder... ")
+        output_files = readdir(folderpath_OWCF*"tests$(folder_delimiter)outputs$(folder_delimiter)")
         for output_file in output_files
-            rm(folderpath_OWCF*"tests/outputs/"*output_file)
+            rm(folderpath_OWCF*"tests$(folder_delimiter)outputs$(folder_delimiter)"*output_file)
         end
         println("Done!")
     else
-        error("The run_tests.jl script cannot be executed unless the $(folderpath_OWCF)tests/outputs/ folder is empty. Please empty the folder manually, and re-start run_tests.jl.")
+        error("The run_tests.jl script cannot be executed unless the $(folderpath_OWCF)tests$(folder_delimiter)outputs$(folder_delimiter) folder is empty. Please empty the folder manually, and re-start run_tests.jl.")
     end
 end
 println("")
 
 # Checking that the OWCF/tests/errors/ folder is empty
-if !isdir(folderpath_OWCF*"tests/errors/")
-    print("The folder $(folderpath_OWCF)tests/errors/ does not exist. Creating... ")
-    mkdir(folderpath_OWCF*"tests/errors")
+if !isdir(folderpath_OWCF*"tests$(folder_delimiter)errors$(folder_delimiter)")
+    print("The folder $(folderpath_OWCF)tests$(folder_delimiter)errors$(folder_delimiter) does not exist. Creating... ")
+    mkdir(folderpath_OWCF*"tests$(folder_delimiter)errors")
     println("ok!")
 end
-if !isempty(readdir(folderpath_OWCF*"tests/errors/"))
-    num_o_files = length(readdir(folderpath_OWCF*"tests/errors/")); ff = num_o_files==1 ? "file" : "files"
-    println("The $(folderpath_OWCF)tests/errors/ folder was not empty ($(num_o_files) $(ff)).")
+if !isempty(readdir(folderpath_OWCF*"tests$(folder_delimiter)errors$(folder_delimiter)"))
+    num_o_files = length(readdir(folderpath_OWCF*"tests$(folder_delimiter)errors$(folder_delimiter)")); ff = num_o_files==1 ? "file" : "files"
+    println("The $(folderpath_OWCF)tests$(folder_delimiter)errors$(folder_delimiter) folder was not empty ($(num_o_files) $(ff)).")
     s = "q"
     while !(lowercase(s)=="y" || lowercase(s)=="n")
         global s
-        print("Remove all files in the $(folderpath_OWCF)tests/errors/ folder (y/n)? ")
+        print("Remove all files in the $(folderpath_OWCF)tests$(folder_delimiter)errors$(folder_delimiter) folder (y/n)? ")
         s = readline()
     end
     if lowercase(s)=="y"
-        print("Removing all files in the $(folderpath_OWCF)tests/errors/ folder... ")
-        error_files = readdir(folderpath_OWCF*"tests/errors/")
+        print("Removing all files in the $(folderpath_OWCF)tests$(folder_delimiter)errors$(folder_delimiter) folder... ")
+        error_files = readdir(folderpath_OWCF*"tests$(folder_delimiter)errors$(folder_delimiter)")
         for error_file in error_files
-            rm(folderpath_OWCF*"tests/errors/"*error_file)
+            rm(folderpath_OWCF*"tests$(folder_delimiter)errors$(folder_delimiter)"*error_file)
         end
         println("Done!")
     else
-        error("The run_tests.jl script cannot be executed unless the $(folderpath_OWCF)tests/errors/ folder is empty. Please empty the folder manually, and re-start run_tests.jl.")
+        error("The run_tests.jl script cannot be executed unless the $(folderpath_OWCF)tests$(folder_delimiter)errors$(folder_delimiter) folder is empty. Please empty the folder manually, and re-start run_tests.jl.")
     end
 end
 println("")
@@ -257,7 +267,7 @@ println("")
 
 ############---------------------------------------------------------------------------------------###
 date_and_time = split("$(Dates.now())","T")[1]*" at "*split("$(Dates.now())","T")[2][1:5]
-test_list = map(x-> "$(split(x,".")[1])", readdir(folderpath_OWCF*"tests/start_files/")) # All tests are in the OWCF/tests/start_files/ folder. Remove the ".jl" file extension
+test_list = map(x-> "$(split(x,".")[1])", readdir(folderpath_OWCF*"tests$(folder_delimiter)start_files$(folder_delimiter)")) # All tests are in the OWCF/tests/start_files/ folder. Remove the ".jl" file extension
 NUMBER_OF_TESTS = length(test_list) # The total number of tests
 err_dict = Dict() # A dictionary to keep track of the test error file paths
 test_prog = 0 # An integer to keep track of testing progress
@@ -273,7 +283,7 @@ println("-----------------------------------------------------------------------
 ############---------------------------------------------------------------------------------------###
 for test in test_list
     global test_prog # Declare test_prog as the global test_prog variable defined already before (outside of) this for-loop
-    err_file = "$(folderpath_OWCF)tests/errors/$(test).err" # No global scope declaration needed, since err_file String will not be changed
+    err_file = "$(folderpath_OWCF)tests$(folder_delimiter)errors$(folder_delimiter)$(test).err" # No global scope declaration needed, since err_file String will not be changed
     err_IO = open(err_file,"w") # No global scope declaration needed, since the err_IO channel will not be changed (only used)
 
     println("- Running $(test).jl (total run_tests progress: $(Int64(round(100*test_prog/NUMBER_OF_TESTS)))%)... ")
@@ -282,7 +292,7 @@ for test in test_list
         SUPPRESS_SUBTEST_PRINT && redirect_stdout(devnull) # Re-direct prints to null
         SUPPRESS_SUBTEST_PRINT && redirect_stderr(err_IO) # Re-direct warnings and errors to error output file
         # By using Base.run(), we effectively reset the namespace and unload all Julia packages every time before each test start file is run
-        Base.run(`julia $(folderpath_OWCF*"tests/start_files/$(test).jl") plot_test_results $(plot_test_results)`)
+        Base.run(`julia $(folderpath_OWCF*"tests$(folder_delimiter)start_files$(folder_delimiter)$(test).jl") plot_test_results $(plot_test_results)`)
     catch e
         SUPPRESS_SUBTEST_PRINT && redirect_stderr(oldstderr) # Re-direct warnings and errors back to old I/O channel (i.e. the default, visible terminal)
         global err_dict # Declare err_dict as the err_dict variable from the global scope (outside of the for-loop and the try-catch statement)
@@ -308,12 +318,12 @@ println("- All tests completed (total run_tests.jl progress: $(Int64(round(100*t
 # Removing all created files in the OWCF/tests/outputs/ folder, if requested
 println("--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------")
 if clear_test_outputs_folder_when_done
-    print("- Clearing the OWCF/tests/outputs/ folder... ")
-    rm(folderpath_OWCF*"tests/outputs/", recursive=true)
+    print("- Clearing the OWCF$(folder_delimiter)tests$(folder_delimiter)outputs$(folder_delimiter) folder... ")
+    rm(folderpath_OWCF*"tests$(folder_delimiter)outputs$(folder_delimiter)", recursive=true)
     println("Done!")
 else
-    output_folder_size_in_megabytes = inv(1_000_000)*reduce(+, filesize.("$(folderpath_OWCF)tests/outputs/" .*readdir("$(folderpath_OWCF)tests/outputs/")))
-    println("- The $(folderpath_OWCF)tests/outputs/ folder contains all test output files. The total size of all test output files is approx. $(round(output_folder_size_in_megabytes, digits=1)) MB. Please inspect files in folder prior to running run_tests.jl again.")
+    output_folder_size_in_megabytes = inv(1_000_000)*reduce(+, filesize.("$(folderpath_OWCF)tests$(folder_delimiter)outputs$(folder_delimiter)" .*readdir("$(folderpath_OWCF)tests$(folder_delimiter)outputs$(folder_delimiter)")))
+    println("- The $(folderpath_OWCF)tests$(folder_delimiter)outputs$(folder_delimiter) folder contains all test output files. The total size of all test output files is approx. $(round(output_folder_size_in_megabytes, digits=1)) MB. Please inspect files in folder prior to running run_tests.jl again.")
 end
 ###------------------------------------------------------------------------------------------------###
 
@@ -325,7 +335,7 @@ println("- Printing test results... ")
 tot_number_o_errs = length(keys(err_dict))
 println("- Total number of errors: $(tot_number_o_errs)")
 if tot_number_o_errs==0
-    rm(folderpath_OWCF*"tests/errors/", recursive=true) # If no errors, to avoid confusion, clear and remove the OWCF/tests/errors/ folder
+    rm(folderpath_OWCF*"tests$(folder_delimiter)errors$(folder_delimiter)", recursive=true) # If no errors, to avoid confusion, clear and remove the OWCF/tests/errors/ folder
     println("- CONGRATULATIONS! The OWCF can be assumed to function correctly.")
     println("")
     println("---> IF YOU ARE A USER, please go ahead and safely use the OWCF. Enjoy!")
@@ -336,7 +346,7 @@ else
     println("")
     for key in keys(err_dict)
         println(" --->  $(key): $(err_dict[key])")
-        println(" ------> To re-run only this specific test, please do (with 'b' set to either true or false) 'julia $(folderpath_OWCF*"tests/start_files/$(key).jl") plot_test_results b'")
+        println(" ------> To re-run only this specific test, please do (with 'b' set to either true or false) 'julia $(folderpath_OWCF*"tests$(folder_delimiter)start_files$(folder_delimiter)$(key).jl") plot_test_results b'")
         println("")
         println("")
     end

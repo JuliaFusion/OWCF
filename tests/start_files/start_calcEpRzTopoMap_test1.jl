@@ -63,7 +63,7 @@
 #   FI_species - The fast-ion species. "D", "3he", "T" etc - String
 #   filepath_distr - If used, the filepath to the fast-ion distribution .jld2 file - String
 
-# Script written by Henrik Järleblad. Last maintained 2025-06-11.
+# Script written by Henrik Järleblad. Last maintained 2025-10-08.
 ########################################################################################
 
 ## First you have to set the system specifications
@@ -96,17 +96,28 @@ end
 
 ############---------------------------------------------------------------------------------------###
 # Define the folderpath_OWCF variable, if not already defined in a super script
+folder_delimiter = "/" # Assume Unix-type operating system by default -> folders are separated by /
+first_path_index = 2 # Assume root directory is "/"
+if Sys.iswindows()
+    folder_delimiter = "\\" # If Windows, we need to use \\ instead
+    first_path_index = 1 # If Windows, root directory is e.g. C:
+end
 if !(@isdefined folderpath_OWCF)
-    folderpath_OWCF = reduce(*,map(x-> "/"*x,split(@__DIR__,"/")[2:end-2]))*"/" # We know that the test start file is located in the OWCF/tests/start_files/ folder. Deduce the full OWCF folder path from that information
+    folderpath_OWCF = reduce(*,map(x-> "$(folder_delimiter)"*x,split(@__DIR__,"$(folder_delimiter)")[first_path_index:end-2]))*"$(folder_delimiter)" # We know that the test start file is located in the OWCF/tests/start_files/ folder. Deduce the full OWCF folder path from that information
+    if Sys.iswindows()
+        folderpath_OWCF = folderpath_OWCF[2:end] # Windows file paths don't start with "\\", but e.g. C:
+    end
 end
 # Create the OWCF/tests/outputs/ folder, if it does not already exist
-if !isdir(folderpath_OWCF*"tests/outputs/")
-    print("The folder $(folderpath_OWCF)tests/outputs/ does not exist. Creating... ")
-    mkdir(folderpath_OWCF*"tests/outputs")
+if !isdir(folderpath_OWCF*"tests$(folder_delimiter)outputs$(folder_delimiter)")
+    print("The folder $(folderpath_OWCF)tests$(folder_delimiter)outputs$(folder_delimiter) does not exist. Creating... ")
+    mkdir(folderpath_OWCF*"tests$(folder_delimiter)outputs")
     println("ok!")
 end
 # Change the working directory to the OWCF/ folder, and activate the OWCF Julia environment
 @everywhere begin
+    folderpath_OWCF = $folderpath_OWCF 
+    folder_delimiter = $folder_delimiter
     using Pkg
     cd(folderpath_OWCF)
     Pkg.activate(".")
@@ -151,9 +162,9 @@ end
     distrFileJLD2 = false # Set to true, if useDistrFile is set to true, and filepath_distr is .jld2 in file format
     FI_species = "Be" # for example "D" for deuterium, "p" for proton, "T" for tritium, "3he" for helium-3
     filepath_distr = ""
-    filepath_equil = folderpath_OWCF*"equilibrium/JET/g99971/g99971_474-48.9.eqdsk"
+    filepath_equil = folderpath_OWCF*"equilibrium$(folder_delimiter)JET$(folder_delimiter)g99971$(folder_delimiter)g99971_474-48.9.eqdsk"
     filename_o = "calcEpRzTopoMap_test1"
-    folderpath_o = folderpath_OWCF*"tests/outputs/" # Output folder path. Finish with '/'
+    folderpath_o = folderpath_OWCF*"tests$(folder_delimiter)outputs$(folder_delimiter)" # Output folder path. Finish with '/'
     plot_results = $plot_test_results
     saveTransitTimeMaps = true # If true, then calcEpRzTopoMap.jl will save 4D data of the poloidal and toroidal transit times for the valid orbits
     saveXYZJacobian = false # Set to true, if Jacobian from (x,y,z,vx,vy,vz) to (E,p,R,z) should be computed and saved
@@ -189,7 +200,7 @@ end
     # EXTRA KEYWORD ARGUMENTS BELOW
     extra_kw_args = Dict(:limit_phi => true, :toa => true)
     # limit_phi limits the number of toroidal turns for orbits
-    # The orbit integration algorithm will try progressively smaller timesteps max_tries number of times
+    # toa stands for try-only-adaptive, which means only an adaptive integration algorithm is used
 end
 
 ## -----------------------------------------------------------------------------

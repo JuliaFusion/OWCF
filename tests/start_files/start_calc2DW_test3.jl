@@ -87,7 +87,7 @@
 # and thermal_dens_axis variables will be used to scale the polynomial profiles to match the specified
 # thermal temperature and thermal density at the magnetic axis. Please see the /misc/temp_n_dens.jl script for info.
 
-# Script written by Henrik Järleblad. Last maintained 2025-07-11.
+# Script written by Henrik Järleblad. Last maintained 2025-10-08.
 ######################################################################################################
 
 ## First you have to set the system specifications
@@ -120,17 +120,28 @@ end
 
 ############---------------------------------------------------------------------------------------###
 # Define the folderpath_OWCF variable, if not already defined in a super script
+folder_delimiter = "/" # Assume Unix-type operating system by default -> folders are separated by /
+first_path_index = 2 # Assume root directory is "/"
+if Sys.iswindows()
+    folder_delimiter = "\\" # If Windows, we need to use \\ instead
+    first_path_index = 1 # If Windows, root directory is e.g. C:
+end
 if !(@isdefined folderpath_OWCF)
-    folderpath_OWCF = reduce(*,map(x-> "/"*x,split(@__DIR__,"/")[2:end-2]))*"/" # We know that the test start file is located in the OWCF/tests/start_files/ folder. Deduce the full OWCF folder path from that information
+    folderpath_OWCF = reduce(*,map(x-> "$(folder_delimiter)"*x,split(@__DIR__,"$(folder_delimiter)")[first_path_index:end-2]))*"$(folder_delimiter)" # We know that the test start file is located in the OWCF/tests/start_files/ folder. Deduce the full OWCF folder path from that information
+    if Sys.iswindows()
+        folderpath_OWCF = folderpath_OWCF[2:end] # Windows file paths don't start with "\\", but e.g. C:
+    end
 end
 # Create the OWCF/tests/outputs/ folder, if it does not already exist
-if !isdir(folderpath_OWCF*"tests/outputs/")
-    print("The folder $(folderpath_OWCF)tests/outputs/ does not exist. Creating... ")
-    mkdir(folderpath_OWCF*"tests/outputs")
+if !isdir(folderpath_OWCF*"tests$(folder_delimiter)outputs$(folder_delimiter)")
+    print("The folder $(folderpath_OWCF)tests$(folder_delimiter)outputs$(folder_delimiter) does not exist. Creating... ")
+    mkdir(folderpath_OWCF*"tests$(folder_delimiter)outputs")
     println("ok!")
 end
 # Change the working directory to the OWCF/ folder, and activate the OWCF Julia environment
 @everywhere begin
+    folderpath_OWCF = $folderpath_OWCF 
+    folder_delimiter = $folder_delimiter
     using Pkg
     cd(folderpath_OWCF)
     Pkg.activate(".")
@@ -170,9 +181,9 @@ end
 @everywhere begin
     analytic = false
     debug = false
-    diagnostic_filepath = folderpath_OWCF*"vc_data/MPRu/KM9_2021_coarse.out" # Currently supported: "TOFOR", "AB" and ""
+    diagnostic_filepath = folderpath_OWCF*"vc_data$(folder_delimiter)MPRu$(folder_delimiter)KM9_2021_coarse.out" # Currently supported: "TOFOR", "AB" and ""
     diagnostic_name = "MPRu"
-    instrumental_response_filepath = folderpath_OWCF .*["vc_data/MPRu/matrix.txt", "vc_data/MPRu/En_keV.txt","vc_data/MPRu/Xaxis_cm.txt"] # Should be the filepath to three .txt-files or one .jld2-file. Otherwise, leave as ""
+    instrumental_response_filepath = folderpath_OWCF .*["vc_data$(folder_delimiter)MPRu$(folder_delimiter)matrix.txt", "vc_data$(folder_delimiter)MPRu$(folder_delimiter)En_keV.txt","vc_data$(folder_delimiter)MPRu$(folder_delimiter)Xaxis_cm.txt"] # Should be the filepath to three .txt-files or one .jld2-file. Otherwise, leave as ""
     instrumental_response_output_units = "cm" # Should be specified as described in OWCF/misc/convert_units.jl. If instrumental_response_filepath=="", leave as ""
     Ed_min = 12000.0 # keV (or m/s if 'reaction' input variable is specified on form (3) (please see OWCF/misc/availReacts.jl for explanation))
     Ed_max = 16000.0 # keV (or m/s if 'reaction' input variable is specified on form (3) (please see OWCF/misc/availReacts.jl for explanation))
@@ -181,11 +192,11 @@ end
     Emin = 5.0 # keV
     Emax = 200.0 # keV
     filename_o = "calc2DW_test3" # If specified, output file will be saved in the "folderpath_o" folder with "filename_o" name. Do not include file extension!
-    filepath_equil = folderpath_OWCF*"equilibrium/JET/g99971/g99971_474-48.9.eqdsk" # for example "equilibrium/JET/g96100/g96100_0-53.0012.eqdsk" or "myOwnSolovev.jld2"
+    filepath_equil = folderpath_OWCF*"equilibrium$(folder_delimiter)JET$(folder_delimiter)g99971$(folder_delimiter)g99971_474-48.9.eqdsk" # for example "equilibrium/JET/g96100/g96100_0-53.0012.eqdsk" or "myOwnSolovev.jld2"
     filepath_FI_cdf = "" # If filepath_thermal_distr=="96100J01.cdf", then filepath_FI_cdf should be "96100J01_fi_1.cdf" for example
     filepath_thermal_distr = "" # for example "96100J01.cdf", "myOwnThermalDistr.jld2" or ""
     filepath_start = Base.source_path() # For saving in output file, for posterity and reproducibility
-    folderpath_o = folderpath_OWCF*"tests/outputs/" # Output folder path. Finish with '/'
+    folderpath_o = folderpath_OWCF*"tests$(folder_delimiter)outputs$(folder_delimiter)" # Output folder path. Finish with '/'
     folderpath_OWCF = $folderpath_OWCF # Set path to OWCF folder to same as main process (hence the '$')
     iiimax = 2 # The script will calculate iiimax number of weight matrices. They can then be examined in terms of similarity (to determine MC noise influence etc).
     (iiimax > 1) && (iii_average = true) # If true, the average of all weight matrices will be computed and saved. Without the "_i" suffix.
