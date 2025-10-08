@@ -57,9 +57,9 @@
 ###################################################################################################
 
 # Inputs. To be switched freely between 'true' and 'false'
-plot_test_results = true # If set to true, results of the individual tests will be plotted and saved as .png files in the OWCF/tests/outputs/ folder
-terminate_when_first_error = true # If set to true, the run_tests.jl script will print the first error it encounters and skip the rest of the testing process
-clear_test_outputs_folder_when_done = false # Should be set to true, be default
+plot_test_results = false # If set to true, results of the individual tests will be plotted and saved as .png files in the OWCF/tests/outputs/ folder
+terminate_when_first_error = false # If set to true, the run_tests.jl script will print the first error it encounters and skip the rest of the testing process
+clear_test_outputs_folder_when_done = true # Should be set to true, be default
 VERY_VERBOSE = false # Should be set to false, unless developer debugging
 
 ###------------------------------------------------------------------------------------------------###
