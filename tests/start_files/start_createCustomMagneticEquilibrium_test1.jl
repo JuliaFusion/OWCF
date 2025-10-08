@@ -34,7 +34,7 @@
 #### Other
 # s
 
-# Script written by Henrik Järleblad. Last maintained 2025-06-11.
+# Script written by Henrik Järleblad. Last maintained 2025-10-08.
 ############################################################################################################################
 
 ## First you have to set the system specifications
@@ -65,17 +65,28 @@ end
 
 ############---------------------------------------------------------------------------------------###
 # Define the folderpath_OWCF variable, if not already defined in a super script
+folder_delimiter = "/" # Assume Unix-type operating system by default -> folders are separated by /
+first_path_index = 2 # Assume root directory is "/"
+if Sys.iswindows()
+    folder_delimiter = "\\" # If Windows, we need to use \\ instead
+    first_path_index = 1 # If Windows, root directory is e.g. C:
+end
 if !(@isdefined folderpath_OWCF)
-    folderpath_OWCF = reduce(*,map(x-> "/"*x,split(@__DIR__,"/")[2:end-2]))*"/" # We know that the test start file is located in the OWCF/tests/start_files/ folder. Deduce the full OWCF folder path from that information
+    folderpath_OWCF = reduce(*,map(x-> "$(folder_delimiter)"*x,split(@__DIR__,"$(folder_delimiter)")[first_path_index:end-2]))*"$(folder_delimiter)" # We know that the test start file is located in the OWCF/tests/start_files/ folder. Deduce the full OWCF folder path from that information
+    if Sys.iswindows()
+        folderpath_OWCF = folderpath_OWCF[2:end] # Windows file paths don't start with "\\", but e.g. C:
+    end
 end
 # Create the OWCF/tests/outputs/ folder, if it does not already exist
-if !isdir(folderpath_OWCF*"tests/outputs/")
-    print("The folder $(folderpath_OWCF)tests/outputs/ does not exist. Creating... ")
-    mkdir(folderpath_OWCF*"tests/outputs")
+if !isdir(folderpath_OWCF*"tests$(folder_delimiter)outputs$(folder_delimiter)")
+    print("The folder $(folderpath_OWCF)tests$(folder_delimiter)outputs$(folder_delimiter) does not exist. Creating... ")
+    mkdir(folderpath_OWCF*"tests$(folder_delimiter)outputs")
     println("ok!")
 end
 # Change the working directory to the OWCF/ folder, and activate the OWCF Julia environment
 @everywhere begin
+    folderpath_OWCF = $folderpath_OWCF 
+    folder_delimiter = $folder_delimiter
     using Pkg
     cd(folderpath_OWCF)
     Pkg.activate(".")
@@ -94,7 +105,7 @@ end
     filepath_wall = "" # Specify, or leave as ""
     folderpath_OWCF = $folderpath_OWCF
     filename_out = "createCustomMagneticEquilibrium_test1"
-    folderpath_out = folderpath_OWCF*"tests/outputs/"
+    folderpath_out = folderpath_OWCF*"tests$(folder_delimiter)outputs$(folder_delimiter)"
 
     plot_equilibrium = $plot_test_results # SET TO TRUE, VIA THE plot_test_results INPUT VARIABLE IN THE OWCF/tests/run_tests.jl SCRIPT
     plot_equilibrium && (save_equil_plot = true) # If set to true, the magnetic equilibrium plot will be saved in .png file format
@@ -109,5 +120,5 @@ end
 
 ############---------------------------------------------------------------------------------------###
 # Then you execute the script
-include(folderpath_OWCF*"extra/createCustomMagneticEquilibrium.jl")
+include(folderpath_OWCF*"extra$(folder_delimiter)createCustomMagneticEquilibrium.jl")
 ###------------------------------------------------------------------------------------------------###
