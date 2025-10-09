@@ -60,7 +60,7 @@
 plot_test_results = false # If set to true, results of the individual tests will be plotted and saved as .png files in the OWCF/tests/outputs/ folder
 terminate_when_first_error = false # If set to true, the run_tests.jl script will print the first error it encounters and skip the rest of the testing process
 clear_test_outputs_folder_when_done = true # Should be set to true, be default
-VERY_VERBOSE = false # Should be set to false, unless developer debugging
+VERY_VERBOSE = false # Should be set to false, unless developer debugging or Windows (for some reason currently under investigation)
 
 ###------------------------------------------------------------------------------------------------###
 ###-------------------------------------- START OF TESTS ------------------------------------------###
@@ -192,6 +192,7 @@ if Sys.iswindows()
     println("---> Found Windows operating system. Performing the OWCF tests accordingly... ")
     folder_delimiter = "\\" # If Windows, we need to use \\ instead
     first_path_index = 1 # If Windows, root directory is e.g. C:
+    VERY_VERBOSE = true # If Windows, needs to be true for OWCF tests to finish (for some reason that is currently under investigation)
 end
 folderpath_OWCF = reduce(*,map(x-> folder_delimiter*x,split(@__DIR__,folder_delimiter)[first_path_index:end-1]))*folder_delimiter # We know that the run_tests.jl file is located in the OWCF/tests/ folder. Deduce the full OWCF folder path from that information
 if Sys.iswindows()
