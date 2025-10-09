@@ -52,6 +52,8 @@ To install the OWCF, open a command-line terminal, navigate to the OWCF folder w
 
 and follow the instructions. **PLEASE NOTE!** During the OWCF installation, you need to specify the same Python executable as you used in section 1.3 (see above).
 
+> **PLEASE NOTE!** Any warnings about the Julia packages WebSockets, OrbitTomography, VectorizationBase and Polyester at the end of the installation are ok.
+
 ### 1.5 Jupyter notebook
 If you would like to use the interactive OWCF apps to analyze and visualize data, you have to install Jupyter notebook. This can be done by running the following command in your command-line terminal (replace 'python' and 'pip' with your specific Python executable and Python package manager, if you have any):
 
