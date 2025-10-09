@@ -41,6 +41,7 @@ end
 if s=="y"
     s == "0"
     while !(s=="y" || s=="n")
+        global s
         print("Did you create your Python virtual environment with conda [y/n]? ")
         s = lowercase(readline())
     end
@@ -48,6 +49,7 @@ if s=="y"
         @warn "The OWCF uses the PyCall.jl Julia package to connect Julia with Python. Currently, this Julia package cannot connect Julia to a Python virtual environment created with conda. After installation, correct functionality of the OWCF cannot be guaranteed."
         s = "0"
         while !(s=="y" || s=="n")
+            global s
             print("Do you want to continue the installation anyway [y/n]? ")
             s = lowercase(readline())
         end
@@ -58,6 +60,7 @@ if s=="y"
     end
     s = "0"
     while !(s=="y" || s=="n")
+        global s
         print("Are you attempting to install the OWCF with your virtual environment currently activated [y/n]? ")
         s = lowercase(readline())
     end
