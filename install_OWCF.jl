@@ -9,22 +9,22 @@ PYTHON_COMMAND = nothing # Please manually specify this, if you have got an erro
 t_start = time() # Installation script runtime start
 
 if isnothing(PYTHON_COMMAND)
-    s = "0"
-    while !(s=="y" || s=="n")
-        global s
+    user_reply = "0"
+    while !(user_reply=="y" || user_reply=="n")
+        global user_reply
         print("Do you run Python in your terminal with the 'python' command [y/n]? ")
-        s = lowercase(readline())
+        user_reply = lowercase(readline())
     end
-    if s=="y"
+    if user_reply=="y"
         PYTHON_COMMAND = "python"
     else
-        s = "0"
-        while !(s=="y" || s=="n")
-            global s
+        user_reply = "0"
+        while !(user_reply=="y" || user_reply=="n")
+            global user_reply
             print("Ok. Is it the 'python3' command [y/n]? ")
-            s = lowercase(readline())
+            user_reply = lowercase(readline())
         end
-        if s=="y"
+        if user_reply=="y"
             PYTHON_COMMAND = "python3"
         else
             print("What is it then? (please specify): ")
@@ -33,49 +33,50 @@ if isnothing(PYTHON_COMMAND)
     end
 end
 
-s = "0"
-while !(s=="y" || s=="n")
+user_reply = "0"
+while !(user_reply=="y" || user_reply=="n")
+    global user_reply
     print("Are you running your $PYTHON_COMMAND Python within a virtual environment [y/n]? ")
-    s = lowercase(readline())
+    user_reply = lowercase(readline())
 end
-if s=="y"
-    s == "0"
-    while !(s=="y" || s=="n")
-        global s
+if user_reply=="y"
+    user_reply == "0"
+    while !(user_reply=="y" || user_reply=="n")
+        global user_reply
         print("Did you create your Python virtual environment with conda [y/n]? ")
-        s = lowercase(readline())
+        user_reply = lowercase(readline())
     end
-    if s=="y"
+    if user_reply=="y"
         @warn "The OWCF uses the PyCall.jl Julia package to connect Julia with Python. Currently, this Julia package cannot connect Julia to a Python virtual environment created with conda. After installation, correct functionality of the OWCF cannot be guaranteed."
-        s = "0"
-        while !(s=="y" || s=="n")
-            global s
+        user_reply = "0"
+        while !(user_reply=="y" || user_reply=="n")
+            global user_reply
             print("Do you want to continue the installation anyway [y/n]? ")
-            s = lowercase(readline())
+            user_reply = lowercase(readline())
         end
-        if s=="n"
+        if user_reply=="n"
             println("The OWCF installation will now be terminated. Please try to install the OWCF by providing a Python executable not within a conda virtual environment.")
             exit()
         end
     end
-    s = "0"
-    while !(s=="y" || s=="n")
-        global s
+    user_reply = "0"
+    while !(user_reply=="y" || user_reply=="n")
+        global user_reply
         print("Are you attempting to install the OWCF with your virtual environment currently activated [y/n]? ")
-        s = lowercase(readline())
+        user_reply = lowercase(readline())
     end
-    if s=="n"
+    if user_reply=="n"
         error("To be able to install the OWCF, Julia needs to connect to Python. However, if you want to connect Julia to a Python virtual environment, you need to activate your virtual environment before you install the OWCF. Please remember, you will also need to activate your virtual environment every time before you use the OWCF.")
     end
 end
 
-s = "0"
-while !(s=="y" || s=="n")
-    global s
+user_reply = "0"
+while !(user_reply=="y" || user_reply=="n")
+    global user_reply
     print("Are you installing the OWCF on a computational cluster [y/n]? ")
-    s = lowercase(readline())
+    user_reply = lowercase(readline())
 end
-if s=="y"
+if user_reply=="y"
     println("---> Restricting the CPU resources for Julia precompilation on clusters to 1 CPU... ")
     ENV["JULIA_NUM_PRECOMPILE_TASKS"]=1
 end
@@ -93,6 +94,7 @@ if Sys.iswindows()
     folder_delimiter = "\\" # If Windows, we need to use \\ instead
     PYTHON_SUFFIX = ".exe" # If Windows, we need the .exe suffix for the python executable
 end
+folderpath_OWCF = folderpath_OWCF*folder_delimiter # Add a "/" or a "\\" to the end of the folderpath_OWCF
 ###------------------------------------------------------------------------------------------------###
 
 ############---------------------------------------------------------------------------------------###
@@ -111,53 +113,37 @@ println("- Activating the OWCF environment... ")
 using Pkg
 Pkg.activate(".")
 
-println("- Determining the path to your Python executable... ")
-if Sys.iswindows()
-    script = """
-    import sys
-    if hasattr(sys, "base_exec_prefix"):
-        sys.stdout.write(sys.base_exec_prefix)
-    else:
-        sys.stdout.write(sys.exec_prefix)
-    """
-else
-    script = """
-    import sys
-    if hasattr(sys, "base_exec_prefix"):
-        sys.stdout.write(sys.base_prefix)
-        sys.stdout.write(":")
-        sys.stdout.write(sys.base_exec_prefix)
-    else:
-        sys.stdout.write(sys.prefix)
-        sys.stdout.write(":")
-        sys.stdout.write(sys.exec_prefix)
-    """
-end
-PYTHON_FOLDERPATH = read(Base.run(`$PYTHON_COMMAND -c $script`), String) # Run the script with Python. Return the folder as a String
-# Take care of Windows maybe using the folder "Program Files", which we cannot execute.
-PYTHON_FOLDERPATH = replace(PYTHON_FOLDERPATH, ("Program Files" => "Program"))
-# However, by default, Windows interprets commands like "C:\Program\..." as equivalent to 
-# "C:\Program Files\...". So, we simply replace the "Program Files" part of the PYTHON_FOLDERPATH 
-# with "Program"
-PYTHON_EXECUTABLEPATH = "$(PYTHON_FOLDERPATH)$(folder_delimiter)$(PYTHON_COMMAND)$(PYTHON_SUFFIX)"
-println("---> Python executable path is $PYTHON_EXECUTABLEPATH")
+print("- The path to your Python executable is... ")
+python_script = """
+import sys
+PYTHON_EXECUTABLE_PATH = sys.executable 
+with open('PYTHON_EXECUTABLE_PATH.txt','w') as f:
+    f.write(PYTHON_EXECUTABLE_PATH)
+""" # The Python script needed to determine the path to the Python executable
+Base.run(`$PYTHON_COMMAND -c $python_script`) # Run the script with Python
+f = open("PYTHON_EXECUTABLE_PATH.txt", "r") # Read the PYTHON_EXECUTABLE_PATH.txt file
+PYTHON_EXECUTABLE_PATH = readline(f) # Read the first (and only) line of the .txt file
+close(f); rm("$(folderpath_OWCF)PYTHON_EXECUTABLE_PATH.txt"; force=true) # Close and remove the .txt file
+PYTHON_EXECUTABLE_PATH = replace(PYTHON_EXECUTABLE_PATH, ("Program Files" => "Program")) # Take care of Windows maybe using the folder "Program Files", which we cannot execute because of whitespace
+# However, by default, Windows interprets commands like "C:\Program\..." as equivalent to "C:\Program Files\...". 
+# So, we simply replace the "Program Files" part of the PYTHON_EXECUTABLE_PATH with "Program"
+println("$PYTHON_EXECUTABLE_PATH")
 ###------------------------------------------------------------------------------------------------###
 
 ############---------------------------------------------------------------------------------------###
 println("- Setting the PYTHON environment variable... ")
-ENV["PYTHON"] = PYTHON_EXECUTABLEPATH # Set the PYTHON environment variable
+ENV["PYTHON"] = PYTHON_EXECUTABLE_PATH # Set the PYTHON environment variable
 ###------------------------------------------------------------------------------------------------###
 
 ############---------------------------------------------------------------------------------------###
 println("- Instantiating and precompiling the OWCF (takes a looong time)... ")
 Pkg.instantiate()
-println("---> The OWCF has been successfully instantiated and all Julia packages have been precompiled.")
-println("---> After the installation, please run 'julia $(folderpath_OWCF)$(folder_delimiter)tests$(folder_delimiter)run_tests.jl to ensure that the OWCF has been installed correctly.")
+println("- The OWCF has been successfully instantiated and all Julia packages have been precompiled!")
+println("- Please run 'julia $(folderpath_OWCF)tests$(folder_delimiter)run_tests.jl to ensure that the OWCF has been installed correctly.")
 ###------------------------------------------------------------------------------------------------###
 
 ############---------------------------------------------------------------------------------------###
 t_end = time() # Test script runtime end
-println("")
 println("-------------------------------------------------------------------------------- End of the OWCF installation")
 println("-------------------------------------------------------------------------------- Total runtime: $(Int64(divrem(t_end-t_start,60)[1])) minutes $(Int64(round(divrem(t_end-t_start,60)[2]))) seconds")
 date_and_time = split("$(Dates.now())","T")[1]*" at "*split("$(Dates.now())","T")[2][1:5]
