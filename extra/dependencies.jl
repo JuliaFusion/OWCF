@@ -23,7 +23,7 @@
 #
 # Finally, please note that some functions in dependencies.jl might be under construction. Hence, the bad code.
 #
-# Written by H. Järleblad. Last maintained 2025-07-31.
+# Written by H. Järleblad. Last maintained 2025-10-16.
 ###################################################################################################
 
 println("Loading the Julia packages for the OWCF dependencies... ")
@@ -223,32 +223,66 @@ end
 
 """
     forward_difference_matrix(space_size::Tuple, dim::Int64)
-    forward_difference_matrix(-||-; verbose=false)
+    forward_difference_matrix(-||-; ignore_grid_resolution=false, boundary_condition=:backward)
 
 Compute the forward difference matrix (l1) for a coordinate space of size 'space_size' along dimension 'dim'. 
-For example, if space_size=(10,30) and dim=2, then 'finite_difference_matrix(space_size,dim)' will output 
-a 300x300 matrix Δ with value '-1' for all on-diagonal elements and '+1' for specific off-diagonal elements.
-All other elements in Δ will be '0'. For a specific row of the Δ matrix, the element with '+1' value 
-correspond to the grid point of the (10,30) grid that have ONE INDEX GREATER (forward difference) in the 
-2nd dimension (since dim=2) of the (10,30) grid compared to the grid point to which the on-diagonal element 
-correpond. The element order of the 300 rows and columns correspond to the order output of the function 
-'CartesianIndices(space_size)'. 1<=dim<=length(space_size) must hold. Output matrix will be in sparse 
-matrix format, i.e. SparseMatrixCSC (see SparseArrays.jl package).
+For example, if space_size=(10,30) and dim=2, then 'forward_difference_matrix(space_size,dim)' will output 
+a 300x300 matrix Δ with value '-29' for all on-diagonal elements and '+29' for specific off-diagonal elements.
+All other elements in Δ will be '0'. 29 is the number of grid spacing in the second dimension (30-1).
+For a specific row of the Δ matrix, the element with '+29' value correspond to the grid point of the (10,30) 
+grid that have ONE INDEX GREATER (forward difference) in the 2nd dimension (since dim=2) of the (10,30) 
+grid compared to the grid point to which the on-diagonal element correponds. The element order of the 300 rows 
+and columns correspond to the order output of the function 'CartesianIndices(space_size)'. 1<=dim<=length(space_size) 
+must hold. Output matrix will be in sparse matrix format, i.e. SparseMatrixCSC (see SparseArrays.jl package).
+The keyword arguments are:
+    - ignore_grid_resolution - If set to true, the grid resolution will be ignored and elements in the output matrix
+                               will have values only in the set {0, -1, 1} - Bool
+    - boundary_condition - Since the forward difference algorithm requires the value at the grid point with ONE INDEX GREATER
+                           than the grid point of interest, the value of the finite difference at the grid point with index i=space_size[dim] 
+                           needs be computed via a boundary condition. Available options for the boundary condition include :backward (backward difference) 
+                           and :neumann (the finite difference is assumed to be equal to the function value at the boundary). 
+                           By default, use the :backward difference to compute the finite difference for the grid point at the boundary - Symbol
 """
-function forward_difference_matrix(space_size::Tuple, dim::Int64)
+function forward_difference_matrix(space_size::Tuple, dim::Int64; ignore_grid_resolution::Bool = false, boundary_condition = :backward)
     if !(dim<=length(space_size)) || dim<1
         error("Invalid input. 1<=dim<=length(space_size) must hold. Got length(space_size)=$(length(space_size)) and dim=$(dim).")
+    end
+
+    h = 1 # The spacing between grid points, i.e. the grid spacing
+    h_inv = 1 # The inverse of the grid spacing
+    if !ignore_grid_resolution
+        h = inv(space_size[dim] - 1) # Assuming a domain length of 1, each grid spacing will have length 1/(space_size[dim] - 1)
+        h_inv = inv(h) # The inverse of the grid spacing. Coded this way simply for pedagogical purposes
+    end
+
+    if boundary_condition == :backward
+        h_inv_i_boundary = h_inv # Backward difference algorithm. Index 'i' is at the boundary
+        h_inv_j_boundary = - h_inv # Backward difference algorithm. Index 'j' is next to the boundary (j = i - 1 in the dim:th dimension)
+    elseif boundary_condition == :neumann
+        h_inv_i_boundary = 1.0 # Neumann boundary condition. The value of the finite difference should be equal to the value of the function at the boundary
+        h_inv_j_boundary = 0.0 # The value of the point next to the boundary is not used with the Neumann boundary condition
+    else
+        error("Only :backward and :neumann are currently supported for the keyword argument input 'boundary_condition'. Got a value of $(boundary_condition)")
     end
 
     space_indices = CartesianIndices(space_size)
 
     l1 = spzeros(length(space_indices),length(space_indices)) # The finite difference matrix for a specific dimension (dim)
     for (i,space_coord_i) in enumerate(space_indices) # For every space point (every row in the finite difference matrix)
+        if space_coord_i[dim]==space_size[dim] # Boundary point in the dim:th dimension
+            space_coord_j = [sc for sc in Tuple(space_coord_i)] # Convert to Vector, to make space_coord_i mutable
+            space_coord_j[dim] = space_size[dim] - 1 # The Cartesian index of the point next to the boundary in the dim:th dimension
+            space_coord_j = CartesianIndex(Tuple(space_coord_j)) # Convert from type Vector to type CartesianIndex
+            j = findfirst(ind -> ind==space_coord_j, space_indices[:]) # Get the l1 column index of the point next to the boundary in the dim:th dimension
+            l1[i,i] = h_inv_i_boundary # Use the boundary condition values
+            l1[i,j] = h_inv_j_boundary # Use the boundary condition values
+            continue # This row of the finite difference matrix is done, so move on to the next row
+        end
         for (j,space_coord_j) in enumerate(space_indices) # -||- (for every column in the finite difference matrix)
             if sum(Tuple(space_coord_j) .- Tuple(space_coord_i))==1 && (space_coord_j[dim]-space_coord_i[dim])==1 # If the coordinates differ by one (neighbours with j coordinate larger than i coordinate) and the difference is in the right dimension (dim)
-                l1[i,i] = -1 # Set value '-1' for the on-diagonal element
-                l1[i,j] = 1 # Set value '+1' for the j off-diagonal element
-                break # Only one such nearest neighbour for every row, so move on to the next row
+                l1[i,i] = -h_inv # Set value '-h_inv' for the on-diagonal element
+                l1[i,j] = h_inv # Set value '+h_inv' for the j off-diagonal element
+                break # Only one such column (nearest neighbour) for every row, so move on to the next row
             end
         end
     end
@@ -258,7 +292,7 @@ end
 
 """
     forward_difference_matrix(space_size::Tuple)
-    forward_difference_matrix(-||-; verbose=false)
+    forward_difference_matrix(-||-; ignore_grid_resolution=false, verbose=false)
 
 Compute the forward difference matrix (L1) for a coordinate space of size 'space_size'. The size of
 the L1 matrix will be (length(space_size) * reduce(*,space_size), reduce(*,space_size)). The element 
@@ -266,13 +300,15 @@ order of the columns corresponds to the order output of the function 'CartesianI
 Output matrix will be in sparse matrix format, i.e. SparseMatrixCSC (see SparseArrays.jl package).
 Please see function 'forward_difference_matrix(space_size,dim)' above for detailed info.
 The keyword arguments are:
+    - ignore_grid_resolution - If set to true, the grid resolution will be ignored and elements in the output matrix
+                               will have values only in the set {0, -1, 1} - Bool
     - verbose - If set to true, the function will be talkative! - Bool
 """
-function forward_difference_matrix(space_size::Tuple; verbose=false)
+function forward_difference_matrix(space_size::Tuple; ignore_grid_resolution::Bool = false, verbose::Bool=false)
     L1 = Vector{SparseMatrixCSC{Float64,Int64}}(undef,length(space_size)) # All finite difference matrices (one for each dimension) (A Vector of sparce matrices (SparseMatrixCSC) CSC means 'compressed sparse column')
     for idim=1:length(space_size) # For each dimension
         verbose && println("Computing forward difference matrix for dimension $(idim) of $(length(space_size))... ")
-        L1[idim] = forward_difference_matrix(space_size, idim) # The forward difference matrix for this particular dimension
+        L1[idim] = forward_difference_matrix(space_size, idim; ignore_grid_resolution=ignore_grid_resolution) # The forward difference matrix for this particular dimension
     end
     
     return sparse_vcat(L1...) # Concatenate vertically and return
