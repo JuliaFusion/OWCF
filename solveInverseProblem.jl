@@ -1444,7 +1444,7 @@ W_hat_long = vcat(W_hat...)
 append!(timestamps,time()) # The timestamp when the total weight matrices and measurement vector have been built
 dictionary_of_sections[prnt-1] = ("Concatenating all weight matrices and measurements",diff(timestamps)[end])
 ###########################################################################################################
-# SECTION: NORMALIZE WEIGHT MATRIX AND SIGNAL TO ORDER UNITY
+# SECTION: NORMALIZE WEIGHT MATRIX, SIGNAL AND REGULARIZATION MATRICES TO ORDER UNITY
 println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
 
 verbose && println("Normalizing weight matrix W and measurements S to order unity... ")
@@ -1452,6 +1452,11 @@ Whm = maximum(W_hat_long)
 Shm = maximum(S_hat_long)
 W_hh = W_hat_long ./Whm
 S_hh = S_hat_long ./Shm
+
+verbose && println("Normalizing regularization matrices L to order unity... ")
+for (il, l) in enumerate(L)
+    L[il] = l ./maximum(l)
+end
 
 append!(timestamps,time()) # The timestamp when the weight matrices and signals have been normalized to order unity
 dictionary_of_sections[prnt-1] = ("Normalizing weight matrix and measurements to order unity",diff(timestamps)[end])
