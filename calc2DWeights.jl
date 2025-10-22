@@ -1025,8 +1025,8 @@ for iii=1:iiimax
                     iEd_mid = iEd_mid + 1
                 else
                     iEd_diff = iEd_mid - iEd_half
-                    iEd_low = iEd_mid - abs(iEd_diff)
-                    iEd_hig = iEd_mid + abs(iEd_diff)
+                    iEd_low = max(1, iEd_mid - abs(iEd_diff))
+                    iEd_hig = min(N_bins, iEd_mid + abs(iEd_diff))
                 end
                 plt_raw_inds = [iEd_low, iEd_mid, iEd_hig]
             elseif N_bins==4
@@ -1081,8 +1081,8 @@ for iii=1:iiimax
                         iEd_mid = iEd_mid + 1
                     else
                         iEd_diff = iEd_mid - iEd_half
-                        iEd_low = iEd_mid - abs(iEd_diff)
-                        iEd_hig = iEd_mid + abs(iEd_diff)
+                        iEd_low = max(1, iEd_mid - abs(iEd_diff))
+                        iEd_hig = min(N_bins, iEd_mid + abs(iEd_diff))
                     end
                     plt_inds = [iEd_low, iEd_mid, iEd_hig]
                 elseif N_bins==4
