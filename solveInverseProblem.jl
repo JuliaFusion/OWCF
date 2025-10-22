@@ -519,8 +519,8 @@ if rescale_W
     if lowercase(String(rescale_W_F_ref_source))=="file"
         currently_supported_abscissas = "(E,p), (vpara, vperp), (E,p,R,z)" # UPDATE THIS WHEN NEEDED!
         standard_rescale_W_error = "rescale_W_F_ref_source=$(rescale_W_F_ref_source) was specified, but weight function abscissas did not match any currently supported groups. Currently supported abscissas for weight functions include $(currently_supported_abscissas). Please change rescale_W_F_ref_source to :GAUSSIAN, or specify filepaths_W to be filepath(s) to file(s) containing weight functions with supported abscissas."
-        w_abscissas_units = W_abscissas_units[1] # Units of abscissas of first weight function matrix are the units of the abscissas of all weight functions matrices, because of section 5
-        w_abscissas = W_abscissas[1] # Abscissas of first weight function matrix are the abscissas of all weight functions matrices, because of section 5
+        w_abscissas_units = W_abscissas_units[1][2:end] # Units of reconstruction space (2:end) abscissas of first weight function matrix are the units of the abscissas of all weight functions matrices, because of section 5
+        w_abscissas = W_abscissas[1][2:end] # Reconstruction space (2:end) abscissas of first weight function matrix are the abscissas of all weight functions matrices, because of section 5
 
         verbose && println("---> rescale_W_F_ref_source=$(rescale_W_F_ref_source) was specified... ")
         verbose && println("------> Checking weight function reconstruction space compatibility. Currently supported coordinate systems are $(currently_supported_abscissas)... ")
@@ -1415,14 +1415,21 @@ for (i,w) in enumerate(W)
         verbose && println("---> Found $(length(numOZeroErrs)) measurements with 0 uncertainty for diagnostic $(i). Giving maximum importance... ")
         minNonZeroErr = Inf
         for err in errs_i
-            if 0<elem<minNonZeroErr
+            if 0<err<minNonZeroErr
                 minNonZeroErr = err
             end
         end
         if !isfinite(minNonZeroErr)
             verbose && println("------> No non-zero uncertainty found for diagnostic $(i). All measurements will be given equal importance... ")
             minNonZeroErr = 1.0 # Use 1.0 to leave measurements unaffected
-        end 
+        else
+            verbose && println("------> The minimum non-zero uncertainty is $(minNonZeroErr). The following measurements had 0 uncertainty and will be given that uncertainty value instead: ")
+            if verbose
+                for i_err in findall(x-> x<=0.0, errs_i)
+                    println("---------> $(errs_i[i_err]) $(S_errs_units[i])")
+                end
+            end
+        end
         errs_i[findall(x-> x<=0.0, errs_i)] .= minNonZeroErr
     end
     W_hat[i] = w ./ errs_i
