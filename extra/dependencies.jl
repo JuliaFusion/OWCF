@@ -794,7 +794,7 @@ A function that adds noise to a signal in a consistent way. The function adds bo
 noise to the signal itself. The level of the background noise and the signal noise is determined by the b
 and k variables respectively. The levels are input as a fraction of the mean of the original signal S strength.
 """
-function add_noise(s::AbstractVector, b::Union{Float64, AbstractVector}; k::Float64=0.1)
+function add_noise(s::AbstractVector, b::Union{Float64, AbstractVector}; k::Union{Float64, AbstractVector}=0.1)
     sn = max.(s,0.0) .+ k.*(mean(sqrt.(abs.(s)))).*rand.(Normal.(0.0, max.(sqrt.(max.(s,0)), sqrt.(b))))
     err = k.*mean(sqrt.(abs.(s))).*max.(sqrt.(max.(s,0)), sqrt.(b))
     return sn, err
