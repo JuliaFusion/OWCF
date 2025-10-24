@@ -369,8 +369,8 @@ for (i,f) in enumerate(filepaths_W)
             append!(units,[read_func(myfile["D6_array_units"])])
         end
         close(myfile)
-        W_abscissas[i] = [Float64.(ab) for ab in abscissas] # Transform to Vector{Float64} from Vector{any}
-        W_abscissas_units[i] = map(x-> "$(x)",units) # Transform to Vector{String} from Vector{any}
+        W_abscissas[i] = [Float64.(ab) for ab in abscissas] # Transform to Vector{Float64} from Vector{Any}
+        W_abscissas_units[i] = map(x-> "$(x)",units) # Transform to Vector{String} from Vector{Any}
     end
 end
 verbose && println("Done!")
@@ -1730,33 +1730,36 @@ if plot_solutions || gif_solutions
         elseif length(rec_space_size)==2 # If the dimensionality of the reconstruction space is 2
             F_plots = [Plots.heatmap(W_abscissas[1][2],W_abscissas[1][3],transpose(F),xlabel=W_abscissas_units[1][2],ylabel=W_abscissas_units[1][3], title="F* [$(units_multiply(units_inverse(W_abscissas_units[1][2]), units_inverse(W_abscissas_units[1][3])))]",fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]))]
         elseif length(rec_space_size)==3 # -||- is 3. Currently, the two supported cases are (E,pm,Rm) and (E,mu,Phi). Neither requires a Jacobian when integrating
-            F_plots = Vector{any}(undef,3) # Pre-allocate vector with plots
-            for plot_coord in plot_coords
+            F_plots = Vector{Any}(undef,length(plot_coords)) # Pre-allocate vector with plots
+            for (ipc, plot_coord) in enumerate(plot_coords)
                 ix = plot_coord[1]; x = W_abscissas[1][ix+1]; x_units = W_abscissas_units[1][ix+1] # +1 because W_abscissas and W_abscissas_units has a first dimension of diagnostic measurement bins
                 iy = plot_coord[2]; y = W_abscissas[1][iy+1]; y_units = W_abscissas_units[1][iy+1] # +1 because W_abscissas and W_abscissas_units has a first dimension of diagnostic measurement bins
                 iz = filter(xx-> !(xx==ix || xx==iy), rec_space_dims)
                 F_sub = dropdims(sum(rec_space_diff[iz...] .*F,dims=iz),dims=iz)
                 F_plot = Plots.heatmap(x,y,F_sub; xlabel=x_units, ylabel=y_units, title="F* [$(units_multiply(units_inverse(x_units), units_inverse(y_units)))]", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]))
-                append!(F_plots,F_plot)
+                F_plots[ipc] = F_plot
             end
         elseif length(rec_space_size)==4 # -||- is 4. Currently, the only supported case is (E,p,R,z). Suitable Jacobian is computed prior to plot for-loop
             if is_EpRz(W_abscissas[1], W_abscissas_units[1])
-                F_plots = Vector{any}(undef,6) # Pre-allocate vector with plots
+                F_plots = Vector{Any}(undef,length(plot_no_jac_coords)+length(plot_jac_coords)) # Pre-allocate vector with plots
+                global ipc; ipc = 1 # To keep track of plots
                 for plot_no_jac_coord in plot_no_jac_coords
+                    global ipc
                     ix = plot_coord[1]; x = W_abscissas[1][ix+1]; x_units = W_abscissas_units[1][ix+1] # +1 because W_abscissas and W_abscissas_units has a first dimension of diagnostic measurement bins
                     iy = plot_coord[2]; y = W_abscissas[1][iy+1]; y_units = W_abscissas_units[1][iy+1] # +1 because W_abscissas and W_abscissas_units has a first dimension of diagnostic measurement bins
                     izs = filter(xx-> !(xx==ix || xx==iy), rec_space_dims)
                     F_sub = dropdims(sum(reduce(*,rec_space_diffs[[izs...]]) .*F,dims=izs),dims=izs)
                     F_plot = Plots.heatmap(x,y,F_sub; xlabel=x_units, ylabel=y_units, title="F* [$(units_multiply(units_inverse(x_units), units_inverse(y_units)))]", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]))
-                    append!(F_plots,F_plot)
+                    F_plots[ipc] = F_plot; ipc += 1
                 end
                 for plot_jac_coord in plot_jac_coords
+                    global ipc
                     ix = plot_jac_coord[1]; x = W_abscissas[1][ix+1]; x_units = W_abscissas_units[1][ix+1] # +1 because W_abscissas and W_abscissas_units has a first dimension of diagnostic measurement bins
                     iy = plot_jac_coord[2]; y = W_abscissas[1][iy+1]; y_units = W_abscissas_units[1][iy+1] # +1 because W_abscissas and W_abscissas_units has a first dimension of diagnostic measurement bins
                     izs = filter(xx-> !(xx==ix || xx==iy), rec_space_dims)
                     F_sub = dropdims(sum(reduce(*,rec_space_diffs[[izs...]]) .*two_pi_R_jacobian .*F,dims=izs),dims=izs)
                     F_plot = Plots.heatmap(x,y,F_sub; xlabel=x_units, ylabel=y_units, title="F* [$(units_multiply(units_inverse(x_units), units_inverse(y_units)))]", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]))
-                    append!(F_plots,F_plot)
+                    F_plots[ipc] = F_plot; ipc += 1
                 end
             elseif false # <--- ADD MORE 4D COORDINATE OPTIONS HERE IN FUTURE VERSIONS
             else
