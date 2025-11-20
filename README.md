@@ -55,6 +55,8 @@ and follow the instructions. **PLEASE NOTE!** During the OWCF installation, you 
 > **PLEASE NOTE!** Any warnings about the Julia packages WebSockets, OrbitTomography, VectorizationBase and Polyester at the end of the installation are ok.
 
 ### 1.5 Jupyter notebook
+> **THE OWCF WEB APPLICATIONS ARE TEMPORARILY OUT-OF-ORDER!**  
+
 If you would like to use the interactive OWCF apps to analyze and visualize data, you have to install Jupyter notebook. This can be done by running the following command in your command-line terminal (replace 'python' and 'pip' with your specific Python executable and Python package manager, if you have any):
 
 > `python -m pip install notebook`
@@ -129,6 +131,8 @@ or Jacob Eriksson (jacob.eriksson@physics.uu.se) to acquire LINE21 files for dia
 - solveInverseProblem.jl. Given the relationship S=WF, diagnostic measurements S=\[S1,S2,...,Sn\] and corresponding forward model weight matrices W=\[W1,W2,...,Wn\], use tomographic inversion techniques to solve the ill-posed inverse problem and compute the most likely fast-ion distribution F. Collision physics and electromagnetic wave heating in the ion cyclotron range of frequencies (ICRF) physics are supported as prior information.
 
 ## 9. OWCF apps
+> **THE OWCF WEB APPLICATIONS ARE TEMPORARILY OUT-OF-ORDER!**  
+
 The interactive web applications of the OWCF can be run by navigating to the OWCF/apps/ folder using a command-line terminal and then typing the following:
 
 > `jupyter notebook XWebApp.ipynb`
@@ -136,6 +140,7 @@ The interactive web applications of the OWCF can be run by navigating to the OWC
 where X is replaced by the app of your choice.
 
 ### 9.1 The apps of the OWCF include:
+> **THE OWCF WEB APPLICATIONS ARE TEMPORARILY OUT-OF-ORDER!**  
 
 - comWebApp.ipynb. A simple app that lets the user visualize a Solov'ev magnetic equilibrium and fast-ion orbits. The Solov'ev equilibrium can be customized interactively and the orbit(s) can be changed by changing (E,mu,Pphi; sigma) coordinate values. The app will then re-compute new orbits and magnetic equilibria in real-time.  
 - distrWebApp.ipynb. An app that lets the user visualze a (E,pm,Rm) fast-ion distribution in terms of fast-ion energy slices. The user can also choose to input a second fast-ion distribution, and the two will then be able to be compared interactively.  
@@ -188,4 +193,4 @@ Other data in the misc/ folder includes: default_temp_n_dens.png, eqdsk_file_bre
 
 Henrik Järleblad
 A (tired again) postdoc
-October 9th, 2025
+November 20th, 2025
