@@ -460,6 +460,8 @@ class Forward(object):
             i_voxels, i_points = self.viewing_cone.map_points_voxels(R, z) # Map the R,z points to the voxels of the viewing cone model
             # PLEASE NOTE! len(i_voxels)==len(i_points) is always true. But len(i_points) > len(R) is likely to be true. This is because a single (R,z) point is likely to be mapped to several voxels
             if len(i_points) == 0:
+                if verbose:
+                    print("---> No (R,z) points in viewing cone. Returning 0... ")
                 return np.zeros(len(Ed_bins)-1) # No points in viewing cone
             R = R[i_points] # The R points inside the diagnostic viewing cone
             z = z[i_points] # The z points -||-
@@ -506,5 +508,9 @@ class Forward(object):
         self.spectrum_calculator.reactant_b.sample_maxwellian_dist(T_bulk, v_rot=v_rot) # Sample velocities from a Maxwellian with mean T_bulk for thermal plasma distribution
         self.spectrum_calculator.weights = weights * omega * n_bulk * (dphi/(2*np.pi)) # The total Monte-Carlo weights, including the solid angle, bulk plasma density and fractional toroidal angle
 
-        return self.spectrum_calculator(bins=Ed_bins) # Compute and return the computed spectrum
+        spec = self.spectrum_calculator(bins=Ed_bins) # Compute and return the computed spectrum
+        if verbose:
+            print("mean(S): {}".format(np.sum(spec)/len(spec)))
+
+        return spec
             

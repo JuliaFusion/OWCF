@@ -2660,7 +2660,7 @@ Take the (E,p,R,z) fast-ion distribution and use Monte-Carlo sampling to transfo
 - verbose - If set to true, the function will talk a lot! - Bool
 """
 function ps2os(M::AbstractEquilibrium, wall::Boundary, F_EpRz::Array{Float64,4}, energy::AbstractVector, pitch::AbstractVector, R::AbstractVector, z::AbstractVector, og::OrbitGrid; 
-               distributed::Bool=true, FI_species = "D", nbatch::Int64 = 100_000, numOsamples::Int64=1_000_000, performance::Bool=true, progress_file_name::String="ps2os",
+               distributed::Bool=true, FI_species = "D", nbatch::Int64 = 100_000, numOsamples::Int64=1_000_000, performance::Bool=true, progress_file_name="ps2os",
                saveProgress::Bool=true, verbose::Bool=false, kwargs...)
 
     if verbose
@@ -3883,7 +3883,7 @@ function os2COM(M::AbstractEquilibrium, good_coords::Vector{CartesianIndex{3}}, 
         data_COM = Int64.(data_COM)
     end
 
-    return data_COM, E_array, Lambda_array, Pphi_n_array
+    return data_COM, collect(E_array), collect(Lambda_array), collect(Pphi_n_array)
 end
 
 """
@@ -3983,7 +3983,7 @@ function os2COM(M::AbstractEquilibrium, data::Union{Array{Float64, 3},Array{Floa
     if isTopoMap
         data_COM = Int64.(data_COM) # Convert to Int64, just in case
     end
-    return data_COM, E_array, Λ_array, Pϕ_n_array
+    return data_COM, collect(E_array), collect(Λ_array), collect(Pϕ_n_array)
 end
 
 """
