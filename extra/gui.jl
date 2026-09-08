@@ -23,7 +23,7 @@
 # 
 # This is performed in e.g. every OWCF start template file.
 #
-# Written by H. Järleblad. Last maintained 2025-07-11.
+# Written by H. Järleblad. Last maintained 2026-09-08.
 ###################################################################################################
 
 println("Loading the Julia packages for the grahpical user interfaces (GUI) of the OWCF... ")
@@ -247,7 +247,8 @@ function plot_F_Ep(F_EpRz::Array{Float64,4}, energy::Array{Float64,1}, pitch::Ar
     F_R = F_EpRz .* reshape(R,(1,1,length(R),1)) # Multiply by R in the R-dimension, to account for toroidal symmetry
     F_Ep = dropdims(sum(F_R.*dR4D.*dZ4D, dims=(3,4))*(2*pi), dims=(3,4)) # Integrate out R,z
 
-    Plots.heatmap(energy,pitch, F_Ep', xlabel="Energy [keV]", ylabel="Pitch [-]", xaxis=xaxis, fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), kwargs... )
+    myplt = Plots.heatmap(energy,pitch, transpose(F_Ep), xlabel="Energy [keV]", ylabel="Pitch [-]", xaxis=xaxis, fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), kwargs... )
+    display(myplt)
 end
 
 """
@@ -294,10 +295,11 @@ function plot_F_Rz(F_EpRz::Array{Float64,4}, energy::Array{Float64,1}, pitch::Ar
     end
 
     verbose && println("Plotting... ")
-    Plots.heatmap(R,z, F_Rz', xlabel="R [m]", ylabel="z[m]", aspect_ratio=:equal,fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]))
+    myplt = Plots.heatmap(R,z, transpose(F_Rz), xlabel="R [m]", ylabel="z[m]", aspect_ratio=:equal,fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]))
     if !(wall===nothing)
-        Plots.plot!(wall.r,wall.z, color=:black, legend=false)
+        myplt = Plots.plot!(wall.r,wall.z, color=:black, legend=false)
     end
+    display(myplt)
 end
 
 """
@@ -308,7 +310,7 @@ Load the (E,p,R,z) fast-ion distribution F_EpRz from file (.h5/.hdf5/.jld2), int
 Also load and include the tokamak wall, if available. If input is an .h5/.hdf5 file, and it was saved using a row-major programming language 
 (e.g. C/C++/NumPy in Python), please set the 'rowmajor' keyword argument to true.
 """
-function plot_F_Rz(filepath_distr::String; rowmajor::Bool=false, verbose::Bool=false, filepath_equil::Bool=nothing, clockwise_phi::Bool=false, kwargs...)
+function plot_F_Rz(filepath_distr::String; rowmajor::Bool=false, verbose::Bool=false, filepath_equil::Union{String,Nothing}=nothing, clockwise_phi::Bool=false, kwargs...)
     # Determine filepath_distr file extension
     fileext_distr = (split(filepath_distr,"."))[end] # Assume last part after final '.' is the file extension
     if (lowercase(fileext_distr) == "h5") || (lowercase(fileext_distr) == "hdf5")

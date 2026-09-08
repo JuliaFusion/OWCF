@@ -66,7 +66,7 @@
 # If saveXYZJacobian==true,
 #   jacobian - The Jacobian from (x,y,z,vx,vy,vz) to (E,p,R,z) for all (E,p,R,z) points - Array{Float64,4}
 
-# Script written by Henrik Järleblad. Last maintained 2025-09-01.
+# Script written by Henrik Järleblad. Last maintained 2026-09-08.
 ########################################################################################
 
 ## ------
@@ -224,7 +224,7 @@ if filepath_distr != ""
 end
 println("")
 if distributed
-    println("$(nprocs()) processors will be used for parallel computing.")
+    println("$(nprocs()-1) processors will be used for parallel computing.")
     println("")
 else
     println("Single-threaded computing the EpRz topological map...")
@@ -266,7 +266,7 @@ println("The results will be saved to the following output file:")
 println("$(filepath_tm).jld2")
 println("")
 println("If you would like to change any settings, please edit the start_calcEpRzTopoMap_template.jl file or equivalent.")
-println("Written by Henrik Järleblad. Last maintained 2025-06-13.")
+println("Written by Henrik Järleblad. Last maintained 2026-09-08.")
 println("------------------------------------------------------------------------------------------------")
 println("")
 
