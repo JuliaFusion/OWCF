@@ -65,7 +65,7 @@
 # Please note that in future versions of the OWCF, the user may use a toggle input to select other transformation methods
 # than simply Monte-Carlo methods. This has, however, not yet been incorporated into the OWCF.
 #
-# Script written by Henrik Järleblad. Last maintained 2025-09-01.
+# Script written by Henrik Järleblad. Last maintained 2026-09-08.
 ##################################################################################################################################
 
 ## --------------------------------------------------------------------------------------
@@ -245,7 +245,7 @@ if interp
     println("")
 end
 if distributed
-    println("$(nprocs()) processors will be used for parallel computing when transforming from (E,p,R,z) to (E,pm,Rm).")
+    println("$(nprocs()-1) processors will be used for parallel computing when transforming from (E,p,R,z) to (E,pm,Rm).")
     println("")
 else
     println("Single-threaded transforming from (E,p,R,z) to (E,pm,Rm).")
@@ -256,7 +256,7 @@ if include1Dto3D
     println("")
 end
 println("If you would like to change any settings, please edit the start_ps2os_template.jl file (or equivalent)")
-println("Written by Henrik Järleblad. Last maintained 2025-05-07.")
+println("Written by Henrik Järleblad. Last maintained 2026-09-08.")
 println("----------------------------------------------------------------------------------------")
 
 ## --------------------------------------------------------------------------------------

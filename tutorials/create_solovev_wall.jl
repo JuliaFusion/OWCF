@@ -5,7 +5,7 @@
 # Each block is separated by a line such as the one below.
 # The folderpath_OWCF string you have to fill in yourself. Remember to finish with "/"
 ##############################################################################################################
-folderpath_OWCF = "/home/henrikj/Codes/OWCF/" # First, you have to specify the path to the OWCF folder, as a string. Change this to your own OWCF path
+folderpath_OWCF = "REPLACE-THIS-TEXT-WITH-THE-PATH-TO-THE-OWCF-FOLDER-ON-YOUR-COMPUTER" # First, you have to specify the path to the OWCF folder, as a string. Change this to your own OWCF path
 cd(folderpath_OWCF) # Then, you make the VSCode terminal change place to the OWCF folder
 using Pkg # Then, you load the Pkg.jl package which is Julia's package manager
 Pkg.activate(".") # Then, you activate the virtual environment of the OWCF

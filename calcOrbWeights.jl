@@ -71,7 +71,7 @@
 # Please note that the diagnostic energy grid will be created as bin centers.
 # That is, the first diagnostic energy grid value will be (Ed_min+Ed_diff/2) and so on.
 
-# Script written by Henrik Järleblad. Last maintained 2025-09-01.
+# Script written by Henrik Järleblad. Last maintained 2026-09-08.
 ################################################################################################
 
 ## ---------------------------------------------------------------------------------------------
@@ -281,7 +281,11 @@ if isfile(og_filepath)
     myfile = jldopen(og_filepath,false,false,false,IOStream)
     og = myfile["og"]
     og_orbs = myfile["og_orbs"]
-    fast_reactant_loaded = myfile["fast_reactant"]
+    if haskey(myfile, "fast_reactant")
+        fast_reactant_loaded = myfile["fast_reactant"]
+    else # Assume FI_species
+        fast_reactant_loaded = myfile["FI_species"]
+    end
     extra_kw_args = myfile["extra_kw_args"]
     close(myfile)
     E_array = og.energy
@@ -484,7 +488,7 @@ end
 println("")
 println("If you would like to change any settings, please edit the start_calcOW_template.jl file or similar.")
 println("")
-println("Written by Henrik Järleblad. Last maintained 2025-07-11.")
+println("Written by Henrik Järleblad. Last maintained 2026-09-08.")
 println("--------------------------------------------------------------------------------------------------------------------------")
 println("")
 
@@ -964,7 +968,7 @@ for iii=1:iiimax
             fname_new = String(reduce(*, map(x-> x*"_", vcat(fname_calcOW*"4D", fname_rest)))[1:end-1]) # Change 'orbWeights' to 'orbWeights4D', then re-create the filename
             fpath = String(reduce(*,map(x-> x*"/", fpath))) # Re-create the path
             filepath_4D_output = fpath*fname_new # Create the new 4D full file path
-            myfile = jldopen(filepath_4D_output*".jld2",true,true,false,IOStream)
+            local myfile; myfile = jldopen(filepath_4D_output*".jld2",true,true,false,IOStream)
             write(myfile,"W", W4D)
             write(myfile,"E_array", E_array)
             write(myfile,"pm_array", pm_array)

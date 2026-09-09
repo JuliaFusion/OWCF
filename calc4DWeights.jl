@@ -122,7 +122,7 @@
 # WARNING! Please note that the output files of calc4DWeights.jl will be LARGE. This is due to the relatively high dimensionality
 # of the weight functions.
 
-# Script written by Henrik Järleblad. Last maintained 2025-09-01.
+# Script written by Henrik Järleblad. Last maintained 2026-09-08.
 ################################################################################################
 
 ## ---------------------------------------------------------------------------------------------
@@ -402,6 +402,68 @@ if isfile(instrumental_response_filepath) # Returns true both for Strings and Ve
     end
     instrumental_response = true
 end
+
+## ---------------------------------------------------------------------------------------------
+# Python code (essentially calling the forward model black box)
+# This is how you write Python code in Julia: py""" [Python code] """
+verbose && println("Loading Python modules... ")
+@everywhere begin
+    py"""
+    import numpy as np
+    import forward
+    import vcone
+    import spec
+    """
+end
+
+## ---------------------------------------------------------------------------------------------
+## If no thermal distribution has been specified, we are going to need the OWCF default temp. and dens. profiles
+if !isfile(filepath_thermal_distr)
+    @everywhere begin
+        include("misc/temp_n_dens.jl")
+    end
+end
+
+## ---------------------------------------------------------------------------------------------
+# Loading TRANSP data (if any) and initializing forward model
+verbose && println("Loading TRANSP data (if any) and initializing forward model on all distributed workers/processes... ")
+@everywhere begin
+    py"""
+    # The '$' in front of many Python variables means that the variable is defined in Julia, not in Python.
+    test_thermal_particle = spec.Particle($thermal_reactant) # Check so that thermal species is available in DRESS code
+    projVel = $projVel
+
+    # Load TRANSP simulation data
+    if (not $TRANSP_id=="") and (not projVel): # If there is some TRANSP_id specified and we do not want to simply compute projected velocities...
+        if ($fileext_thermal).lower()=="cdf": # If there is some TRANSP .cdf output file specified...
+            import transp_output
+            import transp_dists
+            $verbose and print("Loading TRANSP output from TRANSP files... ")
+            tr_out = transp_output.TranspOutput($TRANSP_id, step=1, out_file=$filepath_thermal_distr,fbm_files=[$filepath_FI_cdf]) # Load the TRANSP shot file. Assume first step. This is likely to be patched in the future.
+            $verbose and print("Setting bulk (thermal) plasma distribution... ")
+            thermal_dist = transp_dists.Thermal(tr_out, ion=$thermal_reactant) # Then load the thermal ion distribution from that .cdf file
+        else:
+            raise ValueError('TRANSP_id was specified, but filepath_thermal_distr was not (this should be impossible). Please correct and re-try.')
+    else:
+        thermal_dist = "" # Otherwise, just let the thermal_dist variable be the empty string
+
+    $verbose and print("Initializing forward model with diagnostic viewing cone, fusion reaction and bulk (thermal) plasma distribution... ") 
+    forwardmodel = forward.Forward($diagnostic_filepath, $reaction, thermal_dist) # Initialize the forward model
+
+    Ed_bin_edges = np.arange($Ed_min,$Ed_max,$Ed_diff) # diagnostic spectrum bin edges (keV or m/s)
+    if len(Ed_bin_edges)==1: # Make sure that there are at least one lower and one upper bin edge
+        dEd = (($Ed_max)-($Ed_min))/10
+        Ed_bin_edges = np.arange($Ed_min,($Ed_max)+dEd,$Ed_diff)
+    Ed_vals = 0.5*(Ed_bin_edges[1:] + Ed_bin_edges[:-1]) # bin centers (keV or m/s)
+    nEd = len(Ed_vals)
+    """
+end
+nEd = py"nEd"
+Ed_array = vec(py"Ed_vals")
+@everywhere nEd = $nEd
+@everywhere Ed_array = $Ed_array
+@everywhere nEd = length(Ed_array)
+
 ## ---------------------------------------------------------------------------------------------
 # Printing script info and inputs
 println("")
@@ -481,13 +543,13 @@ println("R: [$(minimum(R_array)),$(maximum(R_array))] meters")
 println("z: [$(minimum(z_array)),$(maximum(z_array))] meters")
 println("")
 if !projVel
-    println("There will be $(length(range(Ed_min,stop=Ed_max,step=Ed_diff))-1) diagnostic energy bin(s) with")
-    println("Lower diagnostic energy bound: $(Ed_min) keV")
-    println("Upper diagnostic energy bound: $(Ed_max) keV")
+    println("There will be $(nEd) diagnostic energy bin(s) with")
+    println("Lower diagnostic energy bound: $(minimum(py"Ed_bin_edges")) keV")
+    println("Upper diagnostic energy bound: $(maximum(py"Ed_bin_edges")) keV")
 else
-    println("There will be $(length(range(Ed_min,stop=Ed_max,step=Ed_diff))-1) projected velocity (u) bin(s) with")
-    println("Lower u bound: $(Ed_min) m/s")
-    println("Upper u bound: $(Ed_max) m/s")
+    println("There will be $(nEd) projected velocity (u) bin(s) with")
+    println("Lower u bound: $(minimum(py"Ed_bin_edges")) m/s")
+    println("Upper u bound: $(maximum(py"Ed_bin_edges")) m/s")
 end
 println("")
 if saveVparaVperpWeights
@@ -502,7 +564,7 @@ ti = isnothing(timepoint) ? "" : timepoint
 d = isnothing(diagnostic_name) ? "" : diagnostic_name
 filepath_o_s_fp = !(filename_o=="") ? filename_o : "EpRzWeights_$(sFLR)"*t*"_"*T*"_at"*ti*"s_"*d*"_"*pretty2scpok(reaction; projVel = projVel)
 if iiimax == 1
-    println(folderpath_o*filepath_o_s_fp*"_$(length(range(Ed_min,stop=Ed_max,step=Ed_diff))-2)x$(nE)x$(np)x$(nR)x$(nz).jld2")
+    println(folderpath_o*filepath_o_s_fp*"_$(nEd)x$(nE)x$(np)x$(nR)x$(nz).jld2")
 else
     println(folderpath_o*filepath_o_s_fp*"_1.jld2")
     println("... ")
@@ -520,69 +582,9 @@ end
 println("")
 println("If you would like to change any settings, please edit the start_calc4DW_template.jl file or similar.")
 println("")
-println("Written by Henrik Järleblad. Last maintained 2025-07-30.")
+println("Written by Henrik Järleblad. Last maintained 2026-09-08.")
 println("--------------------------------------------------------------------------------------------------")
 println("")
-
-## ---------------------------------------------------------------------------------------------
-# Python code (essentially calling the forward model black box)
-# This is how you write Python code in Julia: py""" [Python code] """
-verbose && println("Loading Python modules... ")
-@everywhere begin
-    py"""
-    import numpy as np
-    import forward
-    import vcone
-    import spec
-    """
-end
-
-## ---------------------------------------------------------------------------------------------
-## If no thermal distribution has been specified, we are going to need the OWCF default temp. and dens. profiles
-if !isfile(filepath_thermal_distr)
-    @everywhere begin
-        include("misc/temp_n_dens.jl")
-    end
-end
-
-## ---------------------------------------------------------------------------------------------
-# Loading TRANSP data (if any) and initializing forward model
-verbose && println("Loading TRANSP data (if any) and initializing forward model on all distributed workers/processes... ")
-@everywhere begin
-    py"""
-    # The '$' in front of many Python variables means that the variable is defined in Julia, not in Python.
-    test_thermal_particle = spec.Particle($thermal_reactant) # Check so that thermal species is available in DRESS code
-    projVel = $projVel
-
-    # Load TRANSP simulation data
-    if (not $TRANSP_id=="") and (not projVel): # If there is some TRANSP_id specified and we do not want to simply compute projected velocities...
-        if ($fileext_thermal).lower()=="cdf": # If there is some TRANSP .cdf output file specified...
-            import transp_output
-            import transp_dists
-            $verbose and print("Loading TRANSP output from TRANSP files... ")
-            tr_out = transp_output.TranspOutput($TRANSP_id, step=1, out_file=$filepath_thermal_distr,fbm_files=[$filepath_FI_cdf]) # Load the TRANSP shot file. Assume first step. This is likely to be patched in the future.
-            $verbose and print("Setting bulk (thermal) plasma distribution... ")
-            thermal_dist = transp_dists.Thermal(tr_out, ion=$thermal_reactant) # Then load the thermal ion distribution from that .cdf file
-        else:
-            raise ValueError('TRANSP_id was specified, but filepath_thermal_distr was not (this should be impossible). Please correct and re-try.')
-    else:
-        thermal_dist = "" # Otherwise, just let the thermal_dist variable be the empty string
-
-    $verbose and print("Initializing forward model with diagnostic viewing cone, fusion reaction and bulk (thermal) plasma distribution... ") 
-    forwardmodel = forward.Forward($diagnostic_filepath, $reaction, thermal_dist) # Initialize the forward model
-
-    Ed_bin_edges = np.arange($Ed_min,$Ed_max,$Ed_diff) # diagnostic spectrum bin edges (keV or m/s)
-    if len(Ed_bin_edges)==1: # Make sure that there are at least one lower and one upper bin edge
-        dEd = (($Ed_max)-($Ed_min))/10
-        Ed_bin_edges = np.arange($Ed_min,($Ed_max)+dEd,$Ed_diff)
-    Ed_vals = 0.5*(Ed_bin_edges[1:] + Ed_bin_edges[:-1]) # bin centers (keV or m/s)
-    nEd = len(Ed_vals)
-    """
-end
-nEd = py"nEd"
-Ed_array = vec(py"Ed_vals")
-@everywhere nEd = $nEd
-@everywhere Ed_array = $Ed_array
 
 ## ---------------------------------------------------------------------------------------------
 # Pre-processing thermal ion density and temperature data
@@ -1102,7 +1104,7 @@ for iii=1:iiimax
         # First, if the user specified a custom output file name (filename_o), use that instead of the default OWCF output file name
         filepath_o_s = !(filename_o=="") ? filename_o : "EpRzWeights_$(sFLR)"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)
         if iiimax==1 # If you intend to calculate only one weight matrix
-            global filepath_output_orig = folderpath_o*filepath_o_s*"_$(length(range(Ed_min,stop=Ed_max,step=Ed_diff))-2)x$(nE)x$(np)x$(nR)x$(nz)"
+            global filepath_output_orig = folderpath_o*filepath_o_s*"_$(nEd)x$(nE)x$(np)x$(nR)x$(nz)"
         else # If you intend to calculate several (identical) weight matrices
             global filepath_output_orig = folderpath_o*filepath_o_s*"_$(iii)"
         end
