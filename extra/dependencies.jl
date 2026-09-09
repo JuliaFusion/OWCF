@@ -23,7 +23,7 @@
 #
 # Finally, please note that some functions in dependencies.jl might be under construction. Hence, the bad code.
 #
-# Written by H. Järleblad. Last maintained 2025-10-17.
+# Written by H. Järleblad. Last maintained 2026-09-08.
 ###################################################################################################
 
 println("Loading the Julia packages for the OWCF dependencies... ")
@@ -31,7 +31,7 @@ using Base.Iterators
 using Contour
 using Distributed
 using Distributions
-using EFIT # For calculating magn½etic equilibrium quantities
+using EFIT # For calculating magnetic equilibrium quantities
 using Equilibrium # For loading flux function data, tokamak geometry data etc.
 using FileIO # To write/open files in general
 using ForwardDiff
@@ -46,8 +46,12 @@ using OrbitTomography # This is what all this is about!
 using ProgressMeter # To display computational progress during parallel computations
 using SparseArrays # To enable utilization of sparse matrices/vectors
 using VoronoiDelaunay
-include("../misc/convert_units.jl") # Some functions in dependencies.jl need units functions
-include("../misc/species_func.jl") # Some functions in dependencies.jl need species functions (including OWCF/extra/constants.jl)
+if !(@isdefined units_to_dict) # To avoid that dependencies.jl cause warning when re-loaded in active workspaces
+    include("../misc/convert_units.jl") # Some functions in dependencies.jl need units functions
+end
+if !(@isdefined OWCF_B_e)
+    include("../misc/species_func.jl") # Some functions in dependencies.jl need species functions (including OWCF/extra/constants.jl)
+end
 
 ###### Structures needed for dependencies ######
 
@@ -1820,6 +1824,7 @@ function jld2tohdf5(filepath_jld2::String; verbose::Bool=false)
     verbose && println("The .jld2 file has been re-written as a .hdf5 file at "*filepath_hdf5)
     return filepath_hdf5
 end
+jld2toh5 = jld2tohdf5 # Function name synonym
 
 """
     hdf5tojld2(filepath_hdf5)
@@ -1844,6 +1849,7 @@ function hdf5tojld2(filepath_hdf5::String; verbose::Bool=false)
     verbose && println("The .hdf5 file has been re-written as a .jld2 file at "*filepath_jld2)
     return filepath_jld2
 end
+h5tojld2 = hdf5tojld2 # Function name synonym
 
 """
     JLD2to4D(filepath_distr)
@@ -2728,7 +2734,7 @@ function ps2os(M::AbstractEquilibrium, wall::Boundary, F_EpRz::Array{Float64,4},
         subs = CartesianIndices(dims) # 4D matrix
         fr = nothing # Memory efficiency
         dvols = nothing # Memory efficiency
-        return ps2os_performance(M, wall, frdvols_cumsum_vector, subs, nfast, energy, pitch, R, z, og; numOsamples=numOsamples, numOsamples_sofar=numOsamples_sofar, 
+        return ps2os_performance(M, wall, frdvols_cumsum_vector, subs, nfast, energy, pitch, R, z, og; numOsamples=numOsamples, nbatch=nbatch, numOsamples_sofar=numOsamples_sofar, 
                                  result_sofar=result_sofar, class_distr_sofar=class_distr_sofar, distributed=distributed, FI_species=FI_species, saveProgress=saveProgress, 
                                  progress_file_name=progress_file_name, verbose=verbose, kwargs...)
     end
@@ -2878,7 +2884,7 @@ function ps2os_performance(M::AbstractEquilibrium, wall::Boundary, frdvols_cumsu
             subdivide = true
             verbose && println("Samples left: $(numOsamples)")
             numOsamples = numOsamples - nbatch
-            result_p, class_distr_p = performance_helper(M, nbatch, frdvols_cumsum_vector, subs, dE_vector, dp_vector, dR_vector, dz_vector, energy, pitch, R, z, og; wall=wall, FI_species=FI_species, kwargs...)
+            result_p, class_distr_p = performance_helper(M, nbatch, frdvols_cumsum_vector, subs, dE_vector, dp_vector, dR_vector, dz_vector, energy, pitch, R, z, og; wall=wall, FI_species=FI_species, visualizeProgress=visualizeProgress, kwargs...)
             result_sofar .+= result_p
             class_distr_sofar .+= class_distr_p
             numOsamples_sofar += nbatch
@@ -2892,7 +2898,7 @@ function ps2os_performance(M::AbstractEquilibrium, wall::Boundary, frdvols_cumsu
             end
         end
         verbose && println("(Rest) Samples left: $(numOsamples)")
-        result_rest, class_distr_rest = performance_helper(M, numOsamples, frdvols_cumsum_vector, subs, dE_vector, dp_vector, dR_vector, dz_vector, energy, pitch, R, z, og; wall=wall, FI_species=FI_species, kwargs...)
+        result_rest, class_distr_rest = performance_helper(M, numOsamples, frdvols_cumsum_vector, subs, dE_vector, dp_vector, dR_vector, dz_vector, energy, pitch, R, z, og; wall=wall, FI_species=FI_species, visualizeProgress=visualizeProgress, kwargs...)
         numOsamples_rest = numOsamples
 
         if subdivide

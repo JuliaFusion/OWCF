@@ -54,15 +54,6 @@ and follow the instructions. **PLEASE NOTE!** During the OWCF installation, you 
 
 > **PLEASE NOTE!** Any warnings about the Julia packages WebSockets, OrbitTomography, VectorizationBase and Polyester at the end of the installation are ok.
 
-### 1.5 Jupyter notebook
-> **THE OWCF WEB APPLICATIONS ARE TEMPORARILY OUT-OF-ORDER!**  
-
-If you would like to use the interactive OWCF apps to analyze and visualize data, you have to install Jupyter notebook. This can be done by running the following command in your command-line terminal (replace 'python' and 'pip' with your specific Python executable and Python package manager, if you have any):
-
-> `python -m pip install notebook`
-
-The Python command ('python') should match the Python command that you specified in section 1.3 and 1.4.
-
 > #### PLEASE NOTE!
 > For some scripts, the OWCF currently relies on the [PyCall.jl](https://github.com/JuliaPy/PyCall.jl) package. This package will **not** function correctly if the Python environment that you want to connect is a virtual environment created by `conda`. Therefore, as of the current version, if you are using the OWCF together with a Python environment created by `conda`, correct functionality **cannot** be guaranteed.
 
@@ -131,25 +122,28 @@ or Jacob Eriksson (jacob.eriksson@physics.uu.se) to acquire LINE21 files for dia
 - solveInverseProblem.jl. Given the relationship S=WF, diagnostic measurements S=\[S1,S2,...,Sn\] and corresponding forward model weight matrices W=\[W1,W2,...,Wn\], use tomographic inversion techniques to solve the ill-posed inverse problem and compute the most likely fast-ion distribution F. Collision physics and electromagnetic wave heating in the ion cyclotron range of frequencies (ICRF) physics are supported as prior information.
 
 ## 9. OWCF apps
-> **THE OWCF WEB APPLICATIONS ARE TEMPORARILY OUT-OF-ORDER!**  
 
-The interactive web applications of the OWCF can be run by navigating to the OWCF/apps/ folder using a command-line terminal and then typing the following:
+The OWCF apps are powered by the Pluto.jl package and written as Pluto notebooks.
 
-> `jupyter notebook XWebApp.ipynb`
+These interactive web applications can be run by navigating to the OWCF/apps/ folder using a command-line terminal and then typing the following:
 
-where X is replaced by the app of your choice.
+> `julia`
+julia> `using Pkg; Pkg.activate(".."); using Pluto; Pluto.run()`
 
-### 9.1 The apps of the OWCF include:
-> **THE OWCF WEB APPLICATIONS ARE TEMPORARILY OUT-OF-ORDER!**  
+Then, Pluto should open the Pluto landing page in your default web browser. In that landing page, click the text field beneath the 'Open a notebook' text and a list of the available OWCF apps should appear, as shown in the screenshot below. Select an app of your choice, click 'open' next to the text field and follow the instructions in the Pluto notebook.
 
-- comWebApp.ipynb. A simple app that lets the user visualize a Solov'ev magnetic equilibrium and fast-ion orbits. The Solov'ev equilibrium can be customized interactively and the orbit(s) can be changed by changing (E,mu,Pphi; sigma) coordinate values. The app will then re-compute new orbits and magnetic equilibria in real-time.  
-- distrWebApp.ipynb. An app that lets the user visualze a (E,pm,Rm) fast-ion distribution in terms of fast-ion energy slices. The user can also choose to input a second fast-ion distribution, and the two will then be able to be compared interactively.  
-- EpRzWebApp.ipynb. An app that lets the user visualize orbit topological maps in (E,p,R,z) coordinate space. The option to also visualize poloidal and toroidal transit times exists. The user can also choose to input a fast-ion distribution in (E,p,R,z) format. The app will then superimpose topological boundaries and the fast-ion distribution can be visualzed via a toggle button.  
-- modeAnalysisWebApp.ipynb. An app that lets the user visualize simple MHD mode resonances in (E,pm,Rm) orbit space. The user can interactively explore different energies, mode numbers and frequencies. Only toroidal (n) and poloidal (m) mode numbers are included. (E,mu,Phi;sigma) space can be accessed via a toggle button.  
-- orbitsWebApp.ipynb. It is arguably the flagship app of the OWCF. It lets the user visualize fast-ion orbits interactively via a topological map in (E,pm,Rm) space. Maps for poloidal and toroidal transit times can also be included. The user can switch to (E,mu,Pphi;sigma) space via a toggle button.  
-- orbitWebApp.ipynb. A simple app that lets the user visualize a single fast-ion orbit in detail. The endpoint of the orbit can be changed interactively. The coordinate space is (E,pm,Rm).  
-- signalWebApp.ipynb. An app that lets the user visualze a WF signal and orbit splits of WF, W and F, together with their dependence on E, pm and Rm, respectively. Log-scales, splitting, fractions and more options can be changed interactively via toggle buttons.  
-- weightsWebApp.ipynb. An app that lets the user interactively visualize the orbit weight functions of an orbit weight matrix. The diagnostic measurement bin and fast-ion energy slice of interest are changed via sliders. A WF signal, an S signal, a fast-ion distribution and null orbits can all be optionally included. The weight visualization can be switched to (E,mu,Pphi;sigma) via a toggle button. Diagnostic viewing cones can be optionally included.  
+![Screenshot of how to select an OWCF app using Pluto](misc/pluto_OWCF-apps_selection.png)
+
+### 9.1 The apps of the OWCF include: 
+
+- comWebApp.jl. A simple app that lets the user visualize a Solov'ev magnetic equilibrium and fast-ion orbits. The Solov'ev equilibrium can be customized interactively and the orbit(s) can be changed by changing (E,mu,Pphi) coordinate values. The app will then re-compute new orbits and magnetic equilibria in real-time.  
+- distrWebApp.jl. An app that lets the user visualze a (E,pm,Rm) fast-ion distribution in terms of fast-ion energy slices. The user can also choose to input a second fast-ion distribution, and the two will then be able to be compared interactively.  
+- EpRzWebApp.jl. An app that lets the user visualize orbit topological maps in (E,p,R,z) coordinate space. The option to also visualize poloidal and toroidal transit times exists. The user can also choose to input a fast-ion distribution in (E,p,R,z) format. The app will then superimpose topological boundaries and the fast-ion distribution can be visualzed via a toggle button.  
+- modeAnalysisWebApp.jl. An app that lets the user visualize simple MHD mode resonances in (E,pm,Rm) orbit space. The user can interactively explore different energies, mode numbers and frequencies. Only toroidal (n) and poloidal (m) mode numbers are included. (E,mu,Phi;sigma) space can be accessed via a toggle button.  
+- orbitsWebApp.jl. It is arguably the flagship app of the OWCF. It lets the user visualize fast-ion orbits interactively via a topological map in (E,pm,Rm) space. Maps for poloidal and toroidal transit times can also be included. The user can switch to (E,mu,Pphi;sigma) space via a toggle button (THIS FEATURE IS TEMPORARILY OUT-OF-ORDER).  
+- orbitWebApp.jl. A simple app that lets the user visualize a single fast-ion orbit in detail. The endpoint of the orbit can be changed interactively. The coordinate space is (E,pm,Rm).
+- signalWebApp.jl. An app that lets the user visualze a WF signal and orbit splits of WF, W and F, together with their dependence on E, pm and Rm, respectively. Log-scales, splitting, fractions and more options can be changed interactively via toggle buttons.  
+- weightsWebApp.jl. An app that lets the user interactively visualize the orbit weight functions of an orbit weight matrix. The diagnostic measurement bin and fast-ion energy slice of interest are changed via sliders. A WF signal, an S signal, a fast-ion distribution and null orbits can all be optionally included. The weight visualization can be switched to (E,mu,Pphi;sigma) via a toggle button (THIS FEATURE IS TEMPORARILY OUT-OF-ORDER). Diagnostic viewing cones can be optionally included.  
 
 ## 10. Helper scripts
 ### The helper scripts of the OWCF include:
@@ -161,7 +155,7 @@ where X is replaced by the app of your choice.
 - F_os_1Dto3D.jl. Inflate a fast-ion distribution in its compressed 1D form into its full 3D form.  
 - orbweights2Dto4D.jl. Inflate an orbit weight matrix from its compressed 2D form into its full 4D form, set by the user.  
 - orbWeights4Dto2D.jl. Take an inflated orbit weight matrix in its 4D form, and compress it into its 2D form.  
-- os2com.jl. A script that can be used to transform quantities from (E,pm,Rm) orbit space to (E,mu,Pphi;sigma) constants-of-motion space.  
+- os2com.jl. A script that can be used to transform quantities from (E,pm,Rm) orbit space to (E,mu,Pphi;sigma) constants-of-motion space. THIS HELPER SCRIPT IS TEMPORARILY OUT-OF-ORDER.
 
 ## 11. Extra scripts
 ### The extra scripts of the OWCF include:  
@@ -184,7 +178,7 @@ where X is replaced by the app of your choice.
 - species_func.jl. A collection of functions that provide easy access to the properties of various ion species.  
 - temp_n_dens.jl. Store and provide default thermal plasma temperature and density profiles for the OWCF. Also includes loading and interpolation functions for TRANSP thermal temperature and density data.  
 
-Other data in the misc/ folder includes: default_temp_n_dens.png, eqdsk_file_breakdown.pdf, howToLoadFromTRANSP_FI_CDF.jl, logo.gif and transp_outputs.txt.
+Other data in the misc/ folder includes: default_temp_n_dens.png, eqdsk_file_breakdown.pdf, howToLoadFromTRANSP_FI_CDF.jl, pluto_OWCF-apps_selection.png, logo.gif and transp_outputs.txt.
 
 ## 13. OWCF on HPC clusters
 > If you would like to use the OWCF on a SLURM computational cluster, you can use the .sh submit file templates to easily submit OWCF runs for batch jobs. Templates for other computational cluster workload managers than SLURM are currently not included with the OWCF.
@@ -192,5 +186,5 @@ Other data in the misc/ folder includes: default_temp_n_dens.png, eqdsk_file_bre
 ## Good luck! Please consult the OWCF_manual.pdf, howToInstallJuliaAndTheOWCF_MacOS.pdf and howToInstallJuliaAndTheOWCF_Windows.pdf documents for further info.
 
 Henrik Järleblad
-A (tired again) postdoc
-November 20th, 2025
+A (very tired) postdoc
+September 8th, 2026
