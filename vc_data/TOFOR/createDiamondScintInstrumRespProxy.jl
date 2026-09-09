@@ -1,6 +1,6 @@
 # This script will create a proxy for the KM14 and KM15 instrumental response functions
 # and save it in the OWCF/vc_data/TOFOR/ folder
-folderpath_OWCF = "/home/henrikj/Codes/OWCF/"
+folderpath_OWCF = "REPLACE-THIS-TEXT-WITH-THE-PATH-TO-THE-OWCF-FOLDER-ON-YOUR-COMPUTER"
 cd(folderpath_OWCF)
 using Pkg
 Pkg.activate(".")
