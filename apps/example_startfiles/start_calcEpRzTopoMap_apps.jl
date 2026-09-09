@@ -77,7 +77,7 @@
 using Distributed # Needed, even though distributed might be set to false. This is to export all inputs to all workers right away, if needed.
 batch_job_SLURM = false
 distributed = true
-folderpath_OWCF = "/home/henrikj/Codes/OWCF/" # OWCF folder path. Finish with '/'
+folderpath_OWCF = "REPLACE-THIS-TEXT-WITH-THE-PATH-TO-THE-OWCF-FOLDER-ON-YOUR-COMPUTER" # OWCF folder path. Finish with '/'
 numOcores = 5 # When executing the script as part of an HPC cluster batch job, the number of CPU cores will be detected and set automatically (i.e. the value of the numOcores variable does not matter)
 
 ## Navigate to the OWCF folder and activate the OWCF environment

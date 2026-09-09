@@ -38,7 +38,7 @@ This notebook provides an application to visualize (guiding-centre) orbits in a 
 # -
 
 ### Notebook written by Henrik Järleblad, henrikj@dtu.dk
-### Last maintained 2026-08-31
+### Last maintained 2026-09-09
 """
 
 # ╔═╡ cd6a92a9-7113-4281-8596-a520642c5cbe
@@ -512,7 +512,7 @@ let
     if !poltor
         myplt = Plots.plot(plt_topo, plt_pm, plt_top, plt_crs, layout=(2,2), size=(800,800))
     else
-        myplt = Plots.plot(plt_topo, plt_pol, plt_tor, plt_pm, plt_top, plt_crs, layout=(3,2), size=(800, 1200))
+        myplt = Plots.plot(plt_topo, plt_pol, plt_tor, plt_pm, plt_top, plt_crs, layout=(3,2), size=(800, 1200), left_margin=5Plots.mm)
     end
     Plots.plot(myplt)
 end

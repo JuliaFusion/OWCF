@@ -75,6 +75,7 @@ begin
 	using Suppressor
 	include(folderpath_OWCF*"misc/species_func.jl")
 	include(folderpath_OWCF*"extra/gui.jl") # For orbit movie
+	println()
 end
 
 # ╔═╡ 88a35068-f22c-451a-8a8d-0b35a8d5ed6f
@@ -221,9 +222,9 @@ let
 	# - Set the 'save_animation' variable to 'true'
 	# - Remember to set the 'save_animation' variable to 'false' once you are done with the app, or when you don't want to save the animation
 	E = 100.0 # keV
-	pm = 0.7
+	pm = 0.3
 	Rm = 3.47 # meters
-	save_animation = false # Change this to 'true' to save animation when cell is run
+	save_animation = true # Change this to 'true' to save animation when cell is run
 
 	@suppress begin
 		plot_orbit_movie(M, E, pm, Rm; FI_species=FI_species, wall=wall, save_anim=save_animation)

@@ -93,7 +93,7 @@
 using Distributed # Needed, even though distributed might be set to false. This is to export all inputs to all workers right away, if needed.
 batch_job_SLURM = false
 distributed = true
-folderpath_OWCF = "/home/henrikj/Codes/OWCF/" # OWCF folder path. Finish with '/'
+folderpath_OWCF = "REPLACE-THIS-TEXT-WITH-THE-PATH-TO-THE-OWCF-FOLDER-ON-YOUR-COMPUTER" # OWCF folder path. Finish with '/'
 numOcores = 4 # When executing the script as part of an HPC cluster batch job, the number of CPU cores will be detected and set automatically (i.e. the value of the numOcores variable does not matter)
 
 ## Navigate to the OWCF folder and activate the OWCF environment
@@ -133,8 +133,8 @@ end
     Emin = 0.0 # keV
     Emax = 000.0 # keV
     filepath_equil = folderpath_OWCF*"equilibrium/JET/g99971/g99971_474-48.9.eqdsk" # for example "equilibrium/JET/g96100/g96100_0-53.0012.eqdsk" or "myOwnSolovev.jld2"
-    filepath_FI_cdf = "/home/henrikj/Data/JET/99971/TRANSP/L72/99971L72_fi_2.cdf" # If filepath_thermal_distr=="96100J01.cdf", then filepath_FI_cdf could be "96100J01_fi_1.cdf" for example. To auto-extract timepoint
-    filepath_thermal_distr = "/home/henrikj/Data/JET/99971/TRANSP/L72/99971L72.cdf" # for example "96100J01.cdf", "myOwnThermalDistr.jld2" or ""
+    filepath_FI_cdf = "/.../.../Data/JET/99971/TRANSP/L72/99971L72_fi_2.cdf" # If filepath_thermal_distr=="96100J01.cdf", then filepath_FI_cdf could be "96100J01_fi_1.cdf" for example. To auto-extract timepoint
+    filepath_thermal_distr = "/.../.../Data/JET/99971/TRANSP/L72/99971L72.cdf" # for example "96100J01.cdf", "myOwnThermalDistr.jld2" or ""
     folderpath_o = folderpath_OWCF*"apps/example_data/" # Output folder path. Finish with '/'
     iiimax = 1 # The script will calculate iiimax number of weight functions. They can then be examined in terms of similarity (to determine MC noise influence etc).
     inclPrideRockOrbs = true # If true, then pride rock orbits will be included. Otherwise, minimum(Rm) = magnetic axis.

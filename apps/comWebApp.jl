@@ -16,38 +16,6 @@ macro bind(def, element)
     #! format: on
 end
 
-# ╔═╡ d8114058-2553-46cf-a28e-a4920c3501b9
-begin
-	# SPECIFY THE INPUTS IN THIS CELL
-
-	# Please specify the OWCF folder and let the cell below change directory to the 
-	# OWCF folder when the cell is run. This is to be able to load the
-	# correct versions of the Julia packages as specified in the Project.toml and 
-	# Manifest.toml files.
-	folderpath_OWCF = "REPLACE-THIS-TEXT-WITH-THE-PATH-TO-THE-OWCF-FOLDER-ON-YOUR-COMPUTER" # Finish with '/'
-	
-	m = 2.0*1.660539e-27 # Mass in kg. Change manually here. Example value alpha particle: 4.001506179127 .* 1.660539e-27
-	q = 2.0 * (1.602176e-19) # Charge in Coulombs. Change manually here. Example value alpha particle: 2.0 * (1.602176e-19)
-	Emin = 10.0 # keV
-	Emax = 2000.0 # KeV
-	Bmin = 2.0 # Minimum magnetic field value in the tokamak. Tesla. Example JET approx.: 2.0
-	verbose = true
-end
-
-# ╔═╡ f271690d-fa0a-426f-8c6c-6ea59ea15966
-begin
-	cd(folderpath_OWCF)
-	using Pkg
-	Pkg.activate(".")
-	verbose && println("Loading packages... ")
-	using GuidingCenterOrbits
-	using Interact
-	using Plots
-	using LinearAlgebra
-	using Contour
-	using PlutoUI
-end
-
 # ╔═╡ 3bcc3ca4-137b-4ba6-995c-81088feb065e
 md"""
 # comWebApp
@@ -78,6 +46,37 @@ Of all the apps in the OWCF, this might be the least developed one. It works, bu
 ## Notebook written by Henrik Järleblad, henrikj@dtu.dk
 ## Last maintained 2026-08-26
 """
+
+# ╔═╡ d8114058-2553-46cf-a28e-a4920c3501b9
+begin
+	# SPECIFY THE INPUTS IN THIS CELL
+
+	# Please specify the OWCF folder and let the cell below change directory to the 
+	# OWCF folder when the cell is run. This is to be able to load the
+	# correct versions of the Julia packages as specified in the Project.toml and 
+	# Manifest.toml files.
+	folderpath_OWCF = "REPLACE-THIS-TEXT-WITH-THE-PATH-TO-THE-OWCF-FOLDER-ON-YOUR-COMPUTER" # Finish with '/'
+	
+	m = 2.0*1.660539e-27 # Mass in kg. Change manually here. Example value alpha particle: 4.001506179127 .* 1.660539e-27
+	q = 2.0 * (1.602176e-19) # Charge in Coulombs. Change manually here. Example value alpha particle: 2.0 * (1.602176e-19)
+	Emin = 10.0 # keV
+	Emax = 2000.0 # KeV
+	Bmin = 2.0 # Minimum magnetic field value in the tokamak. Tesla. Example JET approx.: 2.0
+	verbose = true
+end
+
+# ╔═╡ f271690d-fa0a-426f-8c6c-6ea59ea15966
+begin
+	cd(folderpath_OWCF)
+	using Pkg
+	Pkg.activate(".")
+	verbose && println("Loading packages... ")
+	using GuidingCenterOrbits
+	using Plots
+	using LinearAlgebra
+	using Contour
+	using PlutoUI
+end
 
 # ╔═╡ ed858360-360c-42c0-a945-a7e2b114b61a
 begin

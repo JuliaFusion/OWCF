@@ -79,7 +79,7 @@
 using Distributed # Needed, even though distributed might be set to false. This is to export all inputs to all workers right away, if needed.
 batch_job_SLURM = true
 distributed = true
-folderpath_OWCF = "/home/ppfe/henrikj/Codes/JULIA/OWCF/" # OWCF folder path. Finish with '/'
+folderpath_OWCF = "REPLACE-THIS-TEXT-WITH-THE-PATH-TO-THE-OWCF-FOLDER-ON-YOUR-COMPUTER" # OWCF folder path. Finish with '/'
 numOcores = 0 # When executing the script as part of an HPC cluster batch job, the number of CPU cores will be detected and set automatically (i.e. the value of the numOcores variable does not matter)
 
 ## Navigate to the OWCF folder and activate the OWCF environment
@@ -115,9 +115,9 @@ end
     Emin = 5.0 # keV
     Emax = 252.0 # keV
     filepath_equil = folderpath_OWCF*"equilibrium/JET/g99971/g99971_474-48.9.eqdsk" #g94701/g94701_0-50.7932.eqdsk" #g96100/g96100_0-53.0012.eqdsk"
-    filepath_FI_distr = "/home/ppfe/henrikj/Data/JET/99971/TRANSP/L72/99971L72_fi_2.jld2" # for example "c12_2_FI_distribution_800x50x43x49(+1).h5" or "c15_3_FI_distribution_101x52x45x47.jld2"
-    filepath_FI_TRANSP_shot = "/home/ppfe/henrikj/Data/JET/99971/TRANSP/L72/99971L72_fi_2.cdf" # As an example, if filepath_thermal_distr=="96100J01.cdf" then this variable can be "96100J01_fi_1.cdf".
-    filepath_thermal_distr = "/home/ppfe/henrikj/Data/JET/99971/TRANSP/L72/99971L72.cdf" # for example "96100J01.cdf", "c21_3_thermal_profiles.jld2" or ""
+    filepath_FI_distr = "/.../../.../Data/JET/99971/TRANSP/L72/99971L72_fi_2.jld2" # for example "c12_2_FI_distribution_800x50x43x49(+1).h5" or "c15_3_FI_distribution_101x52x45x47.jld2"
+    filepath_FI_TRANSP_shot = "/.../.../.../Data/JET/99971/TRANSP/L72/99971L72_fi_2.cdf" # As an example, if filepath_thermal_distr=="96100J01.cdf" then this variable can be "96100J01_fi_1.cdf".
+    filepath_thermal_distr = "/.../.../.../Data/JET/99971/TRANSP/L72/99971L72.cdf" # for example "96100J01.cdf", "c21_3_thermal_profiles.jld2" or ""
     folderpath_o = "../OWCF_results/app_examples/" # Output folder path. Finish with '/'
     h5_is_rowmajor = false # Set to true, if 'filepath_EpRz' is an .h5/.hdf5 and it was saved using a row-major programming language
     inclPrideRockOrbs = true # If true, then (drift) orbits with pm<R_axis will be included
