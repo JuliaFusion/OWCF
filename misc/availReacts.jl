@@ -27,10 +27,12 @@
 #
 # DO NOT ALTER THIS SCRIPT. More fusion reactions might be added in the future.
 #
-# Script written by Henrik Järleblad. Last maintained 2025-07-11.
+# Script written by Henrik Järleblad. Last maintained 2026-09-08.
 ######################################################################################################
 
-include("species_func.jl")
+if !(@isdefined OWCF_B_e) # Can have been already loaded via other OWCF scripts
+    include("species_func.jl")
+end
 
 OWCF_AVAILABLE_FUSION_REACTIONS = ["D(D,n)3He-GS","T(h,g)4He-GS","h(T,g)4He-GS","D(T,n)4He-GS","T(D,n)4He-GS","D(3He,h)4He-GS","3He(D,h)4He-GS","9Be(4He,12C)n-1L","4He(9Be,12C)n-1L","9Be(4He,12C)n-2L","4He(9Be,12C)n-2L"]
 OWCF_AVAILABLE_FUSION_REACTIONS_FOR_ANALYTIC_COMPUTATION = ["D(T,n)4He-GS","T(D,n)4He-GS","9Be(4He,12C)n-1L","4He(9Be,12C)n-1L","9Be(4He,12C)n-2L","4He(9Be,12C)n-2L"]
