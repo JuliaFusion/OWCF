@@ -41,7 +41,6 @@ begin
 	Pkg.activate(".")
 	verbose && println("Loading packages... ")
 	using GuidingCenterOrbits
-	using Interact
 	using Plots
 	using LinearAlgebra
 	using Contour
