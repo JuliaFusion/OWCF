@@ -24,7 +24,7 @@ md"""
 This notebook provides an application to visualize (guiding-centre) orbits in a tokamak in an interactive and intuitive manner. Also, the topological regions of orbit space (E,pm,Rm) are visualized. In addition, if computed, maps of the poloidal and toroidal transit times are visualized as well. Prior to running this notebook, please make sure you have run the OWCF/calcTopoMap.jl tool (or equivalent). Also, please make sure that you have noted the path to the saved topological map output file. More specifically, If the filepath\_tm .jld2-file (see below) has keys named 'polTransTimes' and 'torTransTimes', the user will also be able to visualize maps of the poloidal and toroidal transit times. In the app below, this is done automatically.
 
 ## Inputs:
-- enable\_COM - If true, (E,pm,Rm) -> (E,Λ,Pϕ_n;σ) can be performed via a toggle button. Set to false to minimize computation time. THIS IS TEMPORARILY OUT-OF-ORDER - Bool
+- enable\_COM - If true, (E,pm,Rm) -> (E,Λ,Pϕ_n;σ) can be performed via a toggle button. Set to false to minimize computation time - Bool
 - folderpath\_OWCF - The path to the OWCF folder on your computer. Needed for correct loading - String
 - filepath\_equil - The path to the file with the tokamak magnetic equilibrium and geometry - String
 - filepath\_tm - The path to the .jld2-file containing the topological map (and more). Can be computed using the OWCF/calcTopoMap.jl script - String
@@ -38,7 +38,7 @@ This notebook provides an application to visualize (guiding-centre) orbits in a 
 # -
 
 ### Notebook written by Henrik Järleblad, henrikj@dtu.dk
-### Last maintained 2026-08-31
+### Last maintained 2026-09-11
 """
 
 # ╔═╡ cd6a92a9-7113-4281-8596-a520642c5cbe
@@ -51,10 +51,7 @@ begin
     # Manifest.toml files.
     folderpath_OWCF = "REPLACE-THIS-TEXT-WITH-THE-PATH-TO-THE-OWCF-FOLDER-ON-YOUR-COMPUTER" # Finish with '/'
     
-    enable_COM = false # TEMPORARILY OUT-OF-ORDER!!! DO NOT SET TO 'true'!!! Set to false for large grids (>10x100x100 in (E,pm,Rm)). The computation time simply becomes too large. Or...
-    if enable_COM
-        filepath_tm_COM = "" # ...please specify an output of the os2com.jl script (which contains the key "topoMap")(and possibly "polTransTimes" and "torTransTimes"). This can also have been produced automatically from orbitsWebApp.jl. Leave unspecified if orbitsWebApp.jl should compute the (E,pm,Rm) -> (E,Λ,Pϕ_n;σ) map itself.
-    end
+    enable_COM = true # Set to false for large grids (>10x100x100 in (E,pm,Rm)). The computation time simply becomes too large
     filepath_equil = folderpath_OWCF*"equilibrium/JET/g99971/g99971_474-48.9.eqdsk"  # Example JET shot 96100 at 13s (53 minus 40): g96100/g96100_0-53.0012.eqdsk" #
     filepath_tm = folderpath_OWCF*"apps/example_data/topoMap_JET_99971L72_at48,9s_D_6x101x102_wLost.jld2"
     FI_species = "D" # Example deuterium: "D"
@@ -149,80 +146,22 @@ begin
 
     # Map from (E.pm,Rm) to (E,Λ,Pϕ_n;σ), if required
 	# Mapping topological map to (E,Λ,Pϕ_n;σ)
-    if enable_COM && !(isfile(filepath_tm_COM))
+    if enable_COM
         verbose && println(">>>>>> Mapping topological map from (E,pm,Rm) to (E,Λ,Pϕ_n;σ) <<<<<<... ")
-        topoMap_COM, E_dummy, Λ_array, Pϕ_n_array = os2COM(M, topoMap, Vector(E_array), Vector(pm_array), Vector(Rm_array), FI_species; nl=2*length(pm_array), npp=2*length(Rm_array), isTopoMap=true, verbose=verbose)
-    elseif enable_COM && isfile(filepath_tm_COM)
-        verbose && println("Loading topological map in (E,Λ,Pϕ_n;σ) coordinates from filepath_tm_COM... ")
-        myfile_tm_COM = jldopen(filepath_tm_COM,false,false,false,IOStream)
-        topoMap_COM = myfile_tm_COM["topoMap"]
-        E_array_COM = myfile_tm_COM["E_array"]
-        Λ_array = myfile_tm_COM["Lambda_array_topoMap"]
-        Pϕ_n_array = myfile_tm_COM["Pphi_n_array_topoMap"]
-        close(myfile_tm_COM)
-        if !(E_array==E_array_COM)
-            error("Energy grid points in (E,pm,Rm) do not match energy grid points in (E,Λ,Pϕ_n;σ). Please correct and re-try.")
-        end
+        topoMap_COM, _, Λ_array, Pϕ_n_array = os2COM(M, topoMap, Vector(E_array), Vector(pm_array), Vector(Rm_array), FI_species; nl=2*length(pm_array), npp=2*length(Rm_array), isTopoMap=true, verbose=verbose)
     else
         verbose && println("Switching (E,pm,Rm) -> (E,Λ,Pϕ_n;σ) will not be possible.")
     end
     
     # Mapping maps of the poloidal and toroidal transit times to (E,Λ,Pϕ_n;σ), if available
     if poltor
-        if enable_COM && !(isfile(filepath_tm_COM))
+        if enable_COM
             verbose && println(">>>>>> Mapping poloidal transit times from (E,pm,Rm) to (E,Λ,Pϕ_n;σ) <<<<<<... ")
-            valid_orbit_indices = findall(x-> (x!=9.0) && (x!=7.0), topoMap) # 9 and 7 are the integers representing invalid and lost orbits in the calcTopoMap.jl script, respectively. We don't want them.
+            valid_orbit_indices = findall(x-> (x!=9.0) && (x!=6.0) && (x!=7.0), topoMap) # 9, 6 and 7 are the integers representing invalid, incomplete and lost orbits in the calcTopoMap.jl script, respectively. We don't want them.
             polTransTimes_COM, E_array_pol, Λ_array_pol, Pϕ_n_array_pol = os2COM(M, valid_orbit_indices, polTransTimes, E_array, pm_array, Rm_array, FI_species; nl=2*length(pm_array), npp=2*length(Rm_array), verbose=verbose)
             verbose && println(">>>>>> Mapping toroidal transit times from (E,pm,Rm) to (E,Λ,Pϕ_n;σ) <<<<<<... ")
             torTransTimes_COM, E_array_tor, Λ_array_tor, Pϕ_n_array_tor = os2COM(M, valid_orbit_indices, torTransTimes, E_array, pm_array, Rm_array, FI_species; nl=2*length(pm_array), npp=2*length(Rm_array), verbose=verbose)
-        elseif enable_COM && isfile(filepath_tm_COM)
-            verbose && println("Loading maps of poloidal and toroidal transit times in (E,Λ,Pϕ_n;σ) coordinates from filepath_tm_COM... ")
-            myfile_tm_COM = jldopen(filepath_tm_COM,false,false,false,IOStream)
-            polTransTimes_COM = myfile_tm_COM["polTransTimes"]
-            E_array_pol = myfile_tm_COM["E_array"] # Very silly
-            Λ_array_pol = myfile_tm_COM["Lambda_array_polTransTimes"]
-            Pϕ_n_array_pol = myfile_tm_COM["Pphi_n_array_polTransTimes"]
-            torTransTimes_COM = myfile_tm_COM["torTransTimes"]
-            E_array_tor = myfile_tm_COM["E_array"] # Even more silly
-            Λ_array_tor = myfile_tm_COM["Lambda_array_torTransTimes"]
-            Pϕ_n_array_tor = myfile_tm_COM["Pphi_n_array_torTransTimes"]
-            close(myfile)
-        else
         end
-    end
-    
-    if enable_COM && !(isfile(filepath_tm_COM))
-        verbose && println("Saving topological map in (E,Λ,Pϕ_n;σ) format... ")
-        nmu = length(Λ_array)
-        nPphi = length(Pϕ_n_array)
-        date_and_time = split("$(Dates.now())","T")[1]*"at"*split("$(Dates.now())","T")[2][1:5]
-        filepath_output_orig = folderpath_OWCF*"orbitsWebApp_COM_data_$(length(E_array))x$(nmu)x$(nPphi)x2_"*date_and_time
-        global filepath_output = deepcopy(filepath_output_orig)
-        global C = 1
-        while isfile(filepath_output*".jld2") # To take care of not overwriting files. Add _(1), _(2) etc
-            global filepath_output
-            global C
-            filepath_output = filepath_output_orig*"_($(Int64(C)))"
-            C += 1 # global scope, to surpress warnings
-        end
-        filepath_output = filepath_output*".jld2"
-        myfile_COMsave = jldopen(filepath_output,true,true,false,IOStream)
-        write(myfile_COMsave,"topoMap",topoMap_COM)
-        write(myfile_COMsave,"E_array",E_array)
-        write(myfile_COMsave,"Lambda_array_topoMap", Λ_array)
-        write(myfile_COMsave,"Pphi_n_array_topoMap", Pϕ_n_array)
-        if poltor
-            verbose && println("Saving poloidal and toroidal transit times in (E,Λ,Pϕ_n;σ) format... ")
-            write(myfile_COMsave,"polTransTimes",polTransTimes_COM)
-            write(myfile_COMsave,"Lambda_array_polTransTimes",Λ_array_pol)
-            write(myfile_COMsave,"Pphi_n_array_polTransTimes",Pϕ_n_array_pol)
-            write(myfile_COMsave,"torTransTimes",torTransTimes_COM)
-            write(myfile_COMsave,"Lambda_array_torTransTimes",Λ_array_tor)
-            write(myfile_COMsave,"Pphi_n_array_torTransTimes",Pϕ_n_array_tor)
-        end
-        close(myfile_COMsave)
-        verbose && println("----> NEXT TIME orbitsWebApp.jl IS RUN WITH THE SAME INPUTS, set the 'filepath_tm_COM' input variable to "*filepath_output*", to avoid having to re-do the (E,pm,Rm) -> (E,Λ,Pϕ_n;σ) mapping!")
-        verbose && println("----> PLEASE DELETE "*filepath_output*" MANUALLY IF NOT NEEDED.")
     end
 
     # Safety checks
@@ -435,26 +374,26 @@ let
 
     # Poloidal and toroidal transit time maps
     if poltor
+        pTT_microsecs = polTransTimes[Int64(Eci),:,:] ./(1.0e-6) # Convert from seconds to microseconds
+        tTT_microsecs = torTransTimes[Int64(Eci),:,:] ./(1.0e-6) # Convert from seconds to microseconds
+        nz_coords = findall(x-> x>0.0,pTT_microsecs) # Find the 2D matrix coordinates of all non-zero elements
+        nz_coords_tTT = findall(x-> x>0.0,tTT_microsecs) # Find the 2D matrix coordinates of all non-zero elements
+        my_coords = length(nz_coords) > 1 ? nz_coords : CartesianIndices(size(pTT_microsecs)) # Are there actually more than one non-zero element? If not, use all elements
+        my_coords_tTT = length(nz_coords_tTT) > 1 ? nz_coords_tTT : CartesianIndices(size(tTT_microsecs)) # Are there actually more than one non-zero element? If not, use all elements
+        min_pol, max_pol = extrema(pTT_microsecs[my_coords]) # Find minimum and maximum values
+        min_tor, max_tor = extrema(tTT_microsecs[my_coords_tTT]) # Find minimum and maximum values
+        min_OOM, max_OOM = (floor(log10(min_pol)),ceil(log10(max_pol))) # The orders of magnitude of the minimum and maximum values
+        min_OOM_tTT, max_OOM_tTT = (floor(log10(min_tor)),ceil(log10(max_tor))) # The orders of magnitude of the minimum and maximum values
         if (phase_space==:OS) || !enable_COM
-            pTT_microsecs = polTransTimes[Int64(Eci),:,:] ./(1.0e-6) # Convert from seconds to microseconds
-            nz_coords = findall(x-> x>0.0,pTT_microsecs) # Find the 2D matrix coordinates of all non-zero elements
-            my_coords = length(nz_coords) > 1 ? nz_coords : CartesianIndices(size(pTT_microsecs)) # Are there actually more than one non-zero element? If not, use all elements
-            min_pol, max_pol = extrema(pTT_microsecs[my_coords]) # Find minimum and maximum values
-            min_OOM, max_OOM = (floor(log10(min_pol)),ceil(log10(max_pol))) # The orders of magnitude of the minimum and maximum values
             if !((max_OOM-min_OOM)==0.0) && (length(nz_coords) > 1) && ((max_pol/min_pol) > 10) # If all values are NOT within same order of magnitude AND more than one non-zero element, use logarithmic colorbar
-                plt_pol = Plots.heatmap(Rm_array, pm_array, pTT_microsecs, xlabel="Rm [m]", ylabel="pm", title="tau_pol(Rm,pm) [microseconds] \n tau_pol($(round(Rm,digits=2)),$(round(pm,digits=2)))=$(round(o.tau_p /(1.0e-6),sigdigits=3)) microseconds", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), colorbar=true, colorbar_scale=:log10, clims = (10^min_OOM, 10^max_OOM), top_margin=3Plots.mm) # Get nice powers-of-ten limits for the colorbar
-            else
-                plt_pol = Plots.heatmap(Rm_array, pm_array, pTT_microsecs, xlabel="Rm [m]", ylabel="pm", title="tau_pol(Rm,pm) [microseconds] \n tau_pol($(round(Rm,digits=2)),$(round(pm,digits=2)))=$(round(o.tau_p /(1.0e-6),sigdigits=3)) microseconds", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), colorbar=true, top_margin=3Plots.mm)
-            end
-            tTT_microsecs = torTransTimes[Int64(Eci),:,:] ./(1.0e-6) # Convert from seconds to microseconds
-            nz_coords = findall(x-> x>0.0,tTT_microsecs) # Find the 2D matrix coordinates of all non-zero elements
-            my_coords = length(nz_coords) > 1 ? nz_coords : CartesianIndices(size(tTT_microsecs)) # Are there actually more than one non-zero element? If not, use all elements
-            min_tor, max_tor = extrema(tTT_microsecs[my_coords]) # Find minimum and maximum values
-            min_OOM, max_OOM = (floor(log10(min_tor)),ceil(log10(max_tor))) # The orders of magnitude of the minimum and maximum values
-            if !((max_OOM-min_OOM)==0.0) && (length(nz_coords) > 1) && ((max_tor/min_tor) > 10) # If all values are NOT within same order of magnitude AND more than one non-zero element, use logarithmic colorbar
-                plt_tor = Plots.heatmap(Rm_array, pm_array, tTT_microsecs, xlabel="Rm [m]", ylabel="pm", title="tau_tor(Rm,pm) [microseconds] \n tau_tor($(round(Rm,digits=2)),$(round(pm,digits=2)))=$(round(o.tau_t /(1.0e-6),sigdigits=3)) microseconds", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), colorbar=true, colorbar_scale=:log10, clims = (10^min_OOM, 10^max_OOM), top_margin=3Plots.mm) # Get nice powers-of-ten limits for the colorbar
+                plt_pol = Plots.heatmap(Rm_array, pm_array, pTT_microsecs, xlabel="Rm [m]", ylabel="pm", title="tau_pol(Rm,pm) [microseconds] \n tau_pol($(round(Rm,digits=2)),$(round(pm,digits=2)))=$(round(o.tau_p /(1.0e-6),sigdigits=3)) microseconds", titlefontsize=10, fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), colorbar=true, colorbar_scale=:log10, clims = (10^min_OOM, 10^max_OOM), top_margin=3Plots.mm) # Get nice powers-of-ten limits for the colorbar
             else # Else, use linear colorbar
-                plt_tor = Plots.heatmap(Rm_array, pm_array, tTT_microsecs, xlabel="Rm [m]", ylabel="pm", title="tau_tor(Rm,pm) [microseconds] \n tau_tor($(round(Rm,digits=2)),$(round(pm,digits=2)))=$(round(o.tau_t /(1.0e-6),sigdigits=3)) microseconds", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), colorbar=true, top_margin=3Plots.mm)
+                plt_pol = Plots.heatmap(Rm_array, pm_array, pTT_microsecs, xlabel="Rm [m]", ylabel="pm", title="tau_pol(Rm,pm) [microseconds] \n tau_pol($(round(Rm,digits=2)),$(round(pm,digits=2)))=$(round(o.tau_p /(1.0e-6),sigdigits=3)) microseconds", titlefontsize=10, fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), colorbar=true, clims=(min_pol, max_pol), top_margin=3Plots.mm)
+            end
+            if !((max_OOM_tTT-min_OOM_tTT)==0.0) && (length(nz_coords_tTT) > 1) && ((max_tor/min_tor) > 10) # If all values are NOT within same order of magnitude AND more than one non-zero element, use logarithmic colorbar
+                plt_tor = Plots.heatmap(Rm_array, pm_array, tTT_microsecs, xlabel="Rm [m]", ylabel="pm", title="tau_tor(Rm,pm) [microseconds] \n tau_tor($(round(Rm,digits=2)),$(round(pm,digits=2)))=$(round(o.tau_t /(1.0e-6),sigdigits=3)) microseconds", titlefontsize=10, fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), colorbar=true, colorbar_scale=:log10, clims = (10^min_OOM, 10^max_OOM), top_margin=3Plots.mm) # Get nice powers-of-ten limits for the colorbar
+            else # Else, use linear colorbar
+                plt_tor = Plots.heatmap(Rm_array, pm_array, tTT_microsecs, xlabel="Rm [m]", ylabel="pm", title="tau_tor(Rm,pm) [microseconds] \n tau_tor($(round(Rm,digits=2)),$(round(pm,digits=2)))=$(round(o.tau_t /(1.0e-6),sigdigits=3)) microseconds", titlefontsize=10, fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), colorbar=true, clims=(min_tor, max_tor), top_margin=3Plots.mm)
             end
             if show_coordinate
                 plt_pol = Plots.scatter!(plt_pol, [Rm],[pm],markershape=:circle,mc=orb_color,legend=false,markersize=6)
@@ -468,24 +407,15 @@ let
                 pTT_microsecs = polTransTimes_COM[Int64(Eci),:,:,2] ./(1.0e-6)
                 tTT_microsecs = torTransTimes_COM[Int64(Eci),:,:,2] ./(1.0e-6)
             end
-            nz_coords = findall(x-> x>0.0,pTT_microsecs) # Find the 2D matrix coordinates of all non-zero elements
-            my_coords = length(nz_coords) > 1 ? nz_coords : CartesianIndices(size(pTT_microsecs)) # Are there actually more than one non-zero element? If not, use all elements
-            min_pol, max_pol = extrema(pTT_microsecs[my_coords]) # Find minimum and maximum values
-            min_OOM, max_OOM = (floor(log10(min_pol)),ceil(log10(max_pol))) # The orders of magnitude of the minimum and maximum values
             if !((max_OOM-min_OOM)==0.0) && (length(nz_coords) > 1) && ((max_pol/min_pol) > 10) # If all values are NOT within same order of magnitude AND more than one non-zero element, use logarithmic colorbar
-                plt_pol = Plots.heatmap(Pϕ_n_array_pol,Λ_array_pol, pTT_microsecs,xlabel="Pϕ_n", ylabel="Λ", title="tau_pol(Pϕ_n,Λ) [microseconds] \n tau_pol($(round(Pϕ_n,sigdigits=2)),$(round(Λ,sigdigits=2)))=$(round(o.tau_p /(1.0e-6),sigdigits=3)) microseconds", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), colorbar=true, colorbar_scale=:log10, clims = (10^min_OOM, 10^max_OOM), top_margin=3Plots.mm, ylims=extrema(Λ_array_pol), xlims=extrema(Pϕ_n_array_pol)) # Get nice powers-of-ten limits for the colorbar
-            else
-                plt_pol = Plots.heatmap(Pϕ_n_array_pol,Λ_array_pol, pTT_microsecs,xlabel="Pϕ_n", ylabel="Λ", title="tau_pol(Pϕ_n,Λ) [microseconds] \n tau_pol($(round(Pϕ_n,sigdigits=2)),$(round(Λ,sigdigits=2)))=$(round(o.tau_p /(1.0e-6),sigdigits=3)) microseconds", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), colorbar=true, top_margin=3Plots.mm, ylims=extrema(Λ_array_pol), xlims=extrema(Pϕ_n_array_pol))
+                plt_pol = Plots.heatmap(Pϕ_n_array_pol,Λ_array_pol, pTT_microsecs,xlabel="Pϕ_n", ylabel="Λ", title="tau_pol(Pϕ_n,Λ) [microseconds] \n tau_pol($(round(Pϕ_n,sigdigits=2)),$(round(Λ,sigdigits=2)))=$(round(o.tau_p /(1.0e-6),sigdigits=3)) microseconds", titlefontsize=10, fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), colorbar=true, colorbar_scale=:log10, clims = (10^min_OOM, 10^max_OOM), top_margin=3Plots.mm, ylims=extrema(Λ_array_pol), xlims=extrema(Pϕ_n_array_pol)) # Get nice powers-of-ten limits for the colorbar
+            else # Else, use linear colorbar
+                plt_pol = Plots.heatmap(Pϕ_n_array_pol,Λ_array_pol, pTT_microsecs,xlabel="Pϕ_n", ylabel="Λ", title="tau_pol(Pϕ_n,Λ) [microseconds] \n tau_pol($(round(Pϕ_n,sigdigits=2)),$(round(Λ,sigdigits=2)))=$(round(o.tau_p /(1.0e-6),sigdigits=3)) microseconds", titlefontsize=10, fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), colorbar=true, clims=(min_pol, max_pol), top_margin=3Plots.mm, ylims=extrema(Λ_array_pol), xlims=extrema(Pϕ_n_array_pol))
             end
-
-            nz_coords = findall(x-> x>0.0,tTT_microsecs) # Find the 2D matrix coordinates of all non-zero elements
-            my_coords = length(nz_coords) > 1 ? nz_coords : CartesianIndices(size(tTT_microsecs)) # Are there actually more than one non-zero element? If not, use all elements
-            min_tor, max_tor = extrema(tTT_microsecs[my_coords]) # Find minimum and maximum values
-            min_OOM, max_OOM = (floor(log10(min_tor)),ceil(log10(max_tor))) # The orders of magnitude of the minimum and maximum values
-            if !((max_OOM-min_OOM)==0.0) && (length(nz_coords) > 1) && ((max_tor/min_tor) > 10) # If all values are NOT within same order of magnitude AND more than one non-zero element, use logarithmic colorbar
-                plt_tor = Plots.heatmap(Pϕ_n_array_tor,Λ_array_tor, tTT_microsecs,xlabel="Pϕ_n", ylabel="Λ", title="tau_tor(Pϕ_n,Λ) [microseconds] \n tau_tor($(round(Pϕ_n,sigdigits=2)),$(round(Λ,sigdigits=2)))=$(round(o.tau_t /(1.0e-6),sigdigits=3)) microseconds", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), colorbar=true, colorbar_scale=:log10, clims = (10^min_OOM, 10^max_OOM), top_margin=3Plots.mm, ylims=extrema(Λ_array_tor), xlims=extrema(Pϕ_n_array_tor)) # Get nice powers-of-ten limits for the colorbar
-            else
-                plt_tor = Plots.heatmap(Pϕ_n_array_tor,Λ_array_tor, tTT_microsecs,xlabel="Pϕ_n", ylabel="Λ", title="tau_tor(Pϕ_n,Λ) [microseconds] \n tau_tor($(round(Pϕ_n,sigdigits=2)),$(round(Λ,sigdigits=2)))=$(round(o.tau_t /(1.0e-6),sigdigits=3)) microseconds", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), colorbar=true, top_margin=3Plots.mm, ylims=extrema(Λ_array_tor), xlims=extrema(Pϕ_n_array_tor))
+            if !((max_OOM_tTT-min_OOM_tTT)==0.0) && (length(nz_coords_tTT) > 1) && ((max_tor/min_tor) > 10) # If all values are NOT within same order of magnitude AND more than one non-zero element, use logarithmic colorbar
+                plt_tor = Plots.heatmap(Pϕ_n_array_tor,Λ_array_tor, tTT_microsecs,xlabel="Pϕ_n", ylabel="Λ", title="tau_tor(Pϕ_n,Λ) [microseconds] \n tau_tor($(round(Pϕ_n,sigdigits=2)),$(round(Λ,sigdigits=2)))=$(round(o.tau_t /(1.0e-6),sigdigits=3)) microseconds", titlefontsize=10, fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), colorbar=true, colorbar_scale=:log10, clims = (10^min_OOM, 10^max_OOM), top_margin=3Plots.mm, ylims=extrema(Λ_array_tor), xlims=extrema(Pϕ_n_array_tor)) # Get nice powers-of-ten limits for the colorbar
+            else # Else, use linear colorbar
+                plt_tor = Plots.heatmap(Pϕ_n_array_tor,Λ_array_tor, tTT_microsecs,xlabel="Pϕ_n", ylabel="Λ", title="tau_tor(Pϕ_n,Λ) [microseconds] \n tau_tor($(round(Pϕ_n,sigdigits=2)),$(round(Λ,sigdigits=2)))=$(round(o.tau_t /(1.0e-6),sigdigits=3)) microseconds", titlefontsize=10, fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), colorbar=true, clims=(min_tor, max_tor), top_margin=3Plots.mm, ylims=extrema(Λ_array_tor), xlims=extrema(Pϕ_n_array_tor))
             end
             if show_coordinate
                 plt_pol = Plots.scatter!(plt_pol, [Pϕ_n],[Λ],markershape=:circle,mc=orb_color,label="",markersize=6)
@@ -517,18 +447,6 @@ let
     Plots.plot(myplt)
 end
 
-# ╔═╡ d3c783ea-2867-4e1e-968a-a6fe982cfa74
-
-
-# ╔═╡ 09af6e22-0663-4e5d-8f0c-b06055270e0e
-
-
-# ╔═╡ 4419b398-8ebf-4c15-a45a-6ff0d287d585
-
-
-# ╔═╡ 34acf9b7-8e20-4e2e-84ca-e9bcc051609a
-
-
 # ╔═╡ Cell order:
 # ╠═a761bf9e-a159-11f1-2ec7-711778cfac0d
 # ╠═cd6a92a9-7113-4281-8596-a520642c5cbe
@@ -539,7 +457,3 @@ end
 # ╠═e9cd967d-c461-4324-99e0-6110bf7d43fc
 # ╠═a37e90da-5be0-4b14-8613-1e146dca5ec0
 # ╠═684923b0-dcf4-4ff3-9d50-8291ddb0b593
-# ╠═d3c783ea-2867-4e1e-968a-a6fe982cfa74
-# ╠═09af6e22-0663-4e5d-8f0c-b06055270e0e
-# ╠═4419b398-8ebf-4c15-a45a-6ff0d287d585
-# ╠═34acf9b7-8e20-4e2e-84ca-e9bcc051609a

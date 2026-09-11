@@ -57,7 +57,7 @@ To be able to use the app, a topological map containing toroidal (τ\_ϕ) and po
 # -
 
 ### Notebook written by Henrik Järleblad, henrikj@dtu.dk
-### Last maintained 2026-09-02
+### Last maintained 2026-09-10
 """
 
 # ╔═╡ 4e590375-f4fd-47ca-b89c-fe46dbdc22c2
@@ -70,9 +70,9 @@ begin
 	# Manifest.toml files.
 	folderpath_OWCF = "REPLACE-THIS-TEXT-WITH-THE-PATH-TO-THE-OWCF-FOLDER-ON-YOUR-COMPUTER" # Finish with '/'
 	
-	enable_COM = false # CURRENTLY OUT-OF-ORDER!!! DO NOT SET TO 'true'!!! Set to false for large grids (>10x100x100 in (E,pm,Rm)). The computation time simply becomes too large. Or...
+	enable_COM = true
 	if enable_COM
-	    filepath_tm_COM = "" # ...please specify an output of the os2com.jl script (which contains the key "topoMap")(and possibly "polTransTimes" and "torTransTimes"). Leave unspecified if orbitsWebApp.jl should compute the (E,pm,Rm) -> (E,Λ,Pϕ_n;σ) map itself.
+	    filepath_tm_COM = "" #  Leave unspecified if orbitsWebApp.jl should compute the (E,pm,Rm) -> (E,Λ,Pϕ_n;σ) map itself. or please specify an output of the os2com.jl script (which contains the key "topoMap")(and "polTransTimes" and "torTransTimes")
 	end
 	filepath_equil = folderpath_OWCF*"equilibrium/JET/g99971/g99971_474-48.9.eqdsk"  # Example JET shot 96100 at 13s (53 minus 40): g96100/g96100_0-53.0012.eqdsk" #
 	filepath_tm = folderpath_OWCF*"apps/example_data/topoMap_JET_99971L72_at48,9s_D_6x101x102_wLost.jld2"
@@ -101,6 +101,7 @@ begin
 	using EFIT
 	using Equilibrium
 	using JLD2
+	using LinearAlgebra
 	using GuidingCenterOrbits
 	using Plots
 	using PlutoUI
@@ -153,8 +154,9 @@ let
 		- m .*ω_θ[iE,:,:]
 		- ω_rot .*ones(npm,nRm) 
 							))
-	
-	Plots.heatmap(Rm_array,pm_array,resonance,xlabel="Rm [m]", ylabel="pm", title="E: $(round(E,digits=3)) keV", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]))
+	cmax = round(maximum(filter(!isnan,resonance)))
+	cmin = cmax - 3
+	Plots.heatmap(Rm_array,pm_array,resonance,xlabel="Rm [m]", ylabel="pm", title="E: $(round(E,digits=3)) keV", fillcolor=cgrad([:darkblue, :red, :white]))
 end
 
 # ╔═╡ 84693850-008b-433d-b2d8-4fc493167189
@@ -195,7 +197,7 @@ begin
     # Mapping topological map to (E,Λ,Pϕ_n;σ)
     if enable_COM && !(isfile(filepath_tm_COM))
         verbose && println(">>>>>> Mapping topological map from (E,pm,Rm) to (E,Λ,Pϕ_n;σ) <<<<<<... ")
-        topoMap_COM, E_array, Λ_array, Pϕ_n_array = os2COM(M, topoMap, Vector(E_array), pm_array, Rm_array, FI_species; nl=2*length(pm_array), npp=2*length(Rm_array), isTopoMap=true, verbose=verbose)
+        topoMap_COM, E_array, Λ_array, Pϕ_n_array = os2COM(M, topoMap, Vector(E_array), pm_array, Rm_array, FI_species; nl=2*length(pm_array), npp=2*length(Rm_array), isTopoMap=true, verbose=verbose, wall=wall)
     elseif enable_COM && isfile(filepath_tm_COM)
         verbose && println("Loading topological map in (E,Λ,Pϕ_n;σ) coordinates from filepath_tm_COM... ")
         myfile = jldopen(filepath_tm_COM,false,false,false,IOStream)
@@ -214,7 +216,7 @@ begin
     # Mapping maps of the poloidal and toroidal transit times to (E,Λ,Pϕ_n;σ), if available
     if enable_COM && !(isfile(filepath_tm_COM))
         verbose && println(">>>>>> Mapping poloidal transit times from (E,pm,Rm) to (E,Λ,Pϕ_n;σ) <<<<<<... ")
-        valid_orbit_indices = findall(x-> (x!=9.0) && (x!=7.0), topoMap) # 9 and 7 are the integers representing invalid and lost orbits in the calcTopoMap.jl script, respectively. We don't want them.
+        valid_orbit_indices = findall(x-> (x!=9.0) && (x!=6.0) && (x!=7.0), topoMap) # 9, 6 and 7 are the integers representing invalid, incomplete and lost orbits in the calcTopoMap.jl script, respectively. We don't want them.
         polTransTimes_COM, E_array_pol, Λ_array_pol, Pϕ_n_array_pol = os2COM(M, valid_orbit_indices, polTransTimes, E_array, pm_array, Rm_array, FI_species; nl=2*length(pm_array), npp=2*length(Rm_array), verbose=verbose)
         verbose && println(">>>>>> Mapping toroidal transit times from (E,pm,Rm) to (E,Λ,Pϕ_n;σ) <<<<<<... ")
         torTransTimes_COM, E_array_tor, Λ_array_tor, Pϕ_n_array_tor = os2COM(M, valid_orbit_indices, torTransTimes, E_array, pm_array, Rm_array, FI_species; nl=2*length(pm_array), npp=2*length(Rm_array), verbose=verbose)
@@ -382,6 +384,7 @@ let
 	EPRc = EPRCoordinate(M, E, pm, Rm; amu=getSpeciesAmu(FI_species), q=getSpeciesEcu(FI_species))
     o = get_orbit(M,EPRc; wall=wall, extra_kw_args...)
     if (phase_space==:COM) && enable_COM
+		E_joule = 1000*(GuidingCenterOrbits.e0)*E
         myHc = HamiltonianCoordinate(M, EPRc)
         μ = myHc.mu; Λ = μ*B0/E_joule
         Pϕ = myHc.p_phi; Pϕ_n = Pϕ/(q*Ψ_w_norm)
@@ -473,7 +476,9 @@ let
 			- m .*ω_θ[Int64(Eci),:,:]
 			- ω_rot .*ones(npm,nRm)
 		))
-        plt_res = Plots.heatmap(Rm_array,pm_array,resonance,xlabel="Rm [m]", ylabel="pm", title="E: $(round(E,digits=3)) keV", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), ylims=extrema(pm_array), xlims=extrema(Rm_array))
+		cmax = round(maximum(filter(!isnan,resonance)))
+		cmin = cmax - 3
+        plt_res = Plots.heatmap(Rm_array,pm_array,resonance,xlabel="Rm [m]", ylabel="pm", title="E: $(round(E,digits=3)) keV", fillcolor=cgrad([:darkblue, :red, :white]), ylims=extrema(pm_array), xlims=extrema(Rm_array), legend=false, clims=(cmin,cmax))
     else
         nl = length(Λ_array_tor) # tor or pol should not matter
         npp = length(Pϕ_n_array_pol) # tor or pol should not matter
@@ -492,8 +497,9 @@ let
 				- ω_rot .*ones(nl,npp)
 			))
         end
-
-        plt_res = Plots.heatmap(Pϕ_n_array_tor[Int64(Eci),:],Λ_array_tor[Int64(Eci),:],resonance,legend=false,xlabel="Pϕ_n", ylabel="Λ", title="E: $(round(E,digits=3)) keV", fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), ylims=extrema(Λ_array_tor), xlims=extrema(Pϕ_n_array_tor))
+		cmax = round(maximum(filter(!isnan,resonance)))
+		cmin = cmax - 4
+        plt_res = Plots.heatmap(Pϕ_n_array_tor,Λ_array_tor,resonance,legend=false,xlabel="Pϕ_n", ylabel="Λ", title="E: $(round(E,digits=3)) keV", fillcolor=cgrad([:darkblue, :red, :white]), ylims=extrema(Λ_array_tor), xlims=extrema(Pϕ_n_array_tor), clims=(cmin, cmax))
     end
     if show_coordinate
         if (phase_space==:OS) || !enable_COM
@@ -506,33 +512,6 @@ let
 	Plots.plot(plt_res, plt_topo, plt_top, plt_crs, layout=(2,2), size=(800, 800))
 end
 
-# ╔═╡ 8572b2a4-34c8-4fe5-b106-759d78d20d33
-
-
-# ╔═╡ f0823b81-2340-4495-8f1b-544f5e0ec9e3
-
-
-# ╔═╡ 26c118fb-774d-4c2f-a2ee-2c2f202e3e56
-
-
-# ╔═╡ 115b02e7-3660-4d20-9c18-11fb6e4b7718
-
-
-# ╔═╡ 714de67a-7f48-4c7d-90c9-5759aeb45258
-
-
-# ╔═╡ 09d757ea-9472-48a9-b22d-43876492a889
-
-
-# ╔═╡ 3ed81523-c733-492e-9bca-19771db89d7a
-
-
-# ╔═╡ 35b0b0bc-98a5-4adb-a29b-2d7fd3bf55b3
-
-
-# ╔═╡ 52bba0f0-e584-4e5d-aca4-8f75d22cfd97
-
-
 # ╔═╡ Cell order:
 # ╠═e1984f36-a6a7-11f1-16fc-a9fcbbb60876
 # ╠═4e590375-f4fd-47ca-b89c-fe46dbdc22c2
@@ -543,12 +522,3 @@ end
 # ╠═f73b5e13-4b8d-4770-afec-51df471bb7c2
 # ╠═e0515346-ae9c-4bb6-8475-91c9699ea8c9
 # ╠═066df4bc-ff34-482b-82ba-2a3bec2490f7
-# ╠═8572b2a4-34c8-4fe5-b106-759d78d20d33
-# ╠═f0823b81-2340-4495-8f1b-544f5e0ec9e3
-# ╠═26c118fb-774d-4c2f-a2ee-2c2f202e3e56
-# ╠═115b02e7-3660-4d20-9c18-11fb6e4b7718
-# ╠═714de67a-7f48-4c7d-90c9-5759aeb45258
-# ╠═09d757ea-9472-48a9-b22d-43876492a889
-# ╠═3ed81523-c733-492e-9bca-19771db89d7a
-# ╠═35b0b0bc-98a5-4adb-a29b-2d7fd3bf55b3
-# ╠═52bba0f0-e584-4e5d-aca4-8f75d22cfd97

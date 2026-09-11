@@ -31,6 +31,7 @@ begin
     using Equilibrium
     using GuidingCenterOrbits
     using JLD2
+    using LinearAlgebra
     using Plots
     using PlutoUI
     if !(@isdefined getReactionForm) # To avoid warnings, if cell is re-loaded
@@ -52,7 +53,7 @@ md"""
 ## Description:
 This notebook provides an application to visualize orbit weight functions in an interactive and intuitive manner. 
 
-It visualizes orbit weight functions as a function of orbit space (E,pm,Rm) coordinates. Since the orbit weight functions are three-dimensional, fast-ion energy (E) slices  are visualized. The fast-ion energy can be changed via an interactive slider to easily scroll through different fast-ion energies.
+It visualizes orbit weight functions as a function of orbit space (E,pm,Rm) coordinates. Since the orbit weight functions are three-dimensional, 2D 'slices' of constant fast-ion energy (E) are visualized. The fast-ion energy can be changed via an interactive slider to easily scroll through different fast-ion energies.
 
 The weights (delta function signals) that make up the orbit weight functions can also be visualized. This is done via the 'show\_delta\_signal' button in the web application. To clarify: in addition to having the web application help the user to visualize W\[Ed,E,:,:\] \(where 'W' is the orbit weight function, 'Ed' is a specific diagnostic signal measurement bin center and 'E' is a specific fast-ion energy\), this 'show\_delta\_signal' button allows the user to visualize W[:,E,pm,Rm] where 'pm' is a specific pitch maximum and 'Rm' is a specific major radius maximum.
 
@@ -63,29 +64,33 @@ Prior to running this notebook, please make sure you have run the following OWCF
 And that you have noted the paths to the output files. You will also (partially) need the following: 
  - An .eqdsk or .jld2 file containing a tokamak magnetic equilibrium and geometry. An .eqdsk file can be obtained from various EFIT users worldwide. An .jld2 file can be obtained by using the OWCF/extra/createCustomMagneticEquilibrium.jl tool.
  - An .hdf5 or .jld2 file with synthetic/experimental signal (please see script further down for specs)
+- A .jld2 file with the orbit weight functions parameterized in (E,Λ,Pϕ\_n;σ) coordinates. Such a file is obtained as an output file of the OWCF/helper/os2com.jl script.
  
 Note! The OWCF has several fast-ion diagnostic sightline models already built-in. Please see the OWCF/vc\_data/ folder for all the readily available diagnostic sightline models.
 
-Continuing, the user can also choose to specify the path to a file containing data for a fast-ion orbit-space distribution. The same orbit grid as the weight functions is required. In that case, the app will show a 2D slice (constant fast-ion energy) of the fast-ion distribution, and of the non-integrated WF density, along with everything else. Please consult the OWCF manual for further info.
+Continuing, the user can also choose to specify the path to a file containing data for a fast-ion distribution parameterized in (E,pm,Rm). The distribution has to be parameterized on the same orbit grid as for the weight functions. In that case, the app will show a 2D slice (of constant fast-ion energy) of the fast-ion distribution, and of the non-integrated WF density, along with everything else. Please consult the OWCF manual for further info.
 
-All energy slices are visualized with Rm on the x-axis and pm on the y-axis by default. This can be switched to the toroidal canonical angular momentum and magnetic moment via a toggle button in the app. THIS FUNCTION IS CURRENTLY OUT-OF-ORDER!!!
+All energy slices are visualized with Rm on the x-axis and pm on the y-axis by default. This can be switched to the toroidal canonical angular momentum and magnetic moment via a toggle button in the app.
 
 ### PLEASE NOTE! 
-It is recommended to ensure that the orbit weights and the topological boundaries
+It is recommended that the orbit weights and the topological boundaries
 have exactly the same dimensions and ranges, by using the orbit weights to calculate the topological map in calcTopoMap.jl (set useWeightsFile to true) in the first place.
+
+### PLEASE NOTE!
+If you include a fast-ion distribution to be visualized, the fast-ion distribution and the pertaining WF density will currently not be visualized in (E,Λ,Pϕ\_n;σ) coordinates. Only the weight functions. This will be updated in future OWCF updates.
 
 ## Inputs:
 - folderpath\_OWCF - The path to the OWCF folder on your computer. - String
 - verbose - If true, then the web application will talk a lot! - Bool
 - filepath\_tb - The path to the .jld2-file containing the topological boundaries. Obtained as the output file from the OWCF/helper/extractTopoBounds.jl tool or as an output file from the OWCF/calcTopoMap.jl script with the 'includeExtractTopoBounds' input variable set to true - String
-- enable\_COM - If set to true, it will be possible to also visualize the orbit weight functions in (E,Λ,Pϕ\_n;σ) coordinates. THIS FEATURE IS CURRENTLY OUT-OF-ORDER - Bool
-- filepath\_W\_COM - If enable\_COM is set to true, it is highly recommended that you provide the path to a file containing the weight matrix in (E,Λ,Pϕ_n;σ) format. This can be an output file from e.g. from OWCF/helper/os2com.jl tool. THIS FEATURE IS CURRENTLY OUT-OF-ORDER - String
-- filepath\_tm - If enable_COM is set to true and the filepath_W_COM variable is left unspecified, it is highly recommended that you provide the path to a file containing the pertaining topological map in (E,pm,Rm). THIS FEATURE IS CURRENTLY OUT-OF-ORDER - String
+- enable\_COM - If set to true, it will be possible to also visualize the orbit weight functions in (E,Λ,Pϕ\_n;σ) coordinates - Bool
+- filepath_W_COM - If enable\_COM is set to true, it is HIGHLY RECOMMENDED that you specify filepath_W_COM to be the path to an output file of the OWCF/helper/os2com.jl script. The os2com.jl should have been used to transform the weight functions from (E,pm,Rm) to (E,Λ,Pϕ\_n;σ) - String
+- filepath\_tm - If enable\_COM is set to true and you have not specified the filepath\_W\_COM variable (above), it will speed up computations (by possibly several minutes) if you provide the path to an output file of the OWCF/calcTopoMap.jl script, which was computed on the same (E,pm,Rm) grid as the weight functions in the 'filepath_W' input variable (see below) - String
 - filepath\_equil - The path to an .eqdsk or .jld2 file containing a tokamak magnetic equilibrium and geometry. An .eqdsk file can be obtained from various EFIT users worldwide. An .jld2 file can be obtained by using the OWCF/extra/createCustomMagneticEquilibrium.jl tool. - String
 - diagnostic\_filepath - The path to the LINE21 file containing line-of-sight data for the diagnostic. Or an output file of the OWCF/extra/createCustomLOS.jl tool - String
 - diagnostic\_name - The name of the diagnostic to be visualized. For esthetic purposes. - String
 - filepath\_W - The path to the .jld2/.h5 weights file, containing orbit weights (4D) to be visualized. Should be an output file of the OWCF/calcOrbWeights.jl script with the 'include2Dto4D' input variable set to true - String 
-- filepath\_Fos3D - The path to the 3D orbit-space fast-ion distribution to be visualized as well. Should be an output file of the OWCF/ps2os.jl script with the 'include\_1Dto3D' input variable set to true. Enable with plot\_Fos - String
+- filepath\_Fos3D - The path to the 3D orbit-space fast-ion distribution to be visualized as well. Could be an output file of the OWCF/ps2os.jl script with the 'include\_1Dto3D' input variable set to true. Enable with plot\_Fos - String
 - filepath\_S - The path to the .hdf5/.jld2 synthetic signal spectrum for the diagnostic. Should be an output file of the OWCF/calcSpec.jl script. Enable with plot\_S - String
 - specFileJLD2 - If true, the app will assume the synthetic signal file is .jld2 format - Bool
 - filepath\_no - The path to the 3D orbit-space fast-ion null-region boundaries. Should be an output of the OWCF/helper/extractNullOrbits.jl tool. Enable with showNullOrbs - String
@@ -100,10 +105,8 @@ have exactly the same dimensions and ranges, by using the orbit weights to calcu
 ## Saved files:
 # - 
 
-Furthermore, the filepath\_W\_COM input variable discussed above can be either an output of this orbWeightsWebApp.jl notebook, or the os2com.jl OWCF tool.
-
 ### Notebook written by Henrik Järleblad (henrikj@dtu.dk) and Andrea Valentini (anvalen@dtu.dk)
-### Last maintained 2026-09-08
+### Last maintained 2026-09-11
 """
 
 # ╔═╡ 8c0d518a-35ee-4f51-b34e-dce0ad143b74
@@ -114,11 +117,12 @@ begin
     
     verbose = true # If true, then the app will talk a lot!
     filepath_tb = folderpath_OWCF*"apps/example_data/topoBounds_JET_99971L72_at48,9s_D_6x101x102wLost.jld2" # .jld2 file with orbit-space topological boundaries (see extractTopoBounds.jl, and/or calcTopoMap.jl)
-    enable_COM = false # CURRENTLY OUT-OF-ORDER. PLEASE DO NOT SET THE 'enable_COM' VARIABLE TO 'true'. Set to true if you would like to be able to switch between (E,pm,Rm) and (E,Λ,Pϕ_n;σ). Please note! This will require extra loading time and computer resources!
-    if enable_COM # CURRENTLY OUT-OF-ORDER.
-        filepath_W_COM = "" # If you would like to be able to switch to (E,Λ,Pϕ_n;σ), you should definitely provide the path to a file containing the orbit weight matrix mapped to COM (E,Λ,Pϕ_n;σ). This will greatly speed-up pre-app computations
-        # OR
-        filepath_tm = "" # If you have not computed such a file, you should at least provide the path to a topological map file. Otherwise, the orbit grid will need to be computed from scratch
+    enable_COM = false # Set to true if you would like to be able to switch between (E,pm,Rm) and (E,Λ,Pϕ_n;σ). Please note! This will require extra loading time and computer resources!
+    if enable_COM
+        # If you have already run orbWeightsWebApp.jl once, and have the path to a saved file with the weight functions in (E,Λ,Pϕ_n;σ) coordinates
+        filepath_W_COM = ""
+        # OTHERWISE...
+        filepath_tm = folderpath_OWCF*"apps/example_data/topoMap_JET_99971L72_at48,9s_D_6x101x102_wLost.jld2" # It will speed up app-loading computations if you provide the path to a topological map file. Otherwise, the orbit grid will need to be computed from scratch, which can take several minutes depending on the grid in (E,pm,Rm)
     end
     filepath_equil = folderpath_OWCF*"equilibrium/JET/g99971/g99971_474-48.9.eqdsk" # or .jld2. The equilibrium file containing magnetic equilibrium data
     diagnostic_filepath = folderpath_OWCF*"vc_data/TOFOR/TOFOR.vc" # The file path to the LINE21 output file, containing viewing cone data for the diagnostic
@@ -410,10 +414,13 @@ begin
     Rm_array = vec(collect(Rm_array)) # Ensure type Array{Float64,1}
     Ed_array = vec(collect(Ed_array)) # Ensure type Array{Float64,1}
     
-    # Preparing utility for mapping (E,pm,Rm) to (E,Λ,Pϕ_n;σ)
+    # Preparing data for being able to switch between (E,pm,Rm) and (E,Λ,Pϕ_n;σ)
     if enable_COM
-        if !(isfile(filepath_W_COM))
-            if isfile(filepath_tm)
+        if !isfile(filepath_W_COM)
+            if !isfile(filepath_tm)
+                verbose && println("Switching to (E,Λ,Pϕ_n;σ) requested. But a path to an output file of the calcTopoMap.jl script was not specified. Orbit grid will need to be computed from scratch (takes a looong time)... ")
+                valid_orbit_indices = :UNKNOWN
+            else
                 verbose && print("Possibility to switch to (E,Λ,Pϕ_n;σ) requested. Topological map filepath specified. Attempting to load... ")
                 myfile = jldopen(filepath_tm,false,false,false,IOStream)
                 topoMap = myfile["topoMap"]
@@ -434,95 +441,67 @@ begin
                 verbose && print("Extracting valid orbits 3D indices from topological map... ")
                 valid_orbit_indices = findall(x-> (x!=9.0) && (x!=7.0), topoMap) # 9 and 7 are the integers representing invalid and lost orbits in the calcTopoMap.jl script, respectively. We don't want them.
                 verbose && println("Success!")
-            else
-                verbose && println("Switching to (E,Λ,Pϕ_n;σ) requested. But neither W_COM, nor topological map, filepath was not specified. Orbit grid will need to be computed (takes a long time)... ")
-                valid_orbit_indices = :UNKNOWN
             end
+        else
+            verbose && print("Possibility to switch to (E,Λ,Pϕ_n;σ) requested. The 'filepath_W_COM' input variable was specified. Attempting to load in cell below... " )
         end
     else
         verbose && println("Switching to (E,Λ,Pϕ_n;σ) will not be possible.")
     end
-    
-    # Mapping orbit weight functions to (E,Λ,Pϕ_n;σ)
-    if enable_COM
-        if !(isfile(filepath_W_COM))
+end
+
+# ╔═╡ f8d4d3ae-be56-4b0c-a737-766e5319736b
+let
+	# THIS CELL EXISTS PURELY TO SHOW THE USER HOW LONG IT TAKES TO MAP A SINGLE WEIGHT FUNCTION FROM (E,pm,Rm) to (E,Λ,Pϕ_n;σ). YOU CAN CHECK HOW MANY WEIGHT FUNCTIONS YOU HAVE TO MAP BY CHECKING THE VALUE PRINTED ON THE ROW CONTAINING 'Size of Ed_array:', PRINTED ABOVE. IF YOU THINK IT TAKES TOO MUCH TIME, PLEASE DO THE FOLLOWING:
+	# 1. CLOSE THIS WEB APPLICATION
+	# 2. RUN THE OWCF/helper/os2com.jl SCRIPT TO TRANSFORM YOUR WEIGHT FUNCTIONS FROM (E,pm,Rm) TO (E,Λ,Pϕ_n;σ) USING DISTRIBUTED MULTI-CPU PARALLEL PROCESSING (SET THE 'distributed' INPUT VARIABLE TO 'true' AND SPECIFY THE NUMBER OF CPUs)
+	# 3. WHEN THE os2com.jl SCRIPT HAS FINISHED, PLEASE NOTE THE PATH TO THE OUTPUT FILE
+	# 4. USE THE PATH TO THE OUTPUT FILE TO SPECIFY THE 'filepath_W_COM' INPUT VARIABLE IN THE 'SPECIFY THE INPUTS IN THIS CELL' ABOVE
+	# 5. RE-RUN THIS WEB APPLICATION
+	#
+	# IF YOU DON'T THINK IT TOOK TOO MUCH TIME, PLEASE GO AHEAD AND REMOVE THE 'false' ON LINE 4 IN THE CELL BELOW, AND RE-RUN THE WEB APPLICATION. WARNING! THIS MIGHT TAKE A VERY LONG TIME!
+	if enable_COM && !(isfile(filepath_W_COM))
+		W_correct_COM_1, _, Λ_array, Pϕ_n_array = os2COM(M, W_correct[1,:,:,:], E_array, pm_array, Rm_array, FI_species; nl=2*length(pm_array), npp=2*length(Rm_array), verbose=false, good_coords=valid_orbit_indices, wall=wall)
+		println("- PLEASE NOTE HOW MUCH TIME IT TOOK TO RUN THIS CELL."); println("- THAT WAS FOR A SINGLE WEIGHT FUNCTION."); println("- NOW MULTIPLY THAT TIME BY $(length(Ed_array)) (THE NUMBER OF WEIGHT FUNCTIONS YOU HAVE AS INPUT) TO GET THE TOTAL TIME IT WOULD TAKE TO MAP ALL WEIGHT FUNCTIONS FROM (E,pm,Rm) TO (E, Λ, Pϕ_n; σ)."); println("- THIS IS HOW LONG IT WOULD TAKE TO RUN THE CELL BELOW, IF YOU REMOVE THE 'false' ON LINE 4 IN THE CELL BELOW!!!"); println("- IF YOU THINK THAT IS TOO LONG A TIME, CONSIDER COMPUTING AN OUTPUT FILE FROM THE OWCF/helper/os2com.jl SCRIPT TO SPECIFY FOR THE 'filepath_W_COM' INPUT VARIABLE AT THE NEAR-TOP OF THIS WEB APPLICATION."); println("- READ THE COMMENTED TEXT IN THIS CELL FOR MORE INFO.")
+	end
+end
+
+# ╔═╡ 734264b3-de7f-40f9-9afc-16f169f9ec36
+begin
+	# Mapping orbit weight functions to (E,Λ,Pϕ_n;σ), if 'filepath_W_COM' was not specified
+    if enable_COM 
+        if !(isfile(filepath_W_COM)) && false # DO NOT REMOVE 'false' UNLESS YOU ARE COMPLETELY SURE ABOUT WHAT YOU ARE DOING!!!
             verbose && println(">>>>>>>>>>>>>>> Mapping orbit weight functions from (E,pm,Rm) to (E,Λ,Pϕ_n;σ)... <<<<<<<<<<<<<<<")
-            W_correct_COM, E_array, Λ_array, Pϕ_n_array = os2COM(M, W_correct, E_array, pm_array, Rm_array, FI_species; nl=2*length(pm_array), npp=2*length(Rm_array), verbose=verbose, good_coords=valid_orbit_indices, wall=wall, extra_kw_args=extra_kw_args)
-            verbose && println("Creating orbit weight matrix (E,Λ,Pϕ_n;σ) data... ")
-            W_COM_inds = findall(x-> x>0.0, W_correct_COM)
-            W_COM_inds_n_values = Array{Tuple{CartesianIndex{5},Float64}}(undef,length(W_COM_inds))
-            for (ii,inds) in enumerate(W_COM_inds)
-                W_COM_inds_n_values[ii] = (inds,W_correct_COM[Tuple(inds)...])
-            end
-            verbose && println("Saving orbit weight matrix (E,Λ,Pϕ_n;σ) data so that you do not have to re-map from (E,pm,Rm) next time... ")
-            filepath_W_COM_new = folderpath_OWCF*"orbWeightsCOM_"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic*"_"*reaction_sscp*"_"*"$(size(W_correct_COM,1))x$(size(W_correct_COM,2))x$(size(W_correct_COM,3))x$(size(W_correct_COM,4))x2.jld2"
-            verbose && println("Next time weightsWebApp.jl is run with same inputs, set filepath_W_COM = "*filepath_W_COM_new)
-            myfile = jldopen(filepath_W_COM_new, true, true, false, IOStream)
-            write(myfile,"W_COM_inds_n_values", W_COM_inds_n_values) # Save only non-zero indices an values, to save memory space
-            write(myfile,"Ed_array",Ed_array)
-            write(myfile,"E_array",E_array)
-            write(myfile,"Lambda_array",Λ_array)
-            write(myfile,"Pphi_n_array",Pϕ_n_array)
-            close(myfile)
-    
-            # Release memory
-            W_COM_inds = nothing
-            W_COM_inds_n_values = nothing
+            W_correct_COM, _, Λ_array, Pϕ_n_array = os2COM(M, W_correct, E_array, pm_array, Rm_array, FI_species; nl=2*length(pm_array), npp=2*length(Rm_array), verbose=verbose, good_coords=valid_orbit_indices, wall=wall)
         else
-            verbose && print("Loading weight matrix in (E,Λ,Pϕ_n;σ) coordinates from filepath_W_COM... ")
-            myfile = jldopen(filepath_W_COM, false, false, false, IOStream)
-            if haskey(myfile,"W_COM_inds_n_values")    
-                W_COM_inds_n_values = myfile["W_COM_inds_n_values"]
-                Ed_array_COM = myfile["Ed_array"]
-                E_array_COM = myfile["E_array"]
-                Λ_array = myfile["Lambda_array"]
-                Pϕ_n_array = myfile["Pphi_n_array"]
-                close(myfile)
-                verbose && println("Success!")
+            verbose && print("Possibility to switch to (E,Λ,Pϕ_n;σ) requested. The 'filepath_W_COM' input variable was specified. Attempting to load... " )
+            myfile_in = jldopen(filepath_W_COM, false, false, false, IOStream)
+            W_correct_COM = myfile_in["W"]
+            Ed_array_COM = myfile_in["Ed_array"]
+            E_array_COM = myfile_in["E_array"]
+            Λ_array = myfile_in["Lambda_array_W"]
+            Pϕ_n_array = myfile_in["Pphi_n_array_W"]
+            close(myfile_in)
+            verbose && println("Success!")
     
-                if !(length(Ed_array)==length(Ed_array_COM))
-                    error("Number of diagnostic measurement bins of (E,Λ,Pϕ_n;σ) weight matrix in filepath_W_COM does not match number of diagnostic measurement bins of (E,pm,Rm) weight matrix in filepath_W. Please correct and re-start app.")
-                end
-                if !(length(E_array)==length(E_array_COM))
-                    error("Number of fast-ion energy grid points of (E,Λ,Pϕ_n;σ) weight matrix in filepath_W_COM does not match number of fast-ion energy grid points of (E,pm,Rm) weight matrix in filepath_W. Please correct and re-start app.")
-                end
-    
-                verbose && println("Assembling data for orbit weight functions in (E,Λ,Pϕ_n;σ) space... ")
-                W_correct_COM = zeros(length(Ed_array_COM),length(E_array_COM),length(Λ_array),length(Pϕ_n_array),2)
-                for indValueTuple in W_COM_inds_n_values
-                    inds = indValueTuple[1]
-                    weight = indValueTuple[2]
-                    W_correct_COM[inds] = weight
-                end
-    
-                # Release memory
-                W_COM_inds_n_values = nothing
-            else # Must be from os2com.jl
-                if haskey(myfile,"Wtot")
-                    W_correct_COM = myfile["Wtot"]
-                    lk = "Wtot"
-                elseif haskey(myfile,"W")
-                    W_correct_COM = myfile["W"]
-                    lk = "W"
-                elseif haskey(myfile,"W4D")
-                    W_correct_COM = myfile["W4D"]
-                    lk = "W4D"
-                else
-                    error("Unknown file key to load (E,Λ,Pϕ_n;σ) weight matrix from $(filepath_W_COM). Please correct and re-try.")
-                end
-                Ed_array_COM = myfile["Ed_array"]
-                E_array_COM = myfile["E_array"]
-                Λ_array = myfile["Lambda_array_$(lk)"]
-                Pϕ_n_array = myfile["Pphi_n_array_$(lk)"]
-                close(myfile)
+            if !(length(Ed_array)==length(Ed_array_COM))
+                error("Number of diagnostic measurement bins of (E,Λ,Pϕ_n;σ) weight matrix in filepath_W_COM does not match number of diagnostic measurement bins of (E,pm,Rm) weight matrix in filepath_W. Please correct and re-start app.")
             end
+            if !(length(E_array)==length(E_array_COM))
+                error("Number of fast-ion energy grid points of (E,Λ,Pϕ_n;σ) weight matrix in filepath_W_COM does not match number of fast-ion energy grid points of (E,pm,Rm) weight matrix in filepath_W. Please correct and re-start app.")
+            end
+            verbose && println("Success!")
         end
     end
-    
-    # Mapping topological boundaries to (E,Λ,Pϕ_n;σ)
+end
+
+# ╔═╡ 7504e510-f39b-48a9-b265-a6e4affa0d9a
+begin
+	# Mapping topological boundaries to (E,Λ,Pϕ_n;σ)
     if enable_COM
         B0 = norm(Equilibrium.Bfield(M,magnetic_axis(M)...)) # Tesla
         q = getSpeciesCharge(FI_species) # Coulomb
+        psi_axis, psi_bdry = psi_limits(M)
         if psi_bdry==0
             @warn "The magnetic flux at the last closed flux surface (LCFS) is found to be 0 for the magnetic equilibrium in $(filepath_equil). Pϕ_n=Pϕ/(q*|Ψ_w|) where Ψ_w=Ψ(mag. axis) is assumed instead of Ψ_w=Ψ(LCFS)."
             Ψ_w_norm = abs(psi_axis)
@@ -549,8 +528,11 @@ begin
             end
         end
     end
-    
-    # Mapping null orbits to (E,Λ,Pϕ_n;σ)
+end
+
+# ╔═╡ 15b81dbd-6d99-4922-9aaa-d08f557552d7
+begin
+	# Mapping null orbits to (E,Λ,Pϕ_n;σ)
     if showNullOrbs && enable_COM
         verbose && println(">>>>>>>>>>>>>>> Mapping null orbits to (E,Λ,Pϕ_n;σ)... <<<<<<<<<<<<<<<")
         nullOrbs_COM = zeros(size(W_correct_COM))
@@ -574,8 +556,11 @@ begin
             end
         end
     end
-    
-    # Creating the array with which to switch between different reconstructions, if filepath_Fos3D was specified as a .jld2 file containing many fast-ion distributions (structured into a 4D data array)
+end
+
+# ╔═╡ 169acf62-7fda-4f83-a00d-4c3cc5fdc461
+begin
+	# Creating the array with which to switch between different reconstructions, if filepath_Fos3D was specified as a .jld2 file containing many fast-ion distributions (structured into a 4D data array)
     if @isdefined F_os_4D
         Rec_array = collect(1:size(F_os_4D,1))
     else
@@ -714,6 +699,7 @@ let
     else # phase_space==:COM (OS = orbit space, COM = constants-of-motion)
         plt_crs = Plots.plot!(title="E: $(round(E,digits=2)) keV  pm: $(round(o.coordinate.pitch, digits=2))  Rm: $(round(o.coordinate.r,digits=2))")
     end
+	plt_crs = Plots.plot!(titlefontsize=10)
     plt_crs = Plots.plot!(o.path.r,o.path.z, label="$(o.class) orbit", color=orb_color, linestyle=orb_linestyle, linewidth=1.5)
     if tokamak_wall
         wall_dR = maximum(wall.r)-minimum(wall.r)
@@ -736,7 +722,7 @@ let
             Pϕ_n_scatvals_tb[ind] = Pϕ_n_array[carinds[2]]
         end
     end
-    if (phase_space==:OS) || (include_Fos && plot_Fos)
+    if (phase_space==:OS) || (include_Fos && plot_Fos) || !enable_COM
         ones_carinds = findall(x-> x==1.0,topoBounds[Ei,:,:])
         pm_scatvals_tb = zeros(length(ones_carinds))
         Rm_scatvals_tb = zeros(length(ones_carinds))
@@ -776,9 +762,9 @@ let
 
     ###### Heatmap of the weight function slice plot ######
     if (phase_space==:COM) && enable_COM
-        plt_weights = Plots.heatmap(Pϕ_n_array,Λ_array,(W_correct_COM[Edi,Ei,:,:,iσ])./maximum(W_correct_COM[Edi,Ei,:,:,iσ]),colorbar=true,title="W ($(round(maximum(W_correct_COM[Edi,Ei,:,:,iσ]),sigdigits=4)) = 1.0)", clims=clims, fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), ylims=extrema(Λ_scatvals_tb), xlims=extrema(Pϕ_n_scatvals_tb))
+        plt_weights = Plots.heatmap(Pϕ_n_array,Λ_array,(W_correct_COM[Edi,Ei,:,:,iσ])./maximum(W_correct_COM[Edi,Ei,:,:,iσ]),colorbar=true,title="W ($(round(maximum(W_correct_COM[Edi,Ei,:,:,iσ]),sigdigits=3)) = 1.0)", clims=clims, fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]), ylims=extrema(Λ_scatvals_tb), xlims=extrema(Pϕ_n_scatvals_tb))
     else
-        plt_weights = Plots.heatmap(Rm_array,pm_array,(W_correct[Edi,Ei,:,:])./maximum(W_correct[Edi,Ei,:,:]),colorbar=true,title="W ($(round(maximum(W_correct[Edi,Ei,:,:]),sigdigits=4)) = 1.0)", clims=clims, fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]))
+        plt_weights = Plots.heatmap(Rm_array,pm_array,(W_correct[Edi,Ei,:,:])./maximum(W_correct[Edi,Ei,:,:]),colorbar=true,title="W ($(round(maximum(W_correct[Edi,Ei,:,:]),sigdigits=3)) = 1.0)", clims=clims, fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]))
     end
     # Plot a scatter-plot of the topological boundaries for that specific fast-ion energy slice
     ms = 1.8
@@ -858,25 +844,25 @@ let
             plt_sig = Plots.scatter!(Ed_array_WF, S_WF[irec,:] ./maximum(S_WF[irec,:]), markerstrokealpha=1.0, markerstrokecolor=sig_color, markercolor=:white, markerstrokewidth=1.5, label="WF")
             Edi_WF = (findfirst(x-> x>=Ed,Ed_array_WF))[1] # Should be perfect match with weights
             plt_sig = Plots.scatter!([Ed_array_WF[Edi_WF]],[(S_WF[irec,:])[Edi_WF] ./maximum(S_WF[irec,:])],markersize=5.0,markercolor=sig_color, label="WF: $(round((S_WF)[Edi_WF],sigdigits=4))")
-            plt_sig = Plots.plot!(xlabel=xlabel,ylabel="Normalized signal [a.u.]", legend=true, title="Ed: $(round(Ed,digits=4)) "*Ed_units)
+            plt_sig = Plots.plot!(xlabel=xlabel,ylabel="Normalized signal [a.u.]", legend=true, title="Ed: $(round(Ed,sigdigits=4)) "*Ed_units)
         end
         if plot_S
             plt_sig = Plots.plot!(Ed_array_S, spec ./maximum(spec), color=sig_color, linewidth=2.0, label="S")
             Edi_S = (findfirst(x-> x>=Ed,Ed_array_S))[1]
             plt_sig = Plots.scatter!([Ed_array_S[Edi_S]],[spec[Edi_S] ./maximum(spec)],markersize=5.0,markercolor=sig_color, label="S: $(round((spec)[Edi_S],sigdigits=4))")
-            plt_sig = Plots.plot!(xlabel=xlabel,ylabel="Normalized signal [a.u.]", legend=true, title="Ed: $(round(Ed,digits=4)) "*Ed_units)
+            plt_sig = Plots.plot!(xlabel=xlabel,ylabel="Normalized signal [a.u.]", legend=true, title="Ed: $(round(Ed,sigdigits=4)) "*Ed_units)
         end
         if show_delta_signal
             pmci = argmin(abs.(pm_array .- pm)) # Find the closest match
             Rmci = argmin(abs.(Rm_array .- Rm)) # Find the closest match
             delta_signal = W_correct[:,Ei,pmci,Rmci] ./maximum(W_correct[:,Ei,pmci,Rmci])
             plt_sig = Plots.plot!(Ed_array, delta_signal, label="Orbit-pixel signal", color=orb_color)
-            plt_sig = Plots.scatter!([Ed_array[Edi]],[delta_signal[Edi]],markersize=5.0, markercolor=:black, label="Orbit-pixel sig.: $(round(delta_signal[Edi],sigdigits=3))", xlims=extrema(Ed_array), ylims=[-0.1,1.2])
+            plt_sig = Plots.scatter!([Ed_array[Edi]],[delta_signal[Edi]],markersize=5.0, markercolor=:black, label="Orbit-pixel sig.: $(round(delta_signal[Edi],sigdigits=3))", xlims=(minimum(Ed_array),1.33*maximum(Ed_array)), ylims=[-0.1,1.2])
             plt_sig = Plots.plot!(xlabel=xlabel,ylabel="Normalized signal [a.u.]", legend=true, title="Ed: $(round(Ed,sigdigits=4)) "*Ed_units)
         end
     else
         Edi = (findfirst(x-> x>=Ed,Ed_array))[1]
-        plt_sig = Plots.scatter([Ed_array[Edi]],[0.0],markersize=5.0, markercolor=:black, title="Ed: $(round(Ed,digits=4)) "*Ed_units,label="", legend=false, xlims=[minimum(Ed_array),maximum(Ed_array)], ylims=[-1.0,1.0],xlabel=xlabel,ylabel="No diagnostic signal specified [a.u.]")
+        plt_sig = Plots.scatter([Ed_array[Edi]],[0.0],markersize=5.0, markercolor=:black, title="Ed: $(round(Ed,sigdigits=4)) "*Ed_units,label="", legend=false, xlims=[minimum(Ed_array),maximum(Ed_array)], ylims=[-1.0,1.0],xlabel=xlabel,ylabel="No diagnostic signal specified [a.u.]")
     end
 
 	if include_Fos && plot_Fos # Three rows with two plots each (total 6)
@@ -900,6 +886,11 @@ end
 # ╠═bba1f188-0e70-4518-b1fa-766881383c7a
 # ╠═f2d238bb-0092-469f-bec9-5e5a79ed92e6
 # ╠═464f59a1-407d-43bc-8dc3-5b6a418d96c4
+# ╠═f8d4d3ae-be56-4b0c-a737-766e5319736b
+# ╠═734264b3-de7f-40f9-9afc-16f169f9ec36
+# ╠═7504e510-f39b-48a9-b265-a6e4affa0d9a
+# ╠═15b81dbd-6d99-4922-9aaa-d08f557552d7
+# ╠═169acf62-7fda-4f83-a00d-4c3cc5fdc461
 # ╠═a9a85b5e-2d29-4ff3-a661-e22cb4c0e307
 # ╠═08fd3730-a39e-4ec0-b011-e2af098fc0e6
 # ╠═2588f676-0bd5-4f9e-aa03-b3a4516730be

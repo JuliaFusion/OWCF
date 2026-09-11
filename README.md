@@ -127,9 +127,9 @@ The OWCF apps are powered by the Pluto.jl package and written as Pluto notebooks
 
 These interactive web applications can be run by navigating to the OWCF/apps/ folder using a command-line terminal and then typing the following:
 
-> `julia`
-julia> `using Pkg; Pkg.activate(".."); using Pluto; Pluto.run()`
-
+> `julia`  
+julia> `using Pkg; Pkg.activate(".."); using Pluto; Pluto.run()`  
+  
 Then, Pluto should open the Pluto landing page in your default web browser. In that landing page, click the text field beneath the 'Open a notebook' text and a list of the available OWCF apps should appear, as shown in the screenshot below. Select an app of your choice, click 'open' next to the text field and follow the instructions in the Pluto notebook.
 
 ![Screenshot of how to select an OWCF app using Pluto](misc/pluto_OWCF-apps_selection.png)
@@ -140,10 +140,10 @@ Then, Pluto should open the Pluto landing page in your default web browser. In t
 - distrWebApp.jl. An app that lets the user visualze a (E,pm,Rm) fast-ion distribution in terms of fast-ion energy slices. The user can also choose to input a second fast-ion distribution, and the two will then be able to be compared interactively.  
 - EpRzWebApp.jl. An app that lets the user visualize orbit topological maps in (E,p,R,z) coordinate space. The option to also visualize poloidal and toroidal transit times exists. The user can also choose to input a fast-ion distribution in (E,p,R,z) format. The app will then superimpose topological boundaries and the fast-ion distribution can be visualzed via a toggle button.  
 - modeAnalysisWebApp.jl. An app that lets the user visualize simple MHD mode resonances in (E,pm,Rm) orbit space. The user can interactively explore different energies, mode numbers and frequencies. Only toroidal (n) and poloidal (m) mode numbers are included. (E,mu,Phi;sigma) space can be accessed via a toggle button.  
-- orbitsWebApp.jl. It is arguably the flagship app of the OWCF. It lets the user visualize fast-ion orbits interactively via a topological map in (E,pm,Rm) space. Maps for poloidal and toroidal transit times can also be included. The user can switch to (E,mu,Pphi;sigma) space via a toggle button (THIS FEATURE IS TEMPORARILY OUT-OF-ORDER).  
-- orbitWebApp.jl. A simple app that lets the user visualize a single fast-ion orbit in detail. The endpoint of the orbit can be changed interactively. The coordinate space is (E,pm,Rm).
+- orbitsWebApp.jl. It is arguably the flagship app of the OWCF. It lets the user visualize fast-ion orbits interactively via a topological map in (E,pm,Rm) space. Maps for poloidal and toroidal transit times can also be included. The user can switch to (E,mu,Pphi;sigma) space via a toggle button.  
+- orbitWebApp.jl. A simple app that lets the user visualize a single fast-ion orbit in detail. The endpoint of the orbit can be changed interactively. The coordinate space is (E,pm,Rm).  
 - signalWebApp.jl. An app that lets the user visualze a WF signal and orbit splits of WF, W and F, together with their dependence on E, pm and Rm, respectively. Log-scales, splitting, fractions and more options can be changed interactively via toggle buttons.  
-- weightsWebApp.jl. An app that lets the user interactively visualize the orbit weight functions of an orbit weight matrix. The diagnostic measurement bin and fast-ion energy slice of interest are changed via sliders. A WF signal, an S signal, a fast-ion distribution and null orbits can all be optionally included. The weight visualization can be switched to (E,mu,Pphi;sigma) via a toggle button (THIS FEATURE IS TEMPORARILY OUT-OF-ORDER). Diagnostic viewing cones can be optionally included.  
+- weightsWebApp.jl. An app that lets the user interactively visualize the orbit weight functions of an orbit weight matrix. The diagnostic measurement bin and fast-ion energy slice of interest are changed via sliders. A WF signal, an S signal, a fast-ion distribution and null orbits can all be optionally included. The weight visualization can be switched to (E,mu,Pphi;sigma) via a toggle button. Diagnostic viewing cones can be optionally included.  
 
 ## 10. Helper scripts
 ### The helper scripts of the OWCF include:
@@ -155,7 +155,7 @@ Then, Pluto should open the Pluto landing page in your default web browser. In t
 - F_os_1Dto3D.jl. Inflate a fast-ion distribution in its compressed 1D form into its full 3D form.  
 - orbweights2Dto4D.jl. Inflate an orbit weight matrix from its compressed 2D form into its full 4D form, set by the user.  
 - orbWeights4Dto2D.jl. Take an inflated orbit weight matrix in its 4D form, and compress it into its 2D form.  
-- os2com.jl. A script that can be used to transform quantities from (E,pm,Rm) orbit space to (E,mu,Pphi;sigma) constants-of-motion space. THIS HELPER SCRIPT IS TEMPORARILY OUT-OF-ORDER.
+- os2com.jl. A script that can be used to transform quantities from (E,pm,Rm) orbit space to (E,mu,Pphi;sigma) constants-of-motion space.
 
 ## 11. Extra scripts
 ### The extra scripts of the OWCF include:  
@@ -187,4 +187,4 @@ Other data in the misc/ folder includes: default_temp_n_dens.png, eqdsk_file_bre
 
 Henrik Järleblad
 A (very tired) postdoc
-September 8th, 2026
+September 11th, 2026

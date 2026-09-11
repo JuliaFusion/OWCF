@@ -29,7 +29,7 @@ A second orbit-space distribution (or other quantity) can be specified. In that 
 
 Prior to running this notebook, please make sure you have run the following scripts:
 - ps2os.jl (or equivalent)
-- F_os_1Dto3D.jl (or equivalent)
+- F\_os\_1Dto3D.jl (or equivalent)
 - extractTopoBounds.jl
 
 And that you have noted the paths to the outputs. You will also need the following: 
@@ -39,15 +39,15 @@ ALSO PLEASE NOTE! It is recommended to ensure that the distribution function and
 
 ## Inputs:
 - verbose - If set to true, the app will talk a lot! - Bool
-- FI_species - The fast-ion particle species, e.g. "D", "T". Please see OWCF/misc/species_func.jl for available options - String
-- filepath_tb - The path to the .jld2-file containing the topological boundaries. Should be an output file of either the OWCF/helper/extractTopoBounds.jl script, or an output file of the OWCF/calcTopoMap.jl script script with the input 'includeExtractTopoBounds' set to true - String
-- filepath_equil - The path to the .eqdsk-file with the tokamak magnetic equilibrium and geometry. Could also be an output file of the OWCF/extra/createCustomMagneticEquilibrium.jl script - String
-- filepath_distr - The path to the 3D orbit-space fast-ion distribution to be visualized. Should be an output file of the OWCF/helper/F_os_1Dto3D.jl script or an output file of the OWCF/ps2os.jl script with the input 'include1Dto3D' set to true  - String
-- filepath_distr_2 - The path to a second 3D orbit-space distribution (/quantity). To be compared to the first - String
-- filepath_no - The path to the 3D orbit-space fast-ion null-measurement region boundaries. Enabled via showNo - String
+- FI_species - The fast-ion particle species, e.g. "D", "T". Please see OWCF/misc/species\_func.jl for available options - String
+- filepath\_tb - The path to the .jld2-file containing the topological boundaries. Should be an output file of either the OWCF/helper/extractTopoBounds.jl script, or an output file of the OWCF/calcTopoMap.jl script script with the input 'includeExtractTopoBounds' set to true - String
+- filepath\_equil - The path to the .eqdsk-file with the tokamak magnetic equilibrium and geometry. Could also be an output file of the OWCF/extra/createCustomMagneticEquilibrium.jl script - String
+- filepath\_distr - The path to the 3D orbit-space fast-ion distribution to be visualized. Should be an output file of the OWCF/helper/F\_os\_1Dto3D.jl script or an output file of the OWCF/ps2os.jl script with the input 'include1Dto3D' set to true  - String
+- filepath_distr\_2 - The path to a second 3D orbit-space distribution (/quantity). To be compared to the first - String
+- filepath\_no - The path to the 3D orbit-space fast-ion null-measurement region boundaries. Enabled via showNo - String
 
 There are also more inputs further down in the notebook. These inputs can be ignored, unless you are specifically visualizing flux surfaces in orbit space. The inputs are
-psi_value - The value between 0.0 and 1.0 corresponding to the flux surface you are visualizing in orbit space.
+psi\_value - The value between 0.0 and 1.0 corresponding to the flux surface you are visualizing in orbit space.
 
 ## Outputs:
 # -
@@ -56,7 +56,7 @@ psi_value - The value between 0.0 and 1.0 corresponding to the flux surface you 
 # - 
 
 ### Notebook written by Henrik Järleblad, henrikj@dtu.dk
-### Last maintained 2026-08-31
+### Last maintained 2026-09-11
 
 ## Warning! 
 Please note! For orbit-space grids containing more than approximately 150 000 valid orbits (e.g. 20x100x100), you should NOT use distrWebApp.jl (or any other interactive app). As of the current OWCF version, the web interface simply becomes too slow. Please do instead plot the energy slices manually. This can be done as shown in the following cell (if you correctly specify the filepath_OWCF, filepath_distr and filepath_tb variables, the cell will be able to run and plot):
