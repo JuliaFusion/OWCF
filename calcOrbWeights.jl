@@ -71,7 +71,7 @@
 # Please note that the diagnostic energy grid will be created as bin centers.
 # That is, the first diagnostic energy grid value will be (Ed_min+Ed_diff/2) and so on.
 
-# Script written by Henrik Järleblad. Last maintained 2026-09-08.
+# Script written by Henrik Järleblad. Last maintained 2026-09-18.
 ################################################################################################
 
 ## ---------------------------------------------------------------------------------------------
@@ -91,7 +91,7 @@ verbose && println("Loading Julia packages... ")
     using Printf # To be able to use specific String prints
     using PyCall # For using Python code in Julia
     using SparseArrays # To enable utilization of sparse matrices/vectors
-    plot_results && (using LaTeXStrings) # If results are to be plotted, we need LaTeXStrings.jl for text formatting
+    using LaTeXStrings # If results are to be plotted, we need LaTeXStrings.jl for text formatting
     plot_results && (using Plots) # If results are to be plotted, we need the Plots.jl package
     include("misc/availReacts.jl") # To examine fusion reaction and extract thermal and fast-ion species
     include("misc/rewriteReacts.jl") # To rewrite a fusion reaction from the A(b,c)D format to the A-b=c-D format
@@ -488,7 +488,7 @@ end
 println("")
 println("If you would like to change any settings, please edit the start_calcOW_template.jl file or similar.")
 println("")
-println("Written by Henrik Järleblad. Last maintained 2026-09-08.")
+println("Written by Henrik Järleblad. Last maintained 2026-09-18.")
 println("--------------------------------------------------------------------------------------------------------------------------")
 println("")
 
