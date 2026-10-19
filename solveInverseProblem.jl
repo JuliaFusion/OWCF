@@ -1105,16 +1105,16 @@ dictionary_of_sections[prnt-1] = ("Enforcing a noise floor on the measurement un
 println("------------------------------------------------ SECTION $(prnt) ------------------------------------------------"); prnt += 1
 
 if exclude_zero_measurements
-    verbose && println("Performing exclusion of measurements equal to zero... ")
+    verbose && println("Performing exclusion of measurements (less than or) equal to zero... ")
     for i in eachindex(S)
         verbose && println("---> For diagnostic $(i)... ")
         W_i = W[i]
         S_i = S[i]
         S_errs_i = S_errs[i]
         S_abscissas_i = S_abscissas[i]
-        zero_inds = findall(x-> x==0.0, S_i)
+        zero_inds = findall(x-> x<=0.0, S_i)
         if !isempty(zero_inds)
-            verbose && println("------> Found $(length(zero_inds)) ($(round(100*length(zero_inds)/length(S_i),digits=1))% of all) measurements equal to 0. Excluding... ")
+            verbose && println("------> Found $(length(zero_inds)) ($(round(100*length(zero_inds)/length(S_i),digits=1))% of all) measurements (less than or) equal to 0. Excluding... ")
             good_inds_i = filter(xx -> !(xx in zero_inds), collect(1:length(S_abscissas_i))) # The indices of all measurement bins to keep
             S[i] = S_i[good_inds_i] # Update measurements
             S_errs[i] = S_errs_i[good_inds_i] # Update errors/uncertainties
@@ -1184,8 +1184,100 @@ priors_name = []
 
 if "zerotikhonov" in lowercase.(String.(regularization))
     verbose && println(":ZEROTIKHONOV included in 'regularization' input variable. Adding 0th order Tikhonov regularization to the inverse solving algorithm... ")
+    if @isdefined filepath_ZEROTIKH_prior
+        if isfile(filepath_ZEROTIKH_prior)
+            verbose && println("---> The 'filepath_ZEROTIKH_prior' input variable was specified. Attempting to load prior from file... ")
+            zot_f_suffix = lowercase(split(filepath_ZEROTIKH_prior,".")[end]) # Check file extension for .jld2 or .hdf5 (.h5)
+            if zot_f_suffix=="jld2"
+                zot_myfile = jldopen(filepath_ZEROTIKH_prior,false,false,false,IOStream)
+                zot_read_func = x -> x # Identity function. For .jld2 files
+            elseif zot_f_suffix=="h5" || zot_f_suffix=="hdf5"
+                zot_myfile = h5open(filepath_ZEROTIKH_prior,"r")
+                zot_read_func = read # HDF5 read function. For .hdf5 (.h5) files
+            else
+                error("The 'filepath_ZEROTIKH_prior' file should be in either .jld2 or .hdf5 (.h5) file format. The file "*filepath_ZEROTIKH_prior*" is not. Please correct and re-try.")
+            end
+
+            zot_prior = zot_read_func(zot_myfile["prior"])
+            zot_abscissas = []
+            zot_abscissas_units = []
+            append!(zot_abscissas,[zot_read_func(zot_myfile["D1_array"])]) # Must have at least 'D1_array' file key
+            append!(zot_abscissas_units,[zot_read_func(zot_myfile["D1_array_units"])]) # Must have at least 'D1_array_units' file key
+            if haskey(zot_myfile,"D2_array")
+                append!(zot_abscissas,[zot_read_func(zot_myfile["D2_array"])])
+                append!(zot_abscissas_units,[zot_read_func(zot_myfile["D2_array_units"])])
+            end
+            if haskey(zot_myfile,"D3_array")
+                append!(zot_abscissas,[zot_read_func(zot_myfile["D3_array"])])
+                append!(zot_abscissas_units,[zot_read_func(zot_myfile["D3_array_units"])])
+            end
+            if haskey(zot_myfile,"D4_array")
+                append!(zot_abscissas,[zot_read_func(zot_myfile["D4_array"])])
+                append!(zot_abscissas_units,[zot_read_func(zot_myfile["D4_array_units"])])
+            end
+            if haskey(zot_myfile,"D5_array")
+                append!(zot_abscissas,[zot_read_func(zot_myfile["D5_array"])])
+                append!(zot_abscissas_units,[zot_read_func(zot_myfile["D5_array_units"])])
+            end
+            if haskey(zot_myfile,"D6_array")
+                append!(zot_abscissas,[zot_read_func(zot_myfile["D6_array"])])
+                append!(zot_abscissas_units,[zot_read_func(zot_myfile["D6_array_units"])])
+            end
+            close(zot_myfile)
+            zot_abscissas = [Float64.(ab) for ab in zot_abscissas] # Transform to Vector{Float64} from Vector{Any}
+            zot_abscissas_units = map(x-> "$(x)", zot_abscissas_units) # Transform to Vector{String} from Vector{Any}
+
+            if !(length(zot_abscissas)==length(W_abscissas[1][2:end]))
+                error("Number of (reconstruction-space) abscissas found in $(filepaths_W[1]): $(length(W_abscissas[1][2:end])). Number of abscissas found in $(filepath_ZEROTIKH_prior): $(length(zot_abscissas)). Number of (reconstruction-space) abscissas must match for weight functions and 0th-order Tikhonov prior. Please correct and re-try.")
+            end
+
+            zot_ucfs = []
+            # Check that the units of the prior reconstruction-space abscissas and that the units of the weight function abscissas match
+            for j in eachindex(W_abscissas[1]) # For each reconstruction space dimension (j>1)
+                if (j>1) && !(W_abscissas_units[1][j]==zot_abscissas_units[j-1]) # If the units of the weight function abscissas and the prior abscissas don't match (in reconstruction space)...
+                    verbose && println("Units of reconstruction-space abscissa $(j-1) in $(filepath_ZEROTIKH_prior) and weight functions do not match. Converting abscissa $(j-1) in $(filepath_ZEROTIKH_prior) to match the units of abscissa $(j) of the weight functions... ")
+                    ucf = units_conversion_factor(zot_abscissas_units[j-1], W_abscissas_units[1][j])
+                    zot_abscissas[j-1] = ucf .*zot_abscissas[j-1]
+                    zot_abscissas_units[j-1] = W_abscissas_units[1][j]
+                    append!(zot_ucfs, ucf)
+                end
+            end
+
+            # Convert 0th-order Tikhonov prior to match the units of the weight functions
+            if !isempty(zot_ucfs)
+                verbose && println("Converting units of prior in $(filepath_ZEROTIKH_prior) to match the reconstruction-space abscissas of the weight functions... ")
+                zot_prior = inv(prod(zot_ucfs)) .*zot_prior
+            end
+
+            # Interpolate prior onto reconstruction-space grid used by weight functions
+            verbose && print("---> Interpolating prior onto reconstruction-space grid... ")
+            zot_prior_interpolated = zeros((length.(query_vecs_n_inds))...) # Pre-allocate a new prior, to store the interpolated values
+            zot_nodes = () # The nodes of the interpolation object (zot_nodes name only due to Scope warnings)
+            for abscissa in zot_abscissas # Use the reconstruction-space abscissas of the prior as the nodes of the interpolation object...
+                global zot_nodes
+                zot_nodes = tuple(zot_nodes[:]..., abscissa) # Put them all in a tuple (tuples are immutable, hence the cumbersome code)
+            end
+            local itp; itp = Interpolations.interpolate(zot_nodes, zot_prior,Gridded(Linear()))
+            local etp; etp = Interpolations.extrapolate(itp, Interpolations.Flat()) # If outside of interpolation region, use edge values to extrapolate
+            for query_point_n_coord in query_points_n_coords # query_points_n_coords is given from way earlier in (the beginning of) the solveInverseProblem.jl script
+                point = map(x-> x[1],query_point_n_coord) # The point to interpolate at. E.g. (100.0,0.3) in energy (keV),pitch
+                coord = map(x-> x[2],query_point_n_coord) # The coordinate of that point. E.g. (53,14)
+                zot_prior_interpolated[coord...] = etp(point...)
+            end
+            zot_abscissas = W_abscissas[1][2:end] # Replace the loaded prior reconstruction-space grid points with the interpolation query (weight functions) grid points
+            zot_prior = zot_prior_interpolated # Replace the loaded prior with the interpolated one
+            prior_ZEROTIKH = zot_prior[:] # Set the 0th-order Tikhonov prior to be the (new) interpolated prior (vectorized)
+            verbose && println("Done!")
+        else
+            verbose && println("---> The 'filepath_ZEROTIKH_prior' input variable was not specified. Using 0 as prior... ")
+            prior_ZEROTIKH = zeros(length(rec_space_coords))
+        end
+    else
+        verbose && println("---> The 'filepath_ZEROTIKH_prior' input variable was not defined. Using 0 as prior... ")
+        prior_ZEROTIKH = zeros(length(rec_space_coords))
+    end
     append!(L, [sparse(1.0(SparseArrays.I),length(rec_space_coords),length(rec_space_coords))]) # Sparse identity matrix
-    append!(priors, [zeros(length(rec_space_coords))])
+    append!(priors, [prior_ZEROTIKH])
     append!(priors_name, ["0th order Tikhonov"])
 end
 
@@ -1194,8 +1286,100 @@ if "firsttikhonov" in lowercase.(String.(regularization))
     verbose && println(":FIRSTTIKHONOV included in 'regularization' input variable. Adding 1st order Tikhonov regularization to the inverse solving algorithm... ")
     first_tikhonov_reg = true
     L1 = forward_difference_matrix(rec_space_size) # The forward difference matrix of size (length(rec_space_size) * reduce(*,rec_space_size), reduce(*,rec_space_size))
+    if @isdefined filepath_FIRSTTIKH_prior
+        if isfile(filepath_FIRSTTIKH_prior)
+            verbose && println("---> The 'filepath_FIRSTTIKH_prior' input variable was specified. Attempting to load prior from file... ")
+            fot_f_suffix = lowercase(split(filepath_FIRSTTIKH_prior,".")[end]) # Check file extension for .jld2 or .hdf5 (.h5)
+            if fot_f_suffix=="jld2"
+                fot_myfile = jldopen(filepath_FIRSTTIKH_prior,false,false,false,IOStream)
+                fot_read_func = x -> x # Identity function. For .jld2 files
+            elseif fot_f_suffix=="h5" || fot_f_suffix=="hdf5"
+                fot_myfile = h5open(filepath_FIRSTTIKH_prior,"r")
+                fot_read_func = read # HDF5 read function. For .hdf5 (.h5) files
+            else
+                error("The 'filepath_FIRSTTIKH_prior' file should be in either .jld2 or .hdf5 (.h5) file format. The file "*filepath_FIRSTTIKH_prior*" is not. Please correct and re-try.")
+            end
+
+            fot_prior = fot_read_func(fot_myfile["prior"])
+            fot_abscissas = []
+            fot_abscissas_units = []
+            append!(fot_abscissas,[fot_read_func(fot_myfile["D1_array"])]) # Must have at least 'D1_array' file key
+            append!(fot_abscissas_units,[fot_read_func(fot_myfile["D1_array_units"])]) # Must have at least 'D1_array_units' file key
+            if haskey(fot_myfile,"D2_array")
+                append!(fot_abscissas,[fot_read_func(fot_myfile["D2_array"])])
+                append!(fot_abscissas_units,[fot_read_func(fot_myfile["D2_array_units"])])
+            end
+            if haskey(fot_myfile,"D3_array")
+                append!(fot_abscissas,[fot_read_func(fot_myfile["D3_array"])])
+                append!(fot_abscissas_units,[fot_read_func(fot_myfile["D3_array_units"])])
+            end
+            if haskey(fot_myfile,"D4_array")
+                append!(fot_abscissas,[fot_read_func(fot_myfile["D4_array"])])
+                append!(fot_abscissas_units,[fot_read_func(fot_myfile["D4_array_units"])])
+            end
+            if haskey(fot_myfile,"D5_array")
+                append!(fot_abscissas,[fot_read_func(fot_myfile["D5_array"])])
+                append!(fot_abscissas_units,[fot_read_func(fot_myfile["D5_array_units"])])
+            end
+            if haskey(fot_myfile,"D6_array")
+                append!(fot_abscissas,[fot_read_func(fot_myfile["D6_array"])])
+                append!(fot_abscissas_units,[fot_read_func(fot_myfile["D6_array_units"])])
+            end
+            close(fot_myfile)
+            fot_abscissas = [Float64.(ab) for ab in fot_abscissas] # Transform to Vector{Float64} from Vector{Any}
+            fot_abscissas_units = map(x-> "$(x)", fot_abscissas_units) # Transform to Vector{String} from Vector{Any}
+
+            if !(length(fot_abscissas)==length(W_abscissas[1][2:end]))
+                error("Number of (reconstruction-space) abscissas found in $(filepaths_W[1]): $(length(W_abscissas[1][2:end])). Number of abscissas found in $(filepath_FIRSTTIKH_prior): $(length(fot_abscissas)). Number of (reconstruction-space) abscissas must match for weight functions and 1st-order Tikhonov prior. Please correct and re-try.")
+            end
+
+            fot_ucfs = []
+            # Check that the units of the prior reconstruction-space abscissas and that the units of the weight function abscissas match
+            for j in eachindex(W_abscissas[1]) # For each reconstruction space dimension (j>1)
+                if (j>1) && !(W_abscissas_units[1][j]==fot_abscissas_units[j-1]) # If the units of the weight function abscissas and the prior abscissas don't match (in reconstruction space)...
+                    verbose && println("Units of reconstruction-space abscissa $(j-1) in $(filepath_FIRSTTIKH_prior) and weight functions do not match. Converting abscissa $(j-1) in $(filepath_FIRSTTIKH_prior) to match the units of abscissa $(j) of the weight functions... ")
+                    ucf = units_conversion_factor(fot_abscissas_units[j-1], W_abscissas_units[1][j])
+                    fot_abscissas[j-1] = ucf .*fot_abscissas[j-1]
+                    fot_abscissas_units[j-1] = W_abscissas_units[1][j]
+                    append!(fot_ucfs, ucf)
+                end
+            end
+
+            # Convert 1st-order Tikhonov prior to match the units of the weight functions
+            if !isempty(fot_ucfs)
+                verbose && println("Converting units of prior in $(filepath_FIRSTTIKH_prior) to match the reconstruction-space abscissas of the weight functions... ")
+                fot_prior = inv(prod(fot_ucfs)) .*fot_prior
+            end
+
+            # Interpolate prior onto reconstruction-space grid used by weight functions
+            verbose && print("---> Interpolating prior onto reconstruction-space grid... ")
+            fot_prior_interpolated = zeros((length.(query_vecs_n_inds))...) # Pre-allocate a new prior, to store the interpolated values
+            fot_nodes = () # The nodes of the interpolation object (fot_nodes name only due to Scope warnings)
+            for abscissa in fot_abscissas # Use the reconstruction-space abscissas of the prior as the nodes of the interpolation object...
+                global fot_nodes
+                fot_nodes = tuple(fot_nodes[:]..., abscissa) # Put them all in a tuple (tuples are immutable, hence the cumbersome code)
+            end
+            local itp; itp = Interpolations.interpolate(fot_nodes, fot_prior,Gridded(Linear()))
+            local etp; etp = Interpolations.extrapolate(itp, Interpolations.Flat()) # If outside of interpolation region, use edge values to extrapolate
+            for query_point_n_coord in query_points_n_coords # query_points_n_coords is given from way earlier in (the beginning of) the solveInverseProblem.jl script
+                point = map(x-> x[1],query_point_n_coord) # The point to interpolate at. E.g. (100.0,0.3) in energy (keV),pitch
+                coord = map(x-> x[2],query_point_n_coord) # The coordinate of that point. E.g. (53,14)
+                fot_prior_interpolated[coord...] = etp(point...)
+            end
+            fot_abscissas = W_abscissas[1][2:end] # Replace the loaded prior reconstruction-space grid points with the interpolation query (weight functions) grid points
+            fot_prior = fot_prior_interpolated # Replace the loaded prior with the interpolated one
+            prior_FIRSTTIKH = fot_prior[:] # Set the 1st-order Tikhonov prior to be the (new) interpolated prior (vectorized)
+            verbose && println("Done!")
+        else
+            verbose && println("---> The 'filepath_FIRSTTIKH_prior' input variable was not specified. Using 0 as prior... ")
+            prior_FIRSTTIKH = zeros(size(L1,1))
+        end
+    else
+        verbose && println("---> The 'filepath_FIRSTTIKH_prior' input variable was not defined. Using 0 as prior... ")
+        prior_FIRSTTIKH = zeros(size(L1,1))
+    end
     append!(L,[L1])
-    append!(priors, [zeros(size(L1,1))])
+    append!(priors, [prior_FIRSTTIKH])
     append!(priors_name, ["1st order Tikhonov"])
 end
 
@@ -1463,6 +1647,12 @@ S_hh = S_hat_long ./Shm
 verbose && println("Normalizing regularization matrices L to order unity... ")
 for (il, l) in enumerate(L)
     L[il] = l ./maximum(l)
+end
+
+verbose && println("Normalizing priors to order unity... ")
+for (ip, p) in enumerate(priors)
+    maxp = maximum(p)>0 ? maximum(p) : maximum(p)<0 ? abs(minimum(p)) : 1.0
+    priors[ip] ./= maxp
 end
 
 append!(timestamps,time()) # The timestamp when the weight matrices and signals have been normalized to order unity

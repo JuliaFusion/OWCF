@@ -46,7 +46,7 @@
 #                              index in the 'excluded_measurement_intervals' input variable are assumed to have the specified units. 
 #                              That is, the units of the Vector elements (tuples) in excluded_measurement_intervals[i] are assumed to be 
 #                              excluded_measurement_units[i] - Vector{String}
-# exclude_zero_measurements - If true, measurements equal to 0 will be excluded from the reconstruction - Bool
+# exclude_zero_measurements - If true, measurements (less than or) equal to 0 will be excluded from the reconstruction - Bool
 # filename_out - If specified, the solveInverseProblem.jl output file will be named "filename_out.jld2" or "filename_out.h5" - String
 # filepath_start - The path to the start file. This is set automatically, and saved in the calc2DWeights.jl output file. LEAVE UNCHANGED. - String
 # filepaths_S - A Vector of Strings with filepath(s) to the signal file(s) to be used as measurements when solving the 
@@ -134,6 +134,42 @@
 #                              regularization_loglambda_maxs is assumed to specify the upper bound for the log10(λ) grid points for the corresponding element in 
 #                              the 'regularization' input Vector. Some regularization types do not need a λ (e.g. :COLLISIONS). The corresponding element in 
 #                              regularization_loglambda_maxs will then be treated as a dummy value - Vector{Float64}
+# filepath_ZEROTIKH_prior - If :ZEROTIKHONOV in 'regularization' input, then a file path to a prior can be specified. Then, when solving the least-square problem 
+#                           ||S - WF||^2 + λ||prior - LF||^2, where L is a matrix with all elements equal to 0 except for the diagonal which has all elements equal 1.
+#                           The file containing the data for the prior can be either in .jld2 or .h5/.hdf5 file format. The keys of the file need to be the following:
+#                               prior - The array containing the prior data, i.e. f_prior if 'f' is a fast-ion distribution. The number of dimensions of the array 
+#                                       needs to match the number of grid points vectors (D1_array, explained below) - Array{Float64}
+#                               D1_array - The grid points of the first dimension of the prior - Vector{Float64}
+#                               D1_array_units - The units of the elements of D1_array. Please see OWCF/misc/convert_units.jl for lists of all accepted units 
+#                                                of measurement in the OWCF. - String
+#                               D2_array - The grid points of the second dimension of the prior - Vector{Float64}
+#                               D2_array_units - The units of the elements of D2_array. Please see OWCF/misc/convert_units.jl for lists of all accepted units 
+#                                                of measurement in the OWCF. - String
+#                               ...      - .... - ...
+#                               ...            - .... - ...
+#
+#                               DN_array - The grid points of the N:th dimension of the prior - Vector{Float64}
+#                               DN_array_units - The units of the elements of DN_array. Please see -||- - String
+#                           Please note that the N<=6, because the full fast-ion distribution is six-dimensional (three position-space dimensions, three 
+#                           velocity-space dimensions). The time dimension is currently not supported.
+# filepath_FIRSTTIKH_prior - If :FIRSTTIKHONOV in 'regularization' input, then a file path to a prior can be specified. Then, when solving the least-square problem 
+#                           ||S - WF||^2 + λ||prior - LF||^2, where L is the 1st-order Tikhonov regularization matrix. The file containing the data for the prior can 
+#                           be either in .jld2 or .h5/.hdf5 file format. The keys of the file need to be the following:
+#                               prior - The array containing the prior data, i.e. f_prior if 'f' is a fast-ion distribution. The number of dimensions of the array 
+#                                       needs to match the number of grid points vectors (D1_array, explained below) - Array{Float64}
+#                               D1_array - The grid points of the first dimension of the prior - Vector{Float64}
+#                               D1_array_units - The units of the elements of D1_array. Please see OWCF/misc/convert_units.jl for lists of all accepted units 
+#                                                of measurement in the OWCF. - String
+#                               D2_array - The grid points of the second dimension of the prior - Vector{Float64}
+#                               D2_array_units - The units of the elements of D2_array. Please see OWCF/misc/convert_units.jl for lists of all accepted units 
+#                                                of measurement in the OWCF. - String
+#                               ...      - .... - ...
+#                               ...            - .... - ...
+#
+#                               DN_array - The grid points of the N:th dimension of the prior - Vector{Float64}
+#                               DN_array_units - The units of the elements of DN_array. Please see -||- - String
+#                           Please note that the N<=6, because the full fast-ion distribution is six-dimensional (three position-space dimensions, three 
+#                           velocity-space dimensions). The time dimension is currently not supported.
 # regularization_equil_filepath - If :COLLISIONS and/or :ICRF is included in the 'regularization' Vector, the filepath to a magnetic equilibrium file 
 #                                 (either in .eqdsk file format or an OWCF/extra/createCustomMagneticEquilibrium.jl output file) must be specified. For :COLLISIONS, this is to 
 #                                 compute necessary quantities for the creation of the slowing-down basis functions, e.g. the Spitzer slowing-down time.
@@ -232,7 +268,7 @@
 # Some lines below are commented out. This is because the inverse problem solving algorithm is currently single-CPU.
 # In future version, multi-core processing might be supported, and those lines will then be uncommented.
 
-# Script written by Henrik Järleblad. Last maintained 2025-10-07.
+# Script written by Henrik Järleblad. Last maintained 2026-10-15.
 #############################################################################################################################################################
 
 ## First you have to set the system specifications
@@ -288,6 +324,12 @@ end=#
     regularization = [:ZEROTIKHONOV] # Should be equal in length to 'nr_array'
     regularization_loglambda_mins = [-3] # The minimum of log10(λ) in ||S-WF||+λ||LF|| for each regularization type in the 'regularization' input variable Vector
     regularization_loglambda_maxs = [3] # The maximum of log10(λ) in ||S-WF||+λ||LF|| for each regularization type in the 'regularization' input variable Vector
+    if :ZEROTIKHONOV in regularization
+        filepath_ZEROTIKH_prior = "" # Leave unspecified, if 0 is desired
+    end
+    if :FIRSTTIKHONOV in regularization
+        filepath_FIRSTTIKH_prior = "" # Leave unspecified, if 0 is desired
+    end
     if (:COLLISIONS in regularization) || (:ICRF in regularization) # :COLLISIONS and/or :ICRF included in regularization...
         regularization_equil_filepath = "" # Please specify the file path to a magnetic equilibrium file (see template description above)
     end
@@ -343,7 +385,7 @@ end
 
 ## -----------------------------------------------------------------------------
 # Then you execute the script
-include("solveInverseProblem.jl")
+include(folderpath_OWCF*"solveInverseProblem.jl")
 
 ## -----------------------------------------------------------------------------
 #CURRENTLY NOT AVAILABLE FOR solveInverseProblem.jl

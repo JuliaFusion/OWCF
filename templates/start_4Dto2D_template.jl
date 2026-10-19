@@ -83,7 +83,7 @@ end
 
 ## -----------------------------------------------------------------------------
 # Then you execute the script
-include("helper/orbWeights_4Dto2D.jl")
+include(folderpath_OWCF*"helper/orbWeights_4Dto2D.jl")
 
 ## -----------------------------------------------------------------------------
 # Then you clean up after yourself

@@ -57,7 +57,7 @@
 # Please note, because of numerical reasons, all integers (1,2,3,4,5,6,7,8,9) will actually be saved as 
 # their Float64 counterparts (1.0, 2.0 etc).
 
-# Script written by Henrik Järleblad. Last maintained 2025-09-01.
+# Script written by Henrik Järleblad. Last maintained 2026-10-19.
 #######################################################################################################
 
 ## ------
@@ -153,6 +153,9 @@ if isfile(filepath_W)
     end
 elseif isfile(filepath_OG)
     verbose && println("Loading orbit-space grid points from .jld2 orbit grid file... ")
+    verbose && println("---> Loading OrbitTomography.jl Julia package... ")
+    using OrbitTomography
+    verbose && println("---> Loading orbit grid... ")
     myfile = jldopen(filepath_OG,false,false,false,IOStream)
     og = myfile["og"]
     extra_kw_args = myfile["extra_kw_args"]
@@ -397,8 +400,9 @@ else # ... good luck
     topoMap_i = zeros(length(pm_array),length(Rm_array))
     polTimeMap_i = zeros(length(pm_array),length(Rm_array))
     torTimeMap_i = zeros(length(pm_array),length(Rm_array))
-    count = 1
+    global count; count = 1
     for pmRm in pmRm_array # Compute one result, and reduce (add) it to a resulting matrix
+        global count
         pm = pmRm[1]
         Rm = pmRm[2]
         verbose && println("$(count)/$(length(pmRm_array)):    (E,pm,Rm) = ($(E),$(pm),$(Rm))")
@@ -437,7 +441,7 @@ else # ... good luck
             polTimeMap_i[pmi,Rmi] = 0.0
             torTimeMap_i[pmi,Rmi] = 0.0
         end
-        count = count + 1
+        count += 1
     end
     dataMap_tot = zeros(3,length(pm_array),length(Rm_array))
     dataMap_tot[1,:,:] = topoMap_i

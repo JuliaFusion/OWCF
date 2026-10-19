@@ -38,7 +38,7 @@ This notebook provides an application to visualize (guiding-centre) orbits in a 
 # -
 
 ### Notebook written by Henrik Järleblad, henrikj@dtu.dk
-### Last maintained 2026-09-11
+### Last maintained 2026-10-19
 """
 
 # ╔═╡ cd6a92a9-7113-4281-8596-a520642c5cbe
@@ -105,7 +105,7 @@ let
 	close(myfile)
 	
 	iE = argmin(abs.(E_array .- E)) # Find the closest value to E in E_array
-	Plots.heatmap(Rm_array,pm_array,topoMap[iE,:,:],color=:Set1_9,legend=false,xlabel="Rm [m]", ylabel="pm", title="E: $(round(E,digits=3)) keV")
+	Plots.heatmap(Rm_array,pm_array,topoMap[iE,:,:],color=:Set1_9,legend=false,xlabel="Rm [m]", ylabel="pm", title="E: $(round(E_array[iE],digits=3)) keV")
 end
 
 # ╔═╡ 206460f9-93e3-48cc-bd65-fbf0ce0a9967
@@ -440,9 +440,9 @@ let
     plt_pm = Plots.plot!([xp,xp],[0.0,yp],linestyle=:dash,label="",color=:black, title="pm: $(round(pm, digits=3))")
 
     if !poltor
-        myplt = Plots.plot(plt_topo, plt_pm, plt_top, plt_crs, layout=(2,2), size=(800,800))
+        myplt = Plots.plot(plt_topo, plt_pm, plt_top, plt_crs, layout=(2,2), size=(800,800), left_margin=6Plots.mm)
     else
-        myplt = Plots.plot(plt_topo, plt_pol, plt_tor, plt_pm, plt_top, plt_crs, layout=(3,2), size=(800, 1200))
+        myplt = Plots.plot(plt_topo, plt_pol, plt_tor, plt_pm, plt_top, plt_crs, layout=(3,2), size=(800, 1200), left_margin=6Plots.mm)
     end
     Plots.plot(myplt)
 end

@@ -71,7 +71,7 @@
 # Please note that the diagnostic energy grid will be created as bin centers.
 # That is, the first diagnostic energy grid value will be (Ed_min+Ed_diff/2) and so on.
 
-# Script written by Henrik Järleblad. Last maintained 2026-09-18.
+# Script written by Henrik Järleblad. Last maintained 2026-10-19.
 ################################################################################################
 
 ## ---------------------------------------------------------------------------------------------
@@ -112,7 +112,7 @@ if getReactionForm(reaction)==1 # If no excited energy state for the emitted par
     reaction *= "-GS"
 end
 if !reactionIsAvailable(reaction)
-    error("Fusion reaction $(reaction) is not yet available in the OWCF. The following reactions are available: $(OWCF_AVAILABLE_FUSION_REACTIONS). For projected-velocity computations, the following particle species are available: $(OWCF_SPECIES). Please correct and re-try.")
+    error("Fusion reaction $(reaction) is not yet available in the OWCF. \nThe following reactions are available: $(OWCF_AVAILABLE_FUSION_REACTIONS). \nFor projected-velocity computations, the following particle species are available: $(OWCF_SPECIES). Please correct and re-try.")
 end
 if analytic && !reactionIsAvailableAnalytically(reaction)
     error("Expected spectra from fusion reaction $(reaction) is currently not available for computation via analytic equations. Currently analytically available fusion reactions include: $(OWCF_AVAILABLE_FUSION_REACTIONS_FOR_ANALYTIC_COMPUTATION). Please correct and re-try.")
@@ -178,6 +178,10 @@ thermal_reactant, fast_reactant = getFusionReactants(reaction) # Check the speci
 # projVel variable. To clarify when orbit weight functions are computed from projected velocities, in code below
 projVel = getReactionForm(reaction)==3 ? true : false # If fusion reaction is specified as a single particle species..
 @everywhere projVel = $projVel # Export 'projVel' variable to all external CPU processors
+
+# Get mass and charge of fast ion
+fast_reactant_amu = getSpeciesAmu(fast_reactant); @everywhere fast_reactant_amu = $fast_reactant_amu
+fast_reactant_ecu = getSpeciesEcu(fast_reactant); @everywhere fast_reactant_ecu = $fast_reactant_ecu
 
 ## ---------------------------------------------------------------------------------------------
 # Loading thermal information and TRANSP RUN-ID, and perform checks
@@ -419,13 +423,16 @@ else
     println("Fusion reaction specified: N/A (projected velocities computation)")
 end
 println("---> Fast-ion species specified: "*fast_reactant)
+println("------> Mass: $(round(fast_reactant_amu, sigdigits=4)) amu")
+println("------> Charge: $(round(fast_reactant_ecu, sigdigits=4)) ecu")
 if emittedParticleHasCharge && !projVel
     println("PLEASE NOTE! The emitted "*getEmittedParticle(reaction)*" particle of the "*reaction*" reaction has non-zero charge!")
     println("PLEASE NOTE! The resulting energy distribution for "*getEmittedParticle(reaction)*" from the plasma as a whole will be computed.")
 end
 println("")
 if !analytic
-    println("To compute the up-/down-shift of the nominal birth energy of the $(getEmittedParticle(reaction)) particle, for every guiding-center point")
+    sp = projVel ? "projected velocities" : "up-/down-shift of the nominal birth energy"
+    println("To compute the $(sp) of the $(getEmittedParticle(reaction)) particle, for every guiding-center point")
     println("along the (drift) orbit trajectory, the number of velocity vector samples will be: $(n_gyro)")
 else
     println("Analytic equations in OWCF/forward.jl will be used to compute the synthetic diagnostic measurements.")
@@ -488,7 +495,7 @@ end
 println("")
 println("If you would like to change any settings, please edit the start_calcOW_template.jl file or similar.")
 println("")
-println("Written by Henrik Järleblad. Last maintained 2026-09-18.")
+println("Written by Henrik Järleblad. Last maintained 2026-10-19.")
 println("--------------------------------------------------------------------------------------------------------------------------")
 println("")
 
@@ -537,7 +544,7 @@ if isfile(og_filepath)
     verbose && println("Orbit grid and pertaining valid orbits were found in "*og_filepath*"... ")
 else
     verbose && println("Calculating the orbit grid... ")
-    og_orbs, og = OrbitTomography.orbit_grid(M, E_array, pm_array, Rm_array; amu=getSpeciesAmu(fast_reactant), q=getSpeciesEcu(fast_reactant), wall=wall, extra_kw_args...)
+    og_orbs, og = OrbitTomography.orbit_grid(M, E_array, pm_array, Rm_array; amu=fast_reactant_amu, q=fast_reactant_ecu, wall=wall, extra_kw_args...)
     # og_orbs is a vector of Orbit Julia-structs (found in L. Stagner's GuidingCenterOrbits.jl/orbit.jl package file)
 # og is an OrbitGrid Julia-struct (found in L.Stagner's OrbitTomography.jl/orbits.jl package file)
 end
@@ -584,7 +591,7 @@ end
         thermal_dist = transp_dists.Thermal(tr_out, ion=$thermal_reactant) # Then change from "" to the thermal ion distribution from that .cdf file
 
     $verbose and print("---> Initializing Python forward model object with diagnostic viewing cone (if any), fusion reaction (if any) and bulk (thermal) plasma distribution (if any)... ") 
-    forwardmodel = forward.Forward($diagnostic_filepath, $reaction, thermal_dist) # Initialize the forward model
+    forwardmodel = forward.Forward($diagnostic_filepath, $reaction, thermal_dist, fast_reactant_amu=$fast_reactant_amu, fast_reactant_ecu=$fast_reactant_amu) # Initialize the forward model
 
     $verbose and print("---> Initializing diagnostic measurement bins... ")
     Ed_bin_edges = np.arange($Ed_min,$Ed_max,$Ed_diff) # diagnostic spectrum bin edges (keV or m/s)
@@ -993,7 +1000,7 @@ for iii=1:iiimax
         end
         if plot_results
 
-            plot_font = "Computer Modern"
+            local plot_font; plot_font = "Computer Modern"
             Plots.default(fontfamily=plot_font)
             verbose && println("Plotting (a subset of) the results of the orbit weight functions computations... ")
 

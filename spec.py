@@ -22,7 +22,7 @@ phi_hat = np.array([0,1.0,0]).reshape(3,1)    # toroidal basis vector
 
 class Particle:
 
-    def __init__(self, name):
+    def __init__(self, name, amu='', ecu=''):
 
         name = name.lower()
         self.name = name
@@ -78,7 +78,15 @@ class Particle:
             self.u = 0.0
             self.q = 0.0
         else:
-            raise ValueError('Invalid particle name')
+            if not amu == '':
+                self.u = float(amu)
+            else:
+                raise ValueError('Custom particle name: '+name+'. Please specify keyword arguments amu and ecu')
+            if not ecu == '':
+                self.q = float(ecu)*(constants.e)
+            else:
+                raise ValueError('Custom particle name: '+name+'. Please specify keyword arguments amu and ecu')
+            self.long_name = name # We have no idea what the long name is for a custom particle
 
 
     def __repr__(self):
@@ -95,9 +103,9 @@ class Particle:
 
 class Reactant:
 
-    def __init__(self, name, n_samples=0, B_dir=[0,1,0]):
+    def __init__(self, name, n_samples=0, B_dir=[0,1,0], amu='', ecu=''):
 
-        self.particle = Particle(name)
+        self.particle = Particle(name, amu=amu, ecu=ecu)
         self._B_dir = B_dir
 
         # Initialize without MC sample
@@ -251,11 +259,13 @@ class SpectrumCalculator:
     (if None, each event gets a random direction).
     """
 
-    def __init__(self, reaction='d-d', product_state='gs', B_dir=[0,1,0], n_samples=1e6): #
+    def __init__(self, reaction='d-d', product_state='gs', B_dir=[0,1,0], n_samples=1e6, reactant_a_amu='', reactant_a_ecu=''): #
 
         self._B_dir = B_dir
         self._n_samples = int(n_samples)
-        self.product_state = product_state.lower() #        
+        self.product_state = product_state.lower()
+        self.reactant_a_amu = reactant_a_amu # Will only ever be used if reaction is on the form 'a-proj' and 'a' is not in the list of particle species above 
+        self.reactant_a_ecu = reactant_a_ecu # Will only ever be used if reaction is on the form 'a-proj' and 'a' is not in the list of particle species above 
         self.reaction = reaction
         self.weights = None
 
@@ -318,7 +328,7 @@ class SpectrumCalculator:
 
     @reactant_a.setter
     def reactant_a(self, name):
-        self._reactant_a = Reactant(name, n_samples=self.n_samples, B_dir=self.B_dir)
+        self._reactant_a = Reactant(name, n_samples=self.n_samples, B_dir=self.B_dir, amu=self.reactant_a_amu, ecu=self.reactant_a_ecu)
 
     @property
     def reactant_b(self):

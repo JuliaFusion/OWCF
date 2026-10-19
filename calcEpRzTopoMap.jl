@@ -426,6 +426,7 @@ else # ... good luck
     torTimeMap_i = zeros(length(p_array),length(R_array),length(z_array))
     jacobian_i = zeros(length(p_array),length(R_array),length(z_array))
     for pRz in pRz_array # Compute one result, and reduce (add) it to a resulting matrix
+        local R
         p = pRz[1]
         R = pRz[2]
         z = pRz[3]

@@ -122,7 +122,7 @@
 # WARNING! Please note that the output files of calc4DWeights.jl will be LARGE. This is due to the relatively high dimensionality
 # of the weight functions.
 
-# Script written by Henrik Järleblad. Last maintained 2026-09-08.
+# Script written by Henrik Järleblad. Last maintained 2026-10-19.
 ################################################################################################
 
 ## ---------------------------------------------------------------------------------------------
@@ -131,6 +131,7 @@ verbose && println("Loading Julia packages... ")
     cd(folderpath_OWCF) # Necessary to move all the workers to the correct folder
     using PyCall # For using Python code in Julia
     using Printf # To be able to print specific formats
+    using LinearAlgebra # To be able to reshape vectors for Python
     plot_results && (using Plots)
     include("misc/availReacts.jl") # To examine fusion reaction and extract thermal and fast-ion species
     include("extra/dependencies.jl") # To enable usage of OWCF functions library
@@ -294,6 +295,8 @@ psi_axis, psi_bdry = psi_limits(M)
 @everywhere psi_bdry = $psi_bdry # Export to workers
 @everywhere M = $M # Export to workers
 @everywhere wall = $wall # Export to workers
+@everywhere jdotb = $jdotb # Export to workers
+@everywhere timepoint = $timepoint # Export to workers
 
 if (fileext_thermal=="cdf") && (fileext_FI_cdf=="cdf")
     # If the user has specified a TRANSP .cdf file with pertaining NUBEAM fast-ion distribution data...
@@ -304,6 +307,7 @@ if (fileext_thermal=="cdf") && (fileext_FI_cdf=="cdf")
     YYYY = TIME_array[2]
     timepoint = XX*","*YYYY # Format XX,YYYY to avoid "." when including in filename of saved output
 end
+@everywhere timepoint = $timepoint # Export to workers
 
 ## ---------------------------------------------------------------------------------------------
 # Defining (E,p,R,z) grid vectors
@@ -402,6 +406,53 @@ if isfile(instrumental_response_filepath) # Returns true both for Strings and Ve
     end
     instrumental_response = true
 end
+@everywhere instrumental_response_matrix = $instrumental_response_matrix # Export to workers
+@everywhere instrumental_response_input = $instrumental_response_input # Export to workers
+@everywhere instrumental_response_output = $instrumental_response_output # Export to workers
+
+## ---------------------------------------------------------------------------------------------
+# If specified, include plasma rotation in the weight computations
+# If TRANSP data is available and desired, load plasma rotation data from TRANSP file
+@everywhere begin
+    if plasma_rot
+        if plasma_rot_speed_data_source_type == :TRANSP
+            include("misc/load_TRANSP_interp_object.jl") # Need to load plasma rotation interpolation object from TRANSP
+            omega_itp = getTRANSPInterpObject("OMEGA",parse(Float64,replace(timepoint,","=>".")),plasma_rot_speed_data_source)
+            psi_on_axis, psi_at_bdry = psi_limits(M)
+            plasma_rot_itp = (R,z) -> begin
+                ψ_rz = M(R,z)
+                ρ_pol_rz = sqrt((ψ_rz-psi_on_axis)/(psi_at_bdry-psi_on_axis)) # The formula for the normalized flux coordinate ρ_pol = sqrt((ψ-ψ_axis)/(ψ_edge-ψ_axis))
+                omega = omega_itp(ρ_pol_rz) # Get omega at (R,z) of interest
+                R*omega # v = R * Ω (in m/s)
+            end
+        elseif plasma_rot_speed_data_source_type == :MANUAL
+            plasma_rot_itp = (R,z) -> begin
+                plasma_rot_speed
+            end
+        else
+            error("Invalid data source type for the plasma rotation. Needs to be :TRANSP or :MANUAL. Please correct and re-try.")
+        end
+
+        if plasma_rot_dir == :BFIELD
+            plasma_rot_unit_vec = B -> begin
+                B_at_Rz = [B[1], B[2], B[3]] # Re-structure for Python
+                B_at_Rz = reshape(B_at_Rz,(length(B_at_Rz),1)) # Re-structure for Python
+                pruv = B_at_Rz ./norm(B_at_Rz) # Unit vector in B-field direction at (R,z)
+                pruv # pruv = plasma rotation unit vec
+            end
+        elseif plasma_rot_dir == :TOROIDAL
+            plasma_rot_unit_vec = B -> begin
+                pruv = [0.0, jdotb*sign(B[2]), 0.0] # Plasma is assumed to rotate in the toroidal direction. Clockwise/counter-clockwise is determined by the plasma current
+                pruv # pruv = plasma rotation unit vec
+            end
+        else
+            error("Invalid direction for plasma rotation. Needs to be :BFIELD or :TOROIDAL. Please correct and re-try.")
+        end
+    else
+        plasma_rot_itp = (R,z) -> 0.0 # No plasma rotation included
+        plasma_rot_unit_vec = B -> [0.0, 0.0, 0.0] # No plasma rotation included
+    end
+end
 
 ## ---------------------------------------------------------------------------------------------
 # Python code (essentially calling the forward model black box)
@@ -498,6 +549,15 @@ if include_FLR_effects
 else
     println("---> Finite Larmor radius (FLR) effects included? No.")
 end
+print("---> Plasma rotation included? ")
+if plasma_rot
+    println("Yes!")
+    println("------> Plasma rotation speed data source type: $(plasma_rot_speed_data_source_type)")
+    println("------> Plasma rotation speed data source file: $(plasma_rot_speed_data_source)")
+    println("------> Plasma rotation direction specified: $(plasma_rot_dir)")
+else
+    println("No.")
+end
 println("")
 if !(filepath_thermal_distr=="")
     println("Bulk (thermal) plasma distribution file: "*filepath_thermal_distr)
@@ -582,7 +642,7 @@ end
 println("")
 println("If you would like to change any settings, please edit the start_calc4DW_template.jl file or similar.")
 println("")
-println("Written by Henrik Järleblad. Last maintained 2026-09-08.")
+println("Written by Henrik Järleblad. Last maintained 2026-10-19.")
 println("--------------------------------------------------------------------------------------------------")
 println("")
 
@@ -689,21 +749,22 @@ verbose && println("Creating synthetic measurements computation function... ")
             E = vcat(E); p = vcat(p); R = vcat(R); z = vcat(z); w = vcat(w) # If not Vectors, make into 1-element Vectors. If already Vectors, keep as is
             B_vecs = zeros(3,N)
             for i in eachindex(R)
-                B_vecs[:,i] = collect(reshape(Equilibrium.Bfield(M,R[i],z[i]),3,1))
+                B_vecs[:,i] = collect(reshape(Equilibrium.Bfield(M,R[i],z[i]), 3, 1))
             end
             py"""
-            v, x = forwardmodel.add_gyration($E, $p, $R, $z, $B_vecs, n_gyro=$n_gyro) # No need to specify particle species, already specified via Forward.__init__()
+            v, x = forwardmodel.add_gyration($E, $p, $R, $z, $B_vecs, n_gyro=$n_gyro) # No need to specify particle species, already specified via Forward.__init__(). n_gyro specified in start file
             """
 
-            R_gyro = py"x[0,:]" # Vector (M,) where M >= N
+            R_gyro = py"x[0,:]" # Vector (M,) where M >= N (see above for N)
             z_gyro = py"x[2,:]" # Vector (M,)
 
             weights = inv(n_gyro) .*repeat(w, inner=n_gyro) # Vector (M,), weights rescaled by number of gyro-orbit samples
 
             B_vecs = reduce(hcat,map(i-> Equilibrium.Bfield(M,R_gyro[i],z_gyro[i]), eachindex(R_gyro))) # Create a (3,M) array with the magnetic field vector at each (R,z) point
+            v_rots = reduce(hcat,map(i-> reshape(plasma_rot_itp(R_gyro[i], z_gyro[i]) .*plasma_rot_unit_vec(B_vecs[:,i]), 3, 1), eachindex(R_gyro))) # Create a (3,M) array with the fast-ion particle velocity at each (R,z) point. Add plasma rotation
 
             py"""
-            spec = forwardmodel.compute_spectrum(Ed_bin_edges, x[0,:], x[2,:], v, $weights, $B_vecs) # Bulk temp and dens already included then forwardmodel was initialized
+            spec = forwardmodel.compute_spectrum(Ed_bin_edges, x[0,:], x[2,:], v, $weights, $B_vecs, v_rot=$v_rots) # Bulk temp and dens already included then forwardmodel was initialized
             """
 
             return vec(vcat(py"spec"))
@@ -726,12 +787,13 @@ verbose && println("Creating synthetic measurements computation function... ")
             weights = inv(n_gyro) .*repeat(w, inner=n_gyro) # Vector (M,), weights rescaled by number of gyro-orbit samples
 
             B_vecs = reduce(hcat,map(i-> Equilibrium.Bfield(M,R_gyro[i],z_gyro[i]), eachindex(R_gyro))) # Create a (3,M) array with the magnetic field vector at each (R,z) point
+            v_rots = reduce(hcat,map(i-> reshape(plasma_rot_itp(R_gyro[i], z_gyro[i]) .*plasma_rot_unit_vec(B_vecs[:,i]), 3, 1), eachindex(R_gyro))) # Create a (3,M) array with the fast-ion particle velocity at each (R,z) point. Add plasma rotation
 
             bulk_temp = map(i-> getThermalSpeciesTemperature(R_gyro[i], z_gyro[i]), eachindex(R_gyro)) # Bulk plasma temperature in keV
             bulk_dens = map(i-> getThermalSpeciesDensity(R_gyro[i], z_gyro[i]), eachindex(R_gyro)) # Bulk plasma density in m^-3
 
             py"""
-            spec = forwardmodel.compute_spectrum(Ed_bin_edges, x[0,:], x[2,:], v, $weights, $B_vecs, bulk_temp=$bulk_temp, bulk_dens=$bulk_dens)
+            spec = forwardmodel.compute_spectrum(Ed_bin_edges, x[0,:], x[2,:], v, $weights, $B_vecs, bulk_temp=$bulk_temp, bulk_dens=$bulk_dens, v_rot=$v_rots)
             """
 
             return vec(vcat(py"spec"))
@@ -750,11 +812,14 @@ verbose && println("Creating synthetic measurements computation function... ")
 
             R = repeat(R, inner=n_gyro) # Ignore FLR effects. 'inner' keyword argument included to match with Python's default repeat() functionality
             z = repeat(z, inner=n_gyro) # Ignore FLR effects
+
             weights = inv(n_gyro) .*repeat(w, inner=n_gyro) # Vector (M,), weights rescaled by number of gyro-orbit samples
+
             B_vecs = repeat(B_vecs, inner=(1,n_gyro)) # Array (3,M)
+            v_rots = reduce(hcat,map(i-> reshape(plasma_rot_itp(R[i], z[i]) .*plasma_rot_unit_vec(B_vecs[:,i]), 3, 1), eachindex(R))) # Create a (3,M) array with the fast-ion particle velocity at each (R,z) point. Add plasma rotation
 
             py"""
-            spec = forwardmodel.compute_spectrum(Ed_bin_edges, $R, $z, v, $weights, $B_vecs) # Bulk temp and dens already included then forwardmodel was initialized
+            spec = forwardmodel.compute_spectrum(Ed_bin_edges, $R, $z, v, $weights, $B_vecs, v_rot=$v_rots) # Bulk temp and dens already included then forwardmodel was initialized
             """
 
             return vec(vcat(py"spec"))
@@ -773,14 +838,17 @@ verbose && println("Creating synthetic measurements computation function... ")
 
             R = repeat(R, inner=n_gyro) # Ignore FLR effects. 'inner' keyword argument included to match with Python's default repeat() functionality
             z = repeat(z, inner=n_gyro) # Ignore FLR effects
+
             weights = inv(n_gyro) .*repeat(w, inner=n_gyro) # Vector (M,), weights rescaled by number of gyro-orbit samples
+
             B_vecs = repeat(B_vecs, inner=(1,n_gyro)) # Array (3,M)
+            v_rots = reduce(hcat,map(i-> reshape(plasma_rot_itp(R[i], z[i]) .*plasma_rot_unit_vec(B_vecs[:,i]), 3, 1), eachindex(R))) # Create a (3,M) array with the fast-ion particle velocity at each (R,z) point. Add plasma rotation
 
             bulk_temp = map(i-> getThermalSpeciesTemperature(R[i], z[i]), eachindex(R)) # Bulk plasma temperature in keV
             bulk_dens = map(i-> getThermalSpeciesDensity(R[i], z[i]), eachindex(R)) # Bulk plasma density in m^-3
 
             py"""
-            spec = forwardmodel.compute_spectrum(Ed_bin_edges, $R, $z, v, $weights, $B_vecs, bulk_temp=$bulk_temp, bulk_dens=$bulk_dens)
+            spec = forwardmodel.compute_spectrum(Ed_bin_edges, $R, $z, v, $weights, $B_vecs, bulk_temp=$bulk_temp, bulk_dens=$bulk_dens, v_rot=$v_rots)
             """
 
             return vec(vcat(py"spec"))

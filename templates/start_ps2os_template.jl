@@ -151,7 +151,7 @@ end
 
 ## -----------------------------------------------------------------------------
 # Then you execute the script
-include("ps2os.jl")
+include(folderpath_OWCF*"ps2os.jl")
 ## -----------------------------------------------------------------------------
 # Then you clean up after yourself
 if batch_job_SLURM || distributed

@@ -108,7 +108,7 @@ end
 
 ## -----------------------------------------------------------------------------
 # Then you execute the script
-include("helper/extractNullOrbits.jl")
+include(folderpath_OWCF*"helper/extractNullOrbits.jl")
 
 ## -----------------------------------------------------------------------------
 # Then you clean up after yourself

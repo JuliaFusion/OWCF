@@ -163,7 +163,7 @@ end
 
 ## -----------------------------------------------------------------------------
 # Then you execute the script
-include("calcEpRzTopoMap.jl")
+include(folderpath_OWCF*"calcEpRzTopoMap.jl")
 
 ## -----------------------------------------------------------------------------
 # Then you clean up after yourself

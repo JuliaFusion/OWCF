@@ -86,7 +86,7 @@
 # Please note that the diagnostic energy grid will be created as bin centers.
 # That is, the first diagnostic energy grid value will be (Ed_min+Ed_diff/2) and so on.
 
-# Script written by Henrik Järleblad. Last maintained 2025-09-01.
+# Script written by Henrik Järleblad. Last maintained 2026-10-19.
 ################################################################################################
 
 ## ---------------------------------------------------------------------------------------------
@@ -404,7 +404,7 @@ if plasma_rot
         psi_on_axis, psi_at_bdry = psi_limits(M)
         ρ_pol_rz = sqrt((ψ_rz-psi_on_axis)/(psi_at_bdry-psi_on_axis)) # The formula for the normalized flux coordinate ρ_pol = sqrt((ψ-ψ_axis)/(ψ_edge-ψ_axis))
         omega = omega_itp(ρ_pol_rz) # Get omega at (R,z) of interest
-        plasma_rot_speed = (magnetic_axis(M)[1])*omega # v = R * Ω (in m/s)
+        plasma_rot_speed = R_of_interest*omega # v = R * Ω (in m/s)
     elseif plasma_rot_speed_data_source_type == :MANUAL
         plasma_rot_speed = plasma_rot_speed
     else
@@ -554,7 +554,7 @@ end
 println("")
 println("If you would like to change any settings, please edit the start_calc2DW_template.jl file or similar.")
 println("")
-println("Written by Henrik Järleblad. Last maintained 2025-07-11.")
+println("Written by Henrik Järleblad. Last maintained 2026-10-19.")
 println("--------------------------------------------------------------------------------------------------------------------")
 println("")
 
@@ -749,7 +749,8 @@ verbose && println("Creating synthetic measurements computation function... ")
                     # After gyro sampling
                     R_gyro = py"x[0,:]" # Vector (M,) where M = length(E)*n_gyro
                     z_gyro = py"x[2,:]" # Vector (M,)
-                    v = py"v" .+ plasma_rot_at_Rz # Add plasma rotation
+                    v_rot = repeat(plasma_rot_at_Rz, inner=(1,n_gyro)) # Include plasma rotation
+
                     w_gyro = inv(n_gyro) .*repeat(w, inner=n_gyro) # Vector (N*n_gyro,), weights rescaled by number of gyro-orbit samples
                     B_gyro = reduce(hcat,map(i-> Equilibrium.Bfield(M,R_gyro[i],z_gyro[i]), eachindex(R_gyro))) # Create a (3,M) array with the magnetic field vector at each (R,z) point
                     bulk_temp = getThermalSpeciesTemperature(R_gyro, z_gyro) # Bulk plasma temperature in keV
@@ -757,7 +758,7 @@ verbose && println("Creating synthetic measurements computation function... ")
 
                     # Call DRESS
                     py"""
-                    spec = forwardmodel.compute_spectrum(Ed_bin_edges, $R_gyro, $z_gyro, $v, $w_gyro, $B_gyro, bulk_temp=$bulk_temp, bulk_dens=$bulk_dens)
+                    spec = forwardmodel.compute_spectrum(Ed_bin_edges, $R_gyro, $z_gyro, v, $w_gyro, $B_gyro, bulk_temp=$bulk_temp, bulk_dens=$bulk_dens, v_rot=$v_rot)
                     """
 
                     return vcat(py"spec")
@@ -775,7 +776,8 @@ verbose && println("Creating synthetic measurements computation function... ")
                     # After gyro sampling
                     R_gyro = py"x[0,:]" # Vector (M,) where M = length(E)*n_gyro
                     z_gyro = py"x[2,:]" # Vector (M,)
-                    v = py"v" .+ plasma_rot_at_Rz # Add plasma rotation
+                    v_rot = repeat(plasma_rot_at_Rz, inner=(1,n_gyro)) # Include plasma rotation
+
                     w_gyro = inv(n_gyro) .*repeat(w, inner=n_gyro)
                     B_gyro = reduce(hcat,map(i-> Equilibrium.Bfield(M,R_gyro[i],z_gyro[i]), eachindex(R_gyro))) # Create a (3,M) array with the magnetic field vector at each (R,z) point
                     # bulk_temp <--- Already in forwardmodel via instantiation
@@ -783,7 +785,7 @@ verbose && println("Creating synthetic measurements computation function... ")
 
                     # Call DRESS
                     py"""
-                    spec = forwardmodel.compute_spectrum(Ed_bin_edges, $R_gyro, $z_gyro, $v, $w_gyro, $B_gyro)
+                    spec = forwardmodel.compute_spectrum(Ed_bin_edges, $R_gyro, $z_gyro, $v, $w_gyro, $B_gyro, v_rot=$v_rot)
                     """
 
                     return vcat(py"spec")
@@ -819,7 +821,8 @@ verbose && println("Creating synthetic measurements computation function... ")
                     # After gyro sampling
                     R_gc = repeat(R, inner=n_gyro) # Ignore FLR effects
                     z_gc = repeat(z, inner=n_gyro) # Ignore FLR effects
-                    v = py"v" .+ plasma_rot_at_Rz # Add plasma rotation
+                    v_rot = repeat(plasma_rot_at_Rz, inner=(1,n_gyro)) # Include plasma rotation
+
                     w_gc = inv(n_gyro) .*repeat(w, inner=n_gyro) # Vector (N*n_gyro,), weights rescaled by number of gyro-orbit samples
                     B_gc = repeat(B_vecs, inner=(1,n_gyro)) # Ignore FLR effects
                     bulk_temp = repeat(bulk_temp_at_Rz, inner=length(E)*n_gyro) # Ignore FLR effects
@@ -827,7 +830,7 @@ verbose && println("Creating synthetic measurements computation function... ")
 
                     # Call DRESS
                     py"""
-                    spec = forwardmodel.compute_spectrum(Ed_bin_edges, $R_gc, $z_gc, $v, $w_gc, $B_gc, bulk_temp=$bulk_temp, bulk_dens=$bulk_dens)
+                    spec = forwardmodel.compute_spectrum(Ed_bin_edges, $R_gc, $z_gc, $v, $w_gc, $B_gc, bulk_temp=$bulk_temp, bulk_dens=$bulk_dens, v_rot=$v_rot)
                     """
 
                     return vcat(py"spec")
@@ -845,7 +848,8 @@ verbose && println("Creating synthetic measurements computation function... ")
                     # After gyro sampling
                     R_gc = repeat(R, inner=n_gyro) # Ignore FLR effects
                     z_gc = repeat(z, inner=n_gyro) # Ignore FLR effects
-                    v = py"v" .+ plasma_rot_at_Rz # Add plasma rotation
+                    v_rot = repeat(plasma_rot_at_Rz, inner=(1,n_gyro)) # Include plasma rotation
+                    
                     w_gc = inv(n_gyro) .*repeat(w, inner=n_gyro) # Vector (N*n_gyro,), weights rescaled by number of gyro-orbit samples
                     B_gc = repeat(B_vecs, inner=(1,n_gyro)) # Ignore FLR effects
                     # bulk_temp <--- Already in forwardmodel via instantiation
@@ -853,7 +857,7 @@ verbose && println("Creating synthetic measurements computation function... ")
 
                     # Call DRESS
                     py"""
-                    spec = forwardmodel.compute_spectrum(Ed_bin_edges, $R_gc, $z_gc, $v, $w_gc, $B_gc)
+                    spec = forwardmodel.compute_spectrum(Ed_bin_edges, $R_gc, $z_gc, $v, $w_gc, $B_gc, v_rot=$v_rot)
                     """
 
                     return vcat(py"spec")

@@ -97,7 +97,7 @@ end
 
 ## -----------------------------------------------------------------------------
 # Then you execute the script
-include("helper/orbWeights_2Dto4D.jl")
+include(folderpath_OWCF*"helper/orbWeights_2Dto4D.jl")
 
 ## -----------------------------------------------------------------------------
 # Then you clean up after yourself

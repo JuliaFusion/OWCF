@@ -88,7 +88,7 @@
 # and thermal_dens_axis variables will be used to scale the polynomial profiles to match the specified
 # thermal temperature and thermal density at the magnetic axis. Please see the /misc/temp_n_dens.jl script for info.
 
-# Script written by Henrik Järleblad. Last maintained 2025-10-07.
+# Script written by Henrik Järleblad. Last maintained 2026-10-19.
 ######################################################################################################
 
 ## First you have to set the system specifications
@@ -198,7 +198,7 @@ end
 
 ## -----------------------------------------------------------------------------
 # Then you execute the script
-include("calc2DWeights.jl")
+include(folderpath_OWCF*"calc2DWeights.jl")
 
 ## -----------------------------------------------------------------------------
 # Then you clean up after yourself
