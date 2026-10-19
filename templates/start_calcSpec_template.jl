@@ -92,7 +92,7 @@
 # file has been specified, the algorithm needs to know the fast-ion time window to extract data from.
 # That is only stored in the TRANSP .cdf fast-ion file
 
-# Script written by Henrik Järleblad. Last maintained 2025-10-07.
+# Script written by Henrik Järleblad. Last maintained 2025-10-19.
 ######################################################################################################
 
 ## First you have to set the system specifications
@@ -181,7 +181,7 @@ end
 
 ## -----------------------------------------------------------------------------
 # Then you execute the script
-include("calcSpec.jl")
+include(folderpath_OWCF*"calcSpec.jl")
 ## -----------------------------------------------------------------------------
 # Then you clean up after yourself
 if batch_job_SLURM || distributed

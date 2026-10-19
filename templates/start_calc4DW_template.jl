@@ -60,6 +60,11 @@
 # p_array - The fast-ion pitch grid points of your (E,p,R,z) grid. If set to 'nothing': np, p_min and p_max must be specified - Vector
 # p_min - The lower boundary for the (E,p,R,z) grid p values - Float64
 # p_max - THe upper boundary for the (E,p,R,z) grid p values - Float64
+# plasma_rot - If true, then plasma rotation will be included in the computations - Bool
+# plasma_rot_speed_data_source_type - Set :TRANSP, to load from TRANSP file (if specified). Set :MANUAL, to use plasma_rot_speed - Symbol
+# plasma_rot_speed_data_source - The filepath to a TRANSP file containing the "OMEGA" variable, i.e. the plasma rotation data - String
+# plasma_rot_speed - If plasma_rot_speed_data_source is set to :MANUAL, use this value - Float64 or Int64
+# plasma_rot_dir - The direction of plasma rotation. Either :TOROIDAL (with same sign as plasma current) or along B-field lines with :BFIELD - Symbol
 # plot_results - If true, the weight functions will be plotted upon completion of computation. The figure(s) will be saved as .png files in the 
 #                folderpath_o folder - Bool
 # R_array - The major radius grid points of your (E,p,R,z) grid. If set to 'nothing': nR, R_min and R_max must be specified - Vector
@@ -89,7 +94,7 @@
 # and thermal_dens_axis variables will be used to scale the polynomial profiles to match the specified
 # thermal temperature and thermal density at the magnetic axis. Please see the /misc/temp_n_dens.jl script for info.
 
-# Script written by Henrik Järleblad. Last maintained 2025-10-07.
+# Script written by Henrik Järleblad. Last maintained 2026-10-19.
 ######################################################################################################
 
 ## First you have to set the system specifications
@@ -110,6 +115,7 @@ if batch_job_SLURM
     using SlurmClusterManager
     addprocs(SlurmManager()) # The number of CPU cores are detected automatically
     @everywhere println("X-wing $(rand(["Red","Green","Blue"])) $(myid()) reporting for duty at $(gethostname())")
+    @everywhere folderpath_OWCF = $folderpath_OWCF
 end
 
 ## If running locally and multi-threaded
@@ -117,6 +123,7 @@ if !batch_job_SLURM && distributed # Assume you are executing the script on a lo
     println("Adding processes... ")
     addprocs(numOcores-(nprocs()-1)) # If you didn't execute this script as an HPC cluster job, then you need to add processors like this. Add all remaining available cores.
     # The '-(nprocs()-1)' part is simply to ensure to extra processes are added, in case script needs to be restarted on a local computer
+    @everywhere folderpath_OWCF = $folderpath_OWCF
 end
 
 ## -----------------------------------------------------------------------------
@@ -137,7 +144,6 @@ end
     filepath_FI_cdf = "" # If filepath_thermal_distr=="96100J01.cdf", then filepath_FI_cdf should be "96100J01_fi_1.cdf" for example
     filepath_thermal_distr = "" # for example "96100J01.cdf", "myOwnThermalDistr.jld2" or ""
     folderpath_o = "../OWCF_results/template/" # Output folder path. Finish with '/'
-    folderpath_OWCF = $folderpath_OWCF # Set path to OWCF folder to same as main process (hence the '$')
     iiimax = 1 # The script will calculate iiimax number of weight matrices. They can then be examined in terms of similarity (to determine MC noise influence etc).
     (iiimax > 1) && (iii_average = false) # If true, the average of all weight matrices will be computed and saved. Without the "_i" suffix.
     include_FLR_effects = false # Set to false, by default. Will result in more physically accurate weight functions, at the expense of computational speed
@@ -149,6 +155,11 @@ end
     p_array = nothing # Array can be specified manually. Otherwise, leave as 'nothing'
     p_min = -1.0
     p_max = 1.0
+    plasma_rot = false # Set to true to include plasma rotation in the weight function computations
+    plasma_rot_speed_data_source_type = :MANUAL # :MANUAL or :TRANSP
+    plasma_rot_speed_data_source = "" # /path/to/the/TRANSP/file.cdf
+    plasma_rot_speed = 0.0 # If plasma_rot_speed_data_source is set to :MANUAL, use this value (m/s)
+    plasma_rot_dir = :TOROIDAL # :TOROIDAL or :BFIELD
     plot_results = false # If true, results will be plotted and figures saved as .png files
     R_array = nothing # Major radius grid points in meters
     R_min = :HFSwall # The major radius lower boundary, if R_array is set to nothing. Specify in meters e.g. "3.0", "3.4" etc. Can also be specified as the symbols :r_mag or :HFSwall, then the major radius coordinate of the magnetic axis or (the minimum of) the HFS wall will automatically be used, respectively
@@ -198,7 +209,7 @@ end
 
 ## -----------------------------------------------------------------------------
 # Then you execute the script
-include("calc4DWeights.jl")
+include(folderpath_OWCF*"calc4DWeights.jl")
 
 ## -----------------------------------------------------------------------------
 # Then you clean up after yourself

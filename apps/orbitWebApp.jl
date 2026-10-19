@@ -29,6 +29,8 @@ At the bottom of the web application, there is a cell that allows the user to sa
 - folderpath_OWCF - The path to the OWCF folder on your computer. Needed for correct loading - String
 - filepath_equil - The path to the .eqdsk-file (or .jld2-file) with the tokamak magnetic equilibrium and tokamak wall geometry. A .jld2 file with a magnetic equilibrium and tokamak wall geometry can be computed using the OWCF/extra/createCustomMagneticEquilibrium.jl script - String
 - FI\_species - The species of the particle being simulated (deuterium, tritium etc). Specified as "D", "T" etc. Please see the keys of the OWCF\_ChemElemSymbol\_to\_Z Dict object in the file OWCF/misc/species_func.jl for a full list of all available particle species in the OWCF - String
+- Emin - The minimum fast-ion energy of the interactive web application slider - Float64
+- Emax - The maximum fast-ion energy of the interactive web application slider - Float64
 - verbose - If set to true, the app will talk a lot! - Bool
 
 ## Outputs:
@@ -38,7 +40,7 @@ At the bottom of the web application, there is a cell that allows the user to sa
 # -
 
 ### Original script written by Henrik Järleblad, henrikj@dtu.dk
-### Last maintained 2026-09-04
+### Last maintained 2026-10-01
 """
 
 # ╔═╡ ca2c21a7-429e-4be4-ae40-9e1d0bf35092
@@ -53,6 +55,8 @@ begin
 	
 	filepath_equil = folderpath_OWCF*"equilibrium/JET/g99971/g99971_474-48.9.eqdsk" # Or .jld2. The g99971_474-48.9.eqdsk file is an example.
 	FI_species = "D" # Example deuterium: "D"
+	Emin = 5.0 # keV 
+	Emax = 1000.0 # keV
 	verbose = true
 	extra_kw_args = Dict(:toa => true, :limit_phi => true) # Extra keyword arguments for the orbit-integration algorithm. toa is 'try only adaptive' and limit_phi limits the number of toroidal turns for orbits
 end
@@ -121,13 +125,13 @@ function plot_inputs()
 				Child("wall", Switch(default=true))
 			)""",
 			md""" Energy (keV): $(
-				Child("E", Slider(1:1:1000.0, default=100.0))
+				Child("E", Slider(round.(range(Emin, stop=Emax, length=50), sigdigits=3), default=Emin, show_value=true))
 			)""",
 			md""" Pitch maximum, pm (-): $(
-				Child("pm", Slider(-1.0:0.01:1.0, default=0.7))
+				Child("pm", Slider(round.(-1.0:0.01:1.0, sigdigits=3), default=0.7, show_value=true))
 			)""",
 			md""" Radius maximum, Rm (m): $(
-				Child("Rm", Slider(((4*M.axis[1]+minimum(wall.r))/5):0.01:maximum(wall.r), default=(maximum(wall.r)+magnetic_axis(M)[1])/2))
+				Child("Rm", Slider(round.(range(((4*M.axis[1]+minimum(wall.r))/5), stop=maximum(wall.r), length=50),sigdigits=3), default=(maximum(wall.r)+magnetic_axis(M)[1])/2, show_value=true))
 			)""",
 			md""" Orbit path index, i (-): $(
 				Child("i", Slider(1:1:500, default=480))
@@ -216,17 +220,19 @@ end
 
 # ╔═╡ 704e7216-b629-4975-97f1-2d4141256cbc
 let
-	# AN EXTRA CELL THAT LET'S YOU SAVE AN ANIMATION OF HOW THE PARTICLE ACTUALLY MOVES ALONG THE ORBIT. TO SAVE THE ANIMATION
-	# - Set the (E,pm,Rm) values below
-	# - Set the 'save_animation' variable to 'true'
-	# - Remember to set the 'save_animation' variable to 'false' once you are done with the app, or when you don't want to save the animation
-	E = 100.0 # keV
-	pm = 0.7
-	Rm = 3.47 # meters
-	save_animation = false # Change this to 'true' to save animation when cell is run
-
-	@suppress begin
-		plot_orbit_movie(M, E, pm, Rm; FI_species=FI_species, wall=wall, save_anim=save_animation)
+	save_animation = false
+	if save_animation
+		# AN EXTRA CELL THAT LET'S YOU SAVE AN ANIMATION OF HOW THE PARTICLE ACTUALLY MOVES ALONG THE ORBIT. TO SAVE THE ANIMATION
+		# - Set the (E,pm,Rm) values below
+		# - Set the 'save_animation' variable to 'true'
+		# - Remember to set the 'save_animation' variable to 'false' once you are done with the app, or when you don't want to save the animation
+		E = my_plot_inputs.E # keV
+		pm = my_plot_inputs.pm
+		Rm = my_plot_inputs.Rm # meters
+	
+		@suppress begin
+			plot_orbit_movie(M, E, pm, Rm; FI_species=FI_species, wall=wall, save_anim=save_animation)
+		end
 	end
 end
 

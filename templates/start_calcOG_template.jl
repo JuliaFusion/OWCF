@@ -118,7 +118,7 @@ end
 
 ## -----------------------------------------------------------------------------
 # Then you execute the script
-include("helper/calcOrbGrid.jl")
+include(folderpath_OWCF*"helper/calcOrbGrid.jl")
 
 ## -----------------------------------------------------------------------------
 # Then you clean up after yourself

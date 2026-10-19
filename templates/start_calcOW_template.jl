@@ -86,7 +86,7 @@
 #
 # PLEASE NOTE! The 'analytic' input variable cannot be set to true, if the 'reaction' input variable is specified on form (3).
 
-# Script written by Henrik Järleblad. Last maintained 2025-10-07.
+# Script written by Henrik Järleblad. Last maintained 2025-10-19.
 #################################################################################################################################################################
 
 ## First you have to set the system specifications
@@ -195,7 +195,7 @@ end
 
 ## -----------------------------------------------------------------------------
 # Then you execute the script
-include("calcOrbWeights.jl")
+include(folderpath_OWCF*"calcOrbWeights.jl")
 
 ## -----------------------------------------------------------------------------
 # Then you clean up after yourself

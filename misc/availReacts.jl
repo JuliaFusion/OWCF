@@ -27,7 +27,7 @@
 #
 # DO NOT ALTER THIS SCRIPT. More fusion reactions might be added in the future.
 #
-# Script written by Henrik Järleblad. Last maintained 2026-09-08.
+# Script written by Henrik Järleblad. Last maintained 2026-10-19.
 ######################################################################################################
 
 if !(@isdefined OWCF_B_e) # Can have been already loaded via other OWCF scripts
@@ -72,7 +72,7 @@ end
 function reactionIsAvailable(fusion_reaction::String; verbose::Bool=false)
     if getReactionForm(fusion_reaction)==3
         verbose && println("Fusion reaction is on form 3!")
-        if fusion_reaction in OWCF_SPECIES
+        if lowercase(fusion_reaction) in OWCF_SPECIES
             return true
         end
     end

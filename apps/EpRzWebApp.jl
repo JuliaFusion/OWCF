@@ -89,7 +89,7 @@ Prior to running this notebook, please make sure you have run the calcEpRzTopoMa
 # -
 
 ### Notebook written by Henrik Järleblad (henrikj@dtu.dk) and Andrea Valentini (anvalen@dtu.dk)
-### Last maintained 2026-09-02.
+### Last maintained 2026-10-19.
 """
 
 # ╔═╡ 97aff330-3f29-47e1-a5fc-ac284a0ebbab
@@ -336,16 +336,16 @@ function plot_inputs()
 				Child("coordspace", Select([:EP => "(E,p)", :VEL => "(v_para,v_perp)"]))
 			)""",
 			md""" Energy, E (keV): $(
-				Child("E", Slider(E_array, default=E_array[Int64(round(length(E_array)/2))]))
+				Child("E", Slider(round.(E_array,sigdigits=3), default=E_array[Int64(round(length(E_array)/2))], show_value=true))
 			)""",
 			md""" Pitch, p (-): $(
-				Child("p", Slider(p_array, default=p_array[Int64(round(3*length(p_array)/4))]))
+				Child("p", Slider(round.(p_array,sigdigits=3), default=p_array[Int64(round(3*length(p_array)/4))], show_value=true))
 			)""",
 			md""" Major radius, R (m): $(
-				Child("R", Slider(R_array, default=R_array[Int64(round(length(R_array)/2))]))
+				Child("R", Slider(round.(R_array,sigdigits=3), default=R_array[Int64(round(length(R_array)/2))], show_value=true))
 			)""",
 			md""" Vertical pos., z (m): $(
-				Child("z", Slider(z_array, default=z_array[Int64(round(length(z_array)/2))]))
+				Child("z", Slider(round.(z_array,sigdigits=3), default=z_array[Int64(round(length(z_array)/2))], show_value=true))
 			)"""
 		]
 
@@ -406,7 +406,7 @@ let
         plt_crs = Plots.heatmap(R_array, z_array, F_Rz', fillcolor=cgrad([:white, :darkblue, :green, :yellow, :orange, :red]))
         plt_crs = Plots.scatter!([magnetic_axis(M)[1]],[magnetic_axis(M)[2]],label="Magnetic axis", mc=:gray, aspect_ratio=:equal, xlabel="R [m]", ylabel="z [m]",title="Poloidal cross-section")
     else
-        plt_crs = Plots.scatter([magnetic_axis(M)[1]],[magnetic_axis(M)[2]],label="Magnetic axis", mc=:gray, aspect_ratio=:equal, xlabel="R [m]", ylabel="z [m]",title="Poloidal cross-section")
+        plt_crs = Plots.scatter([magnetic_axis(M)[1]],[magnetic_axis(M)[2]],label="Magnetic axis", mc=:gray, aspect_ratio=:equal, xlabel="R [m]", ylabel="z [m]",title="Poloidal cross-section ($(FI_species))")
     end
     if tokamak_wall
         plt_crs = Plots.contour!(flux_r,flux_z,psi_rz',levels=collect(range(psi_mag,stop=psi_bdry,length=5)),color=:gray, linestyle=:dot,linewidth=2.5, label="",colorbar=false)

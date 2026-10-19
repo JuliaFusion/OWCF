@@ -164,7 +164,7 @@ end
 
 ## -----------------------------------------------------------------------------
 # Then you execute the script
-include("ps2WF.jl")
+include(folderpath_OWCF*"ps2WF.jl")
 
 ## -----------------------------------------------------------------------------
 # Then you clean up after yourself

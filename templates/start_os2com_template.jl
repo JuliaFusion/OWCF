@@ -94,7 +94,7 @@ end
 
 ## -----------------------------------------------------------------------------
 # Then you execute the script
-include("helper/os2com.jl")
+include(folderpath_OWCF*"helper/os2com.jl")
 
 ## -----------------------------------------------------------------------------
 # Then you clean up after yourself

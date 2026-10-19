@@ -34,13 +34,13 @@ class Forward(object):
         OWCF/misc/availReacts.jl script. This is to avoid having to import a Julia
         function into Python.
         """
-        if "-" in fusion_reaction:
+        if "-" in fusion_reaction: # On the form "a(b,c)d-l"
             return 2
-        if "(" in fusion_reaction:
+        if "(" in fusion_reaction: # On the form "a(b,c)d"
             return 1
-        return 3
+        return 3 # On the form "a"
 
-    def __init__(self, viewing_cone_name, fusion_reaction, bulk_dist):
+    def __init__(self, viewing_cone_name, fusion_reaction, bulk_dist, fast_reactant_amu='', fast_reactant_ecu=''):
         """
         Initialize the Forward object. The inputs are as follows:
         - viewing_cone_name - A String. Should be either any of the valid synthetic diagnostic names in OWCF/vcone.py 
@@ -66,11 +66,19 @@ class Forward(object):
                             PLEASE NOTE! Specify alpha particles as '4he' or '4He' (NOT 'he4' or 'He4'). The same goes 
                             for helium-3 (specify as '3he', NOT 'he3'). Etc.
         - bulk_dist - A String equal to "" or a Thermal object as defined in OWCF/transp_dists.py
+        - fast_reactant_amu - If fusion_reaction is on form (3), and the fast-ion particle species is not implemented in the OWCF/spec.py list 
+                              of particles, then the particle atomic mass unit (amu) has to be specified manually via this keyword argument - Float
+        - fast_reactant_ecu - If fusion_reaction is on form (3), and the fast-ion particle species is not implemented in the OWCF/spec.py list
+                              of particles, then the particle elemental charge unit (ecu) has to be specified manually via this keyword argument - Float
         """
         if not viewing_cone_name=="":
             self.viewing_cone = vcone.ViewingCone(viewing_cone_name)
         else:
             self.viewing_cone = ""
+
+        self.reaction_form = self.getReactionForm(fusion_reaction)
+        self.fast_reactant_amu = fast_reactant_amu
+        self.fast_reactant_ecu = fast_reactant_ecu
 
         self.reaction = fusion_reaction
 
@@ -82,8 +90,6 @@ class Forward(object):
 
     @reaction.setter
     def reaction(self, r):
-        self.reaction_form = self.getReactionForm(r)
-
         if self.reaction_form==1:
             self._reaction = r
             self.product_of_interest_energy_state = 'GS' # Ground state
@@ -113,7 +119,10 @@ class Forward(object):
             self.projVel = True
         self.reaction_short = a+"-"+b # Only the reactants, on the form [fast ion]-[thermal ion]. If projected velocities: [fast ion]-proj
 
-        self.spectrum_calculator = spec.SpectrumCalculator(self.reaction_short, self.product_of_interest_energy_state)
+        self.spectrum_calculator = spec.SpectrumCalculator(self.reaction_short, 
+                                                           self.product_of_interest_energy_state, 
+                                                           reactant_a_amu=self.fast_reactant_amu, 
+                                                           reactant_a_ecu=self.fast_reactant_ecu)
 
     @property
     def bulk_dist(self):
@@ -326,7 +335,7 @@ class Forward(object):
 
         return s
     
-    def add_gyration(self, E, p, R, z, B_vec, particle_species=None, n_gyro=20):
+    def add_gyration(self, E, p, R, z, B_vec, particle_species=None, n_gyro=20, amu='', ecu=''):
         """
         Add gyration to the guiding-centre points defined by the (E,p,R,z) input vectors.
         For a given index 'i', the corresponding (E,p,R,z) point is given by (E[i], p[i], R[i], z[i]).
@@ -343,6 +352,10 @@ class Forward(object):
         - particle_species - The particle species of interest. See OWCF/spec.py/Particle for more info.
                              If left unspecified, use self.fast_ion - String
         - n_gyro - The guiding-centre (E,p,R,z) point will be sampled into this many gyro-orbit points - Int
+        - amu - The weight of the particle in atomic mass units. Will only ever be used if the particle species is not included in the list
+                in OWCF/spec.py - Float
+        - ecu - The charge of the particle in elementary charge units. Will only ever be used if the particle species is not included in the list
+                in OWCF/spec.py - Float
 
         The output variable are as follows:
         - v - The velocity vectors (v_R, v_phi, v_z) of the particle at x (see below). In meters/second - Array (3, N*n_gyro)
@@ -351,6 +364,10 @@ class Forward(object):
 
         if particle_species==None:
             particle_species = self.fast_ion
+        if amu=='':
+            amu = self.fast_reactant_amu
+        if ecu=='':
+            ecu = self.fast_reactant_ecu
 
         E = np.array([max(0.0, x) for x in E]) # Enforce a minimum of 0 for the energy. In case some sampling algorithm has sampled energy values slightly below 0. 2025-06-05
         p = np.array([max(-1.0,x) for x in [min(1.0,x) for x in p]]) # Clamping the pitch between -1.0 and 1.0. In case some sampling algorithm has sampled pitch values slightly outside of the [-1.0,1.0] range. 2025-06-05
@@ -361,7 +378,7 @@ class Forward(object):
         R = R.repeat(n_gyro)
         z = z.repeat(n_gyro)
         B_vec = B_vec.repeat(n_gyro, axis=1)
-        prtcl = spec.Particle(particle_species)
+        prtcl = spec.Particle(particle_species, amu=amu, ecu=ecu)
 
         q_ecu = prtcl.q/(constants.e) # The charge of the particle, in elemental charge units
         v, x = tokapart.add_gyration(E, p, prtcl.m, B_vec, flr=True, Z=q_ecu, Rg=R, zg=z) # Add gyro-motion to the guiding centre, via randomness. Need mass in keV/c**2 Return actual gyro-orbit positions (x)
@@ -482,7 +499,7 @@ class Forward(object):
 
         if self.projVel:
             verbose and print("compute_spectrum(): self.projVel==True. Computing projected velocities... ")
-            spec_weights = weights * self.omega * (self.dphi/(2*np.pi)) # Use weighting without bulk density
+            spec_weights = weights * omega * (dphi/(2*np.pi)) # Use weighting without bulk density
             if self.spectrum_calculator.u1 is None: # If there is no synthetic diagnostic viewing cone
                 verbose and print("compute_spectrum(): No diagnostic viewing cone has been set. Binning speed of all input velocities... ")
                 v = np.linalg.norm(v, axis=0) # Just compute the speed of all velocity vectors

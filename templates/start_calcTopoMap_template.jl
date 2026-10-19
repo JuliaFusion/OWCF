@@ -62,7 +62,7 @@
 #   polTransTimes - The poloidal transit times for all valid orbits. Dimensions are size(orbit grid) - Array{Float64,3}
 #   torTransTimes - The toroidal transit times for all valid orbits. Dimensions are size(orbit grid) - Array{Float64,3}
 
-# Script written by Henrik Järleblad. Last maintained 2025-10-07.
+# Script written by Henrik Järleblad. Last maintained 2025-10-19.
 ########################################################################################
 
 ## First you have to set the system specifications
@@ -150,7 +150,7 @@ end
 
 ## -----------------------------------------------------------------------------
 # Then you execute the script
-include("calcTopoMap.jl")
+include(folderpath_OWCF*"calcTopoMap.jl")
 ## -----------------------------------------------------------------------------
 # Then you clean up after yourself
 if batch_job_SLURM || distributed
