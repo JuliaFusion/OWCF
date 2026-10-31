@@ -54,8 +54,11 @@
 # -
 
 #### Saved files
-# orbWeights_[FLR]_[tokamak]_[TRANSP_id]_at[timepoint]s_[diagnostic_name]_[nE]x[npm]x[nRm].jld2 - If iiimax == 1
-# orbWeights_[FLR]_[tokamak]_[TRANSP_id]_at[timepoint]s_[diagnostic_name]_$(i).jld2 - If iiimax != 1
+# Default output file name is:
+#   orbWeights_[FLR]_[tokamak]_[TRANSP_id]_at[timepoint]s_[diagnostic_name]_[nE]x[npm]x[nRm].jld2 - If iiimax == 1
+#   orbWeights_[FLR]_[tokamak]_[TRANSP_id]_at[timepoint]s_[diagnostic_name]_$(i).jld2 - If iiimax != 1
+# If the filename_o input variable is specified, output file name is:
+#   filename_o.jld2
 # Regardless of saved file name, this saved file will have the fields:
 #   W - The computed orbit weights. Dimensions are (channels, valid orbits) - Array{Float64,2}
 #   E_array - The fast-ion energy grid array used for orbit space - Array{Float64,1}
@@ -71,7 +74,7 @@
 # Please note that the diagnostic energy grid will be created as bin centers.
 # That is, the first diagnostic energy grid value will be (Ed_min+Ed_diff/2) and so on.
 
-# Script written by Henrik Järleblad. Last maintained 2026-10-19.
+# Script written by Henrik Järleblad. Last maintained 2026-10-30.
 ################################################################################################
 
 ## ---------------------------------------------------------------------------------------------
@@ -370,6 +373,55 @@ end
 @everywhere instrumental_response = $instrumental_response
 
 ## ---------------------------------------------------------------------------------------------
+# Loading necessary Python and/or packages, depending on the forward model of choice.
+# Currently, the three available forward models are
+#   - Analytic equations (A. Valentini et al, Nucl. Fusion, 2025)
+#   - Projected velocities
+#   - The DRESS code (J. Eriksson et al, Comp. Phys. Comm., 2016)
+
+verbose && println("Loading Python packages for forward model object... ")
+@everywhere begin
+    py"""
+    import numpy as np
+    import forward
+    import spec
+    import vcone
+    """
+end
+if analytic
+    verbose && println("Loading OWCF/forward.jl and OWCF/vcone.jl for analytic computations... ")
+    @everywhere begin
+        include("forward.jl") # Load analytic equations in the OWCF/forward.jl file
+        include("vcone.jl") # Load the Julia version of vcone.py, to work with viewing cone data files purely in Julia
+    end
+end
+
+## ---------------------------------------------------------------------------------------------
+# Helper function (to make the code more transparent)
+verbose && println("Loading helper functions... ")
+@everywhere begin
+    include("helper/calcOrbSpec.jl") # Helper function for computing diagnostic spectra from orbits
+end
+
+## If no thermal distribution has been specified, we are going to need the default temp. and dens. profiles
+if !isfile(filepath_thermal_distr)
+    @everywhere begin
+        include("misc/temp_n_dens.jl")
+    end
+end
+
+## ---------------------------------------------------------------------------------------------
+# Creating the diagnostic measurement bins (edges and centers)
+verbose && println("---> Creating diagnostic measurement bins... ")
+Ed_bin_edges = collect(range(Ed_min, stop=Ed_max, step=Ed_diff)) # Bin edges (e.g. [100, 150, 200, ...])
+Ed_bin_cntrs = (Ed_bin_edges[1:end-1] .+ Ed_bin_edges[2:end]) ./2 # Bin centers (e.g. [125, 175, ...])
+py"""
+Ed_bin_edges = $Ed_bin_edges
+"""
+Ed_array = Ed_bin_cntrs
+nEd = length(Ed_bin_cntrs)
+
+## ---------------------------------------------------------------------------------------------
 # Printing script info and inputs
 println("")
 println("---------------------------------------------------- calcOrbWeights.jl ----------------------------------------------------")
@@ -462,11 +514,11 @@ if include2Dto4D
 end
 println("")
 if !projVel
-    println("There will be $(length(range(Ed_min,stop=Ed_max,step=Ed_diff))-2) diagnostic energy bin(s) with")
+    println("There will be $(nEd) diagnostic energy bin(s) with")
     println("Lower diagnostic energy bound: $(Ed_min) keV")
     println("Upper diagnostic energy bound: $(Ed_max) keV")
 else
-    println("There will be $(length(range(Ed_min,stop=Ed_max,step=Ed_diff))-2) projected velocity (u) bin(s) with")
+    println("There will be $(nEd) projected velocity (u) bin(s) with")
     println("Lower u bound: $(Ed_min) m/s")
     println("Upper u bound: $(Ed_max) m/s")
 end
@@ -476,12 +528,16 @@ println(extra_kw_args)
 println("")
 println("Results will be saved to: ")
 sFLR = include_FLR_effects ? "FLR_" : ""
-if iiimax == 1
-    println(folderpath_o*"orbWeights_$(sFLR)"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*"_$(length(range(Ed_min,stop=Ed_max,step=Ed_diff))-2)x[NUMBER OF VALID ORBITS].jld2")
+if !(filename_o == "")
+    println(folderpath_o*filename_o*".jld2")
 else
-    println(folderpath_o*"orbWeights_$(sFLR)"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*"_1.jld2")
-    println("... ")
-    println(folderpath_o*"orbWeights_$(sFLR)"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*"_$(iiimax).jld2")
+    if iiimax == 1
+        println(folderpath_o*"orbWeights_$(sFLR)"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*"_$(nEd)x[NUMBER OF VALID ORBITS].jld2")
+    else
+        println(folderpath_o*"orbWeights_$(sFLR)"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*"_1.jld2")
+        println("... ")
+        println(folderpath_o*"orbWeights_$(sFLR)"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*"_$(iiimax).jld2")
+    end
 end
 println("")
 if plot_results
@@ -495,47 +551,9 @@ end
 println("")
 println("If you would like to change any settings, please edit the start_calcOW_template.jl file or similar.")
 println("")
-println("Written by Henrik Järleblad. Last maintained 2026-10-19.")
+println("Written by Henrik Järleblad. Last maintained 2026-10-30.")
 println("--------------------------------------------------------------------------------------------------------------------------")
 println("")
-
-## ---------------------------------------------------------------------------------------------
-# Loading necessary Python and/or packages, depending on the forward model of choice.
-# Currently, the three available forward models are
-#   - Analytic equations (A. Valentini et al, Nucl. Fusion, 2025)
-#   - Projected velocities
-#   - The DRESS code (J. Eriksson et al, Comp. Phys. Comm., 2016)
-
-verbose && println("Loading Python packages for forward model object... ")
-@everywhere begin
-    py"""
-    import numpy as np
-    import forward
-    import spec
-    import vcone
-    """
-end
-if analytic
-    verbose && println("Loading OWCF/forward.jl and OWCF/vcone.jl for analytic computations... ")
-    @everywhere begin
-        include("forward.jl") # Load analytic equations in the OWCF/forward.jl file
-        include("vcone.jl") # Load the Julia version of vcone.py, to work with viewing cone data files purely in Julia
-    end
-end
-
-## ---------------------------------------------------------------------------------------------
-# Helper function (to make the code more transparent)
-verbose && println("Loading helper functions... ")
-@everywhere begin
-    include("helper/calcOrbSpec.jl") # Helper function for computing diagnostic spectra from orbits
-end
-
-## If no thermal distribution has been specified, we are going to need the default temp. and dens. profiles
-if !isfile(filepath_thermal_distr)
-    @everywhere begin
-        include("misc/temp_n_dens.jl")
-    end
-end
 
 ## ---------------------------------------------------------------------------------------------
 # Calculating orbit grid
@@ -592,17 +610,7 @@ end
 
     $verbose and print("---> Initializing Python forward model object with diagnostic viewing cone (if any), fusion reaction (if any) and bulk (thermal) plasma distribution (if any)... ") 
     forwardmodel = forward.Forward($diagnostic_filepath, $reaction, thermal_dist, fast_reactant_amu=$fast_reactant_amu, fast_reactant_ecu=$fast_reactant_amu) # Initialize the forward model
-
-    $verbose and print("---> Initializing diagnostic measurement bins... ")
-    Ed_bin_edges = np.arange($Ed_min,$Ed_max,$Ed_diff) # diagnostic spectrum bin edges (keV or m/s)
-    if len(Ed_bin_edges)==1: # Make sure that there are at least one lower and one upper bin edge
-        dEd = (($Ed_max)-($Ed_min))/10
-        Ed_bin_edges = np.arange($Ed_min,($Ed_max)+dEd,$Ed_diff)
-    Ed_vals = 0.5*(Ed_bin_edges[1:] + Ed_bin_edges[:-1]) # bin centers (keV or m/s)
-    nEd = len(Ed_vals)
     """
-    nEd = py"nEd"
-    Ed_array = vec(py"Ed_vals")
 end
 
 ## ---------------------------------------------------------------------------------------------
@@ -922,10 +930,14 @@ for iii=1:iiimax
 
     if !debug
         verbose && println("Saving orbit weight function matrix in its 2D form... ")
-        if iiimax==1 # If you intend to calculate only one weight function
-            global filepath_output_orig = folderpath_o*"orbWeights_$(sFLR)"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*"_$(length(vec(py"Ed_vals")))x$(norbs)"
-        else # If you intend to calculate several (identical) weight functions
-            global filepath_output_orig = folderpath_o*"orbWeights_$(sFLR)"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*"_$(iii)"
+        if !(filename_o == "")
+            global filepath_output_orig = folderpath_o*filename_o*".jld2"
+        else
+            if iiimax==1 # If you intend to calculate only one weight function
+                global filepath_output_orig = folderpath_o*"orbWeights_$(sFLR)"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*"_$(length(Ed_array))x$(norbs)"
+            else # If you intend to calculate several (identical) weight functions
+                global filepath_output_orig = folderpath_o*"orbWeights_$(sFLR)"*tokamak*"_"*TRANSP_id*"_at"*timepoint*"s_"*diagnostic_name*"_"*pretty2scpok(reaction; projVel = projVel)*"_$(iii)"
+            end
         end
         global filepath_output = deepcopy(filepath_output_orig)
         global count = 1

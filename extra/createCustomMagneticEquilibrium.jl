@@ -34,6 +34,19 @@
 ##########################################################################################################################
 
 ## --------------------------------------------------------------------------
+# Checking for missing input variables if script is run using older versions of the start file template 
+if !(@isdefined debug)
+    verbose && println("Input variable 'debug' not included in the start file. Assuming debug=false.")
+    verbose && println("---> Using an older version of the start file template? Consider upgrading!")
+    debug = false
+end
+if !(@isdefined β)
+    verbose && println("Input variable 'β' not included in the start file. Assuming β=:UNSPECIFIED.")
+    verbose && println("---> Using an older version of the start file template? Consider upgrading!")
+    β = :UNSPECIFIED
+end
+
+## --------------------------------------------------------------------------
 # Loading Julia packages
 verbose && println("Loading Julia packages... ")
 using Equilibrium
