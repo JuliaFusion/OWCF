@@ -202,6 +202,15 @@ if fileext_thermal=="cdf" && !(fileext_FI_cdf=="cdf")
     error("filepath_thermal_distr specified as TRANSP .cdf file, but filepath_FI_cdf was wrongly specified. Please specify and re-try.")
 end
 
+# Check for variables not defined in previous versions of start file templates
+if !(@isdefined plasma_rot)
+    verbose && println("The input variable 'plasma_rot' was not defined. Assuming plasma_rot=false...")
+    verbose && println("---> Running an older version of a start file template? Consider adding the 'plasma_rot' to your start file, ")
+    verbose && println("---> or using the latest version of the OWCF/templates/start_calc4DW_template.jl template file... ")
+    plasma_rot = false
+    @everywhere plasma_rot = $plasma_rot
+end
+
 ## ---------------------------------------------------------------------------------------------
 # Determine fast-ion and thermal (thermal) species from inputs in start file
 thermal_reactant, fast_reactant = getFusionReactants(reaction) # Check the specified fusion reaction, and extract thermal and fast-ion species
@@ -405,10 +414,10 @@ if isfile(instrumental_response_filepath) # Returns true both for Strings and Ve
         instrumental_response_output = py"instrumental_response_output"
     end
     instrumental_response = true
+    @everywhere instrumental_response_matrix = $instrumental_response_matrix # Export to workers
+    @everywhere instrumental_response_input = $instrumental_response_input # Export to workers
+    @everywhere instrumental_response_output = $instrumental_response_output # Export to workers
 end
-@everywhere instrumental_response_matrix = $instrumental_response_matrix # Export to workers
-@everywhere instrumental_response_input = $instrumental_response_input # Export to workers
-@everywhere instrumental_response_output = $instrumental_response_output # Export to workers
 
 ## ---------------------------------------------------------------------------------------------
 # If specified, include plasma rotation in the weight computations
@@ -539,7 +548,7 @@ else
     println("Diagnostic line-of-sight file not specified. Spherical emission will be assumed.")
 end
 if instrumental_response
-    println("Instrumental response file: "*instrumental_response_filepath)
+    print("Instrumental response file(s): "); println(instrumental_response_filepath)
 else
     println("Instrumental response file not specified. Instrumental response will not be included.")
 end

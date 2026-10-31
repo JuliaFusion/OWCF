@@ -785,7 +785,7 @@ verbose && println("Creating synthetic measurements computation function... ")
 
                     # Call DRESS
                     py"""
-                    spec = forwardmodel.compute_spectrum(Ed_bin_edges, $R_gyro, $z_gyro, $v, $w_gyro, $B_gyro, v_rot=$v_rot)
+                    spec = forwardmodel.compute_spectrum(Ed_bin_edges, $R_gyro, $z_gyro, v, $w_gyro, $B_gyro, v_rot=$v_rot)
                     """
 
                     return vcat(py"spec")
@@ -830,7 +830,7 @@ verbose && println("Creating synthetic measurements computation function... ")
 
                     # Call DRESS
                     py"""
-                    spec = forwardmodel.compute_spectrum(Ed_bin_edges, $R_gc, $z_gc, $v, $w_gc, $B_gc, bulk_temp=$bulk_temp, bulk_dens=$bulk_dens, v_rot=$v_rot)
+                    spec = forwardmodel.compute_spectrum(Ed_bin_edges, $R_gc, $z_gc, v, $w_gc, $B_gc, bulk_temp=$bulk_temp, bulk_dens=$bulk_dens, v_rot=$v_rot)
                     """
 
                     return vcat(py"spec")
@@ -857,7 +857,7 @@ verbose && println("Creating synthetic measurements computation function... ")
 
                     # Call DRESS
                     py"""
-                    spec = forwardmodel.compute_spectrum(Ed_bin_edges, $R_gc, $z_gc, $v, $w_gc, $B_gc, v_rot=$v_rot)
+                    spec = forwardmodel.compute_spectrum(Ed_bin_edges, $R_gc, $z_gc, v, $w_gc, $B_gc, v_rot=$v_rot)
                     """
 
                     return vcat(py"spec")
