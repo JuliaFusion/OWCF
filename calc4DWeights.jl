@@ -122,7 +122,7 @@
 # WARNING! Please note that the output files of calc4DWeights.jl will be LARGE. This is due to the relatively high dimensionality
 # of the weight functions.
 
-# Script written by Henrik Järleblad. Last maintained 2026-10-19.
+# Script written by Henrik Järleblad. Last maintained 2026-10-31.
 ################################################################################################
 
 ## ---------------------------------------------------------------------------------------------
@@ -138,6 +138,27 @@ verbose && println("Loading Julia packages... ")
     include("misc/rewriteReacts.jl") # To rewrite a fusion reaction from e.g. the a(b,c)d format to the a-b=c-d format
     include("misc/species_func.jl") # To map particle species labels to particle mass etc
     pushfirst!(PyVector(pyimport("sys")."path"), "") # To add the forward, transp_dists, transp_output and vcone modules (scripts in current path)
+end
+
+## ---------------------------------------------------------------------------------------------
+# Python code (essentially calling the forward model black box)
+# This is how you write Python code in Julia: py""" [Python code] """
+verbose && println("Loading Python modules... ")
+@everywhere begin
+    py"""
+    import numpy as np
+    import forward
+    import vcone
+    import spec
+    """
+end
+
+## ---------------------------------------------------------------------------------------------
+## If no thermal distribution has been specified, we are going to need the OWCF default temp. and dens. profiles
+if !isfile(filepath_thermal_distr)
+    @everywhere begin
+        include("misc/temp_n_dens.jl")
+    end
 end
 
 ## ---------------------------------------------------------------------------------------------
@@ -387,6 +408,19 @@ end
 @everywhere z_array = $z_array
 
 ## ---------------------------------------------------------------------------------------------
+# Creating the diagnostic measurement bins (edges and centers)
+verbose && println("---> Creating diagnostic measurement bins... ")
+@everywhere begin
+    Ed_bin_edges = collect(range(Ed_min, stop=Ed_max, step=Ed_diff)) # Bin edges (e.g. [100, 150, 200, ...])
+    Ed_bin_cntrs = (Ed_bin_edges[1:end-1] .+ Ed_bin_edges[2:end]) ./2 # Bin centers (e.g. [125, 175, ...])
+    py"""
+    Ed_bin_edges = $Ed_bin_edges
+    """
+    Ed_array = Ed_bin_cntrs
+    nEd = length(Ed_bin_cntrs)
+end
+
+## ---------------------------------------------------------------------------------------------
 # If available, load instrumental response and process it accordingly
 global instrumental_response # Declare global scope
 instrumental_response = false
@@ -464,27 +498,6 @@ end
 end
 
 ## ---------------------------------------------------------------------------------------------
-# Python code (essentially calling the forward model black box)
-# This is how you write Python code in Julia: py""" [Python code] """
-verbose && println("Loading Python modules... ")
-@everywhere begin
-    py"""
-    import numpy as np
-    import forward
-    import vcone
-    import spec
-    """
-end
-
-## ---------------------------------------------------------------------------------------------
-## If no thermal distribution has been specified, we are going to need the OWCF default temp. and dens. profiles
-if !isfile(filepath_thermal_distr)
-    @everywhere begin
-        include("misc/temp_n_dens.jl")
-    end
-end
-
-## ---------------------------------------------------------------------------------------------
 # Loading TRANSP data (if any) and initializing forward model
 verbose && println("Loading TRANSP data (if any) and initializing forward model on all distributed workers/processes... ")
 @everywhere begin
@@ -509,20 +522,8 @@ verbose && println("Loading TRANSP data (if any) and initializing forward model 
 
     $verbose and print("Initializing forward model with diagnostic viewing cone, fusion reaction and bulk (thermal) plasma distribution... ") 
     forwardmodel = forward.Forward($diagnostic_filepath, $reaction, thermal_dist) # Initialize the forward model
-
-    Ed_bin_edges = np.arange($Ed_min,$Ed_max,$Ed_diff) # diagnostic spectrum bin edges (keV or m/s)
-    if len(Ed_bin_edges)==1: # Make sure that there are at least one lower and one upper bin edge
-        dEd = (($Ed_max)-($Ed_min))/10
-        Ed_bin_edges = np.arange($Ed_min,($Ed_max)+dEd,$Ed_diff)
-    Ed_vals = 0.5*(Ed_bin_edges[1:] + Ed_bin_edges[:-1]) # bin centers (keV or m/s)
-    nEd = len(Ed_vals)
     """
 end
-nEd = py"nEd"
-Ed_array = vec(py"Ed_vals")
-@everywhere nEd = $nEd
-@everywhere Ed_array = $Ed_array
-@everywhere nEd = length(Ed_array)
 
 ## ---------------------------------------------------------------------------------------------
 # Printing script info and inputs
@@ -651,7 +652,7 @@ end
 println("")
 println("If you would like to change any settings, please edit the start_calc4DW_template.jl file or similar.")
 println("")
-println("Written by Henrik Järleblad. Last maintained 2026-10-19.")
+println("Written by Henrik Järleblad. Last maintained 2026-10-31.")
 println("--------------------------------------------------------------------------------------------------")
 println("")
 

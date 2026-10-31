@@ -86,7 +86,7 @@
 # Please note that the diagnostic energy grid will be created as bin centers.
 # That is, the first diagnostic energy grid value will be (Ed_min+Ed_diff/2) and so on.
 
-# Script written by Henrik Järleblad. Last maintained 2026-10-19.
+# Script written by Henrik Järleblad. Last maintained 2026-10-31.
 ################################################################################################
 
 ## ---------------------------------------------------------------------------------------------
@@ -120,6 +120,20 @@ if analytic
         include("forward.jl")
         include("vcone.jl")
     end
+end
+
+## ---------------------------------------------------------------------------------------------
+# Python code (load Python packages for DRESS code)
+# This is how you write Python code in Julia: py""" [Python code] """
+verbose && println("Loading Python modules... ")
+@everywhere begin
+    py"""
+    import os.path
+    import numpy as np
+    import forward
+    import spec
+    import vcone
+    """
 end
 
 ## ---------------------------------------------------------------------------------------------
@@ -333,17 +347,16 @@ else
 end
 
 ## ---------------------------------------------------------------------------------------------
-# Python code (load Python packages for DRESS code)
-# This is how you write Python code in Julia: py""" [Python code] """
-verbose && println("Loading Python modules... ")
+# Creating the diagnostic measurement bins (edges and centers)
+verbose && println("---> Creating diagnostic measurement bins... ")
 @everywhere begin
+    Ed_bin_edges = collect(range(Ed_min, stop=Ed_max, step=Ed_diff)) # Bin edges (e.g. [100, 150, 200, ...])
+    Ed_bin_cntrs = (Ed_bin_edges[1:end-1] .+ Ed_bin_edges[2:end]) ./2 # Bin centers (e.g. [125, 175, ...])
     py"""
-    import os.path
-    import numpy as np
-    import forward
-    import spec
-    import vcone
+    Ed_bin_edges = $Ed_bin_edges
     """
+    Ed_array = Ed_bin_cntrs
+    nEd = length(Ed_bin_cntrs)
 end
 
 ## ---------------------------------------------------------------------------------------------
@@ -485,7 +498,7 @@ if !(diagnostic_filepath=="")
 else
     println("Diagnostic (model): N/A (4*pi spherical emission)" )
 end
-println("---> There will be $(length(range(Ed_min,stop=Ed_max-Ed_diff,step=Ed_diff))-2) diagnostic measurement bins with")
+println("---> There will be $(nEd) diagnostic measurement bins with")
 su = projVel ? "m/s" : "keV"
 println("------> Lower diagnostic measurement bound: $(Ed_min) $(su)")
 println("------> Upper diagnostic measurement bound: $(Ed_max) $(su)")
@@ -554,7 +567,7 @@ end
 println("")
 println("If you would like to change any settings, please edit the start_calc2DW_template.jl file or similar.")
 println("")
-println("Written by Henrik Järleblad. Last maintained 2026-10-19.")
+println("Written by Henrik Järleblad. Last maintained 2026-10-31.")
 println("--------------------------------------------------------------------------------------------------------------------")
 println("")
 
@@ -590,17 +603,7 @@ end
 
     $verbose and print("---> Initializing Python forward model object with diagnostic viewing cone (if any), fusion reaction (if any) and bulk (thermal) plasma distribution (if any)... ") 
     forwardmodel = forward.Forward($diagnostic_filepath, $reaction, thermal_dist) # Initialize the forward model
-
-    $verbose and print("---> Initializing diagnostic measurement bins... ")
-    Ed_bin_edges = np.arange($Ed_min,$Ed_max,$Ed_diff) # diagnostic spectrum bin edges (keV or m/s)
-    if len(Ed_bin_edges)==1: # Make sure that there are at least one lower and one upper bin edge
-        dEd = (($Ed_max)-($Ed_min))/10
-        Ed_bin_edges = np.arange($Ed_min,($Ed_max)+dEd,$Ed_diff)
-    Ed_vals = 0.5*(Ed_bin_edges[1:] + Ed_bin_edges[:-1]) # bin centers (keV or m/s)
-    nEd = len(Ed_vals)
     """
-    nEd = py"nEd"
-    Ed_array = vec(py"Ed_vals")
 end
 
 ## ---------------------------------------------------------------------------------------------
