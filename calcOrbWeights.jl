@@ -413,13 +413,15 @@ end
 ## ---------------------------------------------------------------------------------------------
 # Creating the diagnostic measurement bins (edges and centers)
 verbose && println("---> Creating diagnostic measurement bins... ")
-Ed_bin_edges = collect(range(Ed_min, stop=Ed_max, step=Ed_diff)) # Bin edges (e.g. [100, 150, 200, ...])
-Ed_bin_cntrs = (Ed_bin_edges[1:end-1] .+ Ed_bin_edges[2:end]) ./2 # Bin centers (e.g. [125, 175, ...])
-py"""
-Ed_bin_edges = $Ed_bin_edges
-"""
-Ed_array = Ed_bin_cntrs
-nEd = length(Ed_bin_cntrs)
+@everywhere begin
+    Ed_bin_edges = collect(range(Ed_min, stop=Ed_max, step=Ed_diff)) # Bin edges (e.g. [100, 150, 200, ...])
+    Ed_bin_cntrs = (Ed_bin_edges[1:end-1] .+ Ed_bin_edges[2:end]) ./2 # Bin centers (e.g. [125, 175, ...])
+    py"""
+    Ed_bin_edges = $Ed_bin_edges
+    """
+    Ed_array = Ed_bin_cntrs
+    nEd = length(Ed_bin_cntrs)
+end
 
 ## ---------------------------------------------------------------------------------------------
 # Printing script info and inputs
